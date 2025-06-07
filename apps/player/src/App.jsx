@@ -35,6 +35,27 @@ function JoinRoom() {
     const newSocket = io('http://localhost:3002')
     setSocket(newSocket)
 
+    // Check for auto-join URL parameters
+    const urlParams = new URLSearchParams(window.location.search)
+    const autoJoinPlayerName = urlParams.get('playerName')
+    const shouldAutoJoin = urlParams.get('autoJoin') === 'true'
+
+    if (shouldAutoJoin && autoJoinPlayerName && roomId) {
+      // Auto-join with pre-filled data
+      console.log(`Auto-join detected: ${autoJoinPlayerName} -> ${roomId}`)
+      setPlayerName(autoJoinPlayerName)
+      setIsJoining(true)
+      
+      // Wait for socket to connect, then join
+      newSocket.on('connect', () => {
+        console.log('Socket connected, auto-joining...')
+        newSocket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
+          roomId: roomId,
+          playerName: autoJoinPlayerName
+        })
+      })
+    }
+
     // Listen for join confirmation
     newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
       if (data.success) {

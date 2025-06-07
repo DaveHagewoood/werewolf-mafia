@@ -73,6 +73,19 @@ function GameLobby() {
     }
   }
 
+  const autoFillPlayers = () => {
+    const playerNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Henry']
+    const baseUrl = 'http://localhost:3001'
+    
+    playerNames.forEach((name, index) => {
+      const url = `${baseUrl}/join/${roomId}?playerName=${name}&autoJoin=true`
+      setTimeout(() => {
+        window.open(url, `_blank_player_${index}`)
+        console.log(`Opening tab for ${name}: ${url}`)
+      }, index * 300) // Slightly faster stagger for 8 players
+    })
+  }
+
   const qrCodeUrl = `${PLAYER_APP_URL}/join/${roomId}`
 
   // Show night phase screen
@@ -231,6 +244,16 @@ function GameLobby() {
           >
             {canStartGame ? 'Start Game' : `Need ${GAME_CONFIG.MIN_PLAYERS - players.length} more players`}
           </button>
+          
+          {/* Debug: Auto-fill players for testing */}
+          {players.length < GAME_CONFIG.MIN_PLAYERS && (
+            <button 
+              className="auto-fill-btn" 
+              onClick={autoFillPlayers}
+            >
+              🚀 Auto-fill 8 Players
+            </button>
+          )}
         </div>
       </div>
     </div>
