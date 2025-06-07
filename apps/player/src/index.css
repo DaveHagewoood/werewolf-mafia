@@ -210,6 +210,195 @@ body {
   color: #333;
 }
 
+/* Role Assignment Screen Styles */
+.role-container {
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.role-content {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.role-header {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  color: white;
+  text-align: center;
+  padding: 30px 20px;
+}
+
+.warning-banner {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  animation: blink 2s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.7; }
+}
+
+.role-header h1 {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.warning-text {
+  font-size: 1rem;
+  opacity: 0.9;
+}
+
+.role-card {
+  padding: 30px 25px;
+  border-left: 6px solid #ccc;
+  margin: 0;
+}
+
+.role-name {
+  font-size: 2.2rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 15px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.role-alignment {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+.alignment-badge {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.alignment-badge.good {
+  background: linear-gradient(135deg, #51cf66, #40c057);
+  color: white;
+}
+
+.alignment-badge.evil {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  color: white;
+}
+
+.role-description,
+.role-ability {
+  margin-bottom: 20px;
+}
+
+.role-description h3,
+.role-ability h3 {
+  font-size: 1.2rem;
+  color: #333;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.role-description p,
+.role-ability p {
+  color: #666;
+  line-height: 1.6;
+  font-size: 1rem;
+}
+
+.role-footer {
+  background: #f8f9fa;
+  padding: 25px;
+  text-align: center;
+  border-top: 1px solid #e9ecef;
+}
+
+.role-footer .player-info,
+.role-footer .room-info {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 5px 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.ready-btn {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 20px;
+}
+
+.ready-btn:not(.ready) {
+  background: linear-gradient(135deg, #51cf66, #40c057);
+  color: white;
+}
+
+.ready-btn:not(.ready):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(64, 192, 87, 0.3);
+}
+
+.ready-btn.ready {
+  background: #e9ecef;
+  color: #6c757d;
+  cursor: not-allowed;
+}
+
+/* Game in progress screen */
+.game-container {
+  width: 100%;
+  max-width: 500px;
+}
+
+.game-content {
+  background: white;
+  border-radius: 20px;
+  padding: 40px 30px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.game-content h1 {
+  font-size: 2rem;
+  color: #333;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+.game-content .player-info,
+.game-content .role-info {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 15px 0;
+  font-size: 1rem;
+  color: #666;
+  border-left: 4px solid #667eea;
+}
+
+.game-content p {
+  color: #666;
+  font-size: 1rem;
+  margin-bottom: 15px;
+}
+
 /* Mobile Optimizations */
 @media (max-width: 480px) {
   .app {
@@ -221,8 +410,33 @@ body {
     padding: 30px 25px;
   }
   
+  .role-content {
+    margin: 10px 0;
+  }
+  
+  .role-header {
+    padding: 25px 15px;
+  }
+  
+  .role-card {
+    padding: 25px 20px;
+  }
+  
+  .role-footer {
+    padding: 20px;
+  }
+  
+  .role-name {
+    font-size: 1.8rem;
+  }
+  
+  .role-header h1 {
+    font-size: 1.6rem;
+  }
+  
   .join-content h1,
-  .waiting-content h2 {
+  .waiting-content h2,
+  .game-content h1 {
     font-size: 1.6rem;
   }
   
@@ -231,7 +445,8 @@ body {
   }
   
   .form-group input,
-  .join-btn {
+  .join-btn,
+  .ready-btn {
     padding: 14px;
   }
 }
@@ -240,11 +455,29 @@ body {
 @media (max-height: 600px) and (orientation: landscape) {
   .app {
     padding: 10px;
+    align-items: flex-start;
+  }
+  
+  .role-container {
+    max-height: 95vh;
   }
   
   .join-content,
-  .waiting-content {
+  .waiting-content,
+  .game-content {
     padding: 25px 20px;
+  }
+  
+  .role-header {
+    padding: 20px 15px;
+  }
+  
+  .role-card {
+    padding: 20px 15px;
+  }
+  
+  .role-footer {
+    padding: 15px;
   }
   
   .spinner {

@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { SOCKET_EVENTS, validatePlayerName } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_STATES } from '@werewolf-mafia/shared'
 
 function HomePage() {
   return (
@@ -20,6 +20,9 @@ function JoinRoom() {
   const [isWaiting, setIsWaiting] = useState(false)
   const [error, setError] = useState('')
   const [socket, setSocket] = useState(null)
+  const [gameState, setGameState] = useState(GAME_STATES.LOBBY)
+  const [playerRole, setPlayerRole] = useState(null)
+  const [isReady, setIsReady] = useState(false)
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -32,7 +35,23 @@ function JoinRoom() {
         setIsWaiting(true)
         setIsJoining(false)
         setError('')
+        setGameState(GAME_STATES.LOBBY)
       }
+    })
+
+    // Listen for role assignment
+    newSocket.on(SOCKET_EVENTS.ROLE_ASSIGNED, (data) => {
+      setPlayerRole(data.role)
+      setGameState(GAME_STATES.ROLE_ASSIGNMENT)
+      setIsReady(false)
+      console.log('Role assigned:', data.role.name)
+    })
+
+    // Listen for night phase start
+    newSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, (data) => {
+      setGameState(GAME_STATES.IN_PROGRESS)
+      console.log('Night phase started!')
+      // TODO: Navigate to game screen
     })
 
     // Listen for errors
@@ -41,10 +60,10 @@ function JoinRoom() {
       setIsJoining(false)
     })
 
-    // Listen for game start
+    // Listen for game start (legacy - now handled by role assignment)
     newSocket.on(SOCKET_EVENTS.GAME_START, () => {
       console.log('Game is starting!')
-      // TODO: Navigate to game screen
+      // This event is now replaced by ROLE_ASSIGNED
     })
 
     // Cleanup on unmount
@@ -78,6 +97,83 @@ function JoinRoom() {
     })
   }
 
+  const handleReady = () => {
+    if (socket && !isReady) {
+      socket.emit(SOCKET_EVENTS.PLAYER_READY, { roomId })
+      setIsReady(true)
+    }
+  }
+
+  // Show role assignment screen
+  if (gameState === GAME_STATES.ROLE_ASSIGNMENT && playerRole) {
+    return (
+      <div className="role-container">
+        <div className="role-content">
+          <div className="role-header">
+            <div className="warning-banner">
+              ⚠️ <strong>SECRET ROLE</strong> ⚠️
+            </div>
+            <h1>Your Role</h1>
+            <p className="warning-text">
+              <strong>Do not show this screen to anyone else!</strong>
+            </p>
+          </div>
+
+          <div className="role-card" style={{ borderColor: playerRole.color }}>
+            <div className="role-name" style={{ color: playerRole.color }}>
+              {playerRole.name}
+            </div>
+            
+            <div className="role-alignment">
+              <span className={`alignment-badge ${playerRole.alignment}`}>
+                {playerRole.alignment === 'good' ? '😇 Good' : '😈 Evil'}
+              </span>
+            </div>
+
+            <div className="role-description">
+              <h3>Description</h3>
+              <p>{playerRole.description}</p>
+            </div>
+
+            <div className="role-ability">
+              <h3>Special Ability</h3>
+              <p>{playerRole.ability}</p>
+            </div>
+          </div>
+
+          <div className="role-footer">
+            <p className="player-info">Playing as: <strong>{playerName}</strong></p>
+            <p className="room-info">Room: <strong>{roomId}</strong></p>
+            
+            <button 
+              className={`ready-btn ${isReady ? 'ready' : ''}`}
+              onClick={handleReady}
+              disabled={isReady}
+            >
+              {isReady ? '✅ Ready - Waiting for others...' : 'I understand my role - Ready!'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show game in progress screen
+  if (gameState === GAME_STATES.IN_PROGRESS) {
+    return (
+      <div className="game-container">
+        <div className="game-content">
+          <h1>Night Phase</h1>
+          <p className="player-info">Playing as: <strong>{playerName}</strong></p>
+          <p className="role-info">You are: <strong style={{ color: playerRole?.color }}>{playerRole?.name}</strong></p>
+          <p>The game has begun...</p>
+          {/* TODO: Implement actual game phases */}
+        </div>
+      </div>
+    )
+  }
+
+  // Show waiting in lobby screen
   if (isWaiting) {
     return (
       <div className="waiting-container">
@@ -94,6 +190,7 @@ function JoinRoom() {
     )
   }
 
+  // Show join form
   return (
     <div className="join-container">
       <div className="join-content">

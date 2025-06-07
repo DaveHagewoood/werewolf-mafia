@@ -2,13 +2,15 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
-import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG } from '@werewolf-mafia/shared'
+import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES } from '@werewolf-mafia/shared'
 
 function GameLobby() {
   const [roomId, setRoomId] = useState('')
   const [players, setPlayers] = useState([])
   const [canStartGame, setCanStartGame] = useState(false)
   const [socket, setSocket] = useState(null)
+  const [gameState, setGameState] = useState(GAME_STATES.LOBBY)
+  const [playerReadiness, setPlayerReadiness] = useState([])
 
   // Player app URL - you'll need to update this with your actual player app URL
   const PLAYER_APP_URL = 'http://localhost:3001'
@@ -31,6 +33,18 @@ function GameLobby() {
       setCanStartGame(data.canStart)
     })
 
+    // Listen for readiness updates during role assignment
+    hostSocket.on(SOCKET_EVENTS.READINESS_UPDATE, (data) => {
+      setPlayerReadiness(data.players)
+    })
+
+    // Listen for night phase start
+    hostSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, (data) => {
+      setGameState(GAME_STATES.IN_PROGRESS)
+      console.log('Night phase started!')
+      // TODO: Navigate to night phase screen
+    })
+
     // Listen for errors
     hostSocket.on('error', (error) => {
       console.error('Socket error:', error.message)
@@ -47,13 +61,83 @@ function GameLobby() {
   const handleStartGame = () => {
     if (canStartGame && socket) {
       socket.emit(SOCKET_EVENTS.GAME_START, { roomId })
+      setGameState(GAME_STATES.ROLE_ASSIGNMENT)
       console.log('Starting game...')
-      // TODO: Navigate to game screen
     }
   }
 
   const qrCodeUrl = `${PLAYER_APP_URL}/join/${roomId}`
 
+  // Show waiting for players to confirm roles screen
+  if (gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+    return (
+      <div className="waiting-container">
+        <div className="waiting-header">
+          <h1>Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="waiting-content">
+          <h2>Waiting for Players to Confirm Roles...</h2>
+          <p>Roles have been assigned. Players are reviewing their secret roles.</p>
+          
+          {playerReadiness.length > 0 ? (
+            <>
+              <div className="readiness-list">
+                {playerReadiness.map((player) => (
+                  <div key={player.id} className="readiness-item">
+                    <span className="readiness-status">
+                      {player.ready ? '✅' : '⏳'}
+                    </span>
+                    <span className="player-name">{player.name}</span>
+                    <span className="ready-text">
+                      {player.ready ? 'Ready' : 'Reviewing role...'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="waiting-progress">
+                <div className="progress-info">
+                  {playerReadiness.filter(p => p.ready).length} of {playerReadiness.length} players ready
+                </div>
+                {playerReadiness.length > 0 && playerReadiness.every(p => p.ready) && (
+                  <div className="all-ready-message">
+                    🎉 All players are ready! Starting night phase...
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="loading-roles">
+              <div className="spinner"></div>
+              <p>Assigning roles to players...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Show in-progress screen placeholder
+  if (gameState === GAME_STATES.IN_PROGRESS) {
+    return (
+      <div className="game-container">
+        <div className="game-header">
+          <h1>Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="game-content">
+          <h2>Game In Progress</h2>
+          <p>Night phase has begun...</p>
+          {/* TODO: Implement actual game phases */}
+        </div>
+      </div>
+    )
+  }
+
+  // Default lobby view
   return (
     <div className="lobby-container">
       <div className="lobby-header">

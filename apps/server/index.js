@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
-import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, assignRoles } from '@werewolf-mafia/shared'
 
 const httpServer = createServer()
 const io = new Server(httpServer, {
@@ -20,7 +20,9 @@ function getRoom(roomId) {
       id: roomId,
       host: null,
       players: [],
-      gameStarted: false,
+      gameState: GAME_STATES.LOBBY,
+      playerRoles: new Map(), // playerId -> role
+      playerReadiness: new Map(), // playerId -> boolean
       createdAt: new Date()
     })
   }
@@ -32,10 +34,26 @@ function broadcastPlayersUpdate(roomId) {
   const room = getRoom(roomId)
   const updateData = {
     players: room.players,
-    canStart: room.players.length >= GAME_CONFIG.MIN_PLAYERS && !room.gameStarted
+    canStart: room.players.length >= GAME_CONFIG.MIN_PLAYERS && room.gameState === GAME_STATES.LOBBY
   }
   
   io.to(roomId).emit(SOCKET_EVENTS.PLAYERS_UPDATE, updateData)
+}
+
+// Helper function to broadcast readiness updates to host
+function broadcastReadinessUpdate(roomId) {
+  const room = getRoom(roomId)
+  const readinessData = room.players.map(player => ({
+    id: player.id,
+    name: player.name,
+    ready: room.playerReadiness.get(player.id) || false
+  }))
+  
+  // Send to host only
+  const hostSocket = io.sockets.sockets.get(room.host)
+  if (hostSocket) {
+    hostSocket.emit(SOCKET_EVENTS.READINESS_UPDATE, { players: readinessData })
+  }
 }
 
 io.on('connection', (socket) => {
@@ -90,7 +108,7 @@ io.on('connection', (socket) => {
     }
 
     // Check if game already started
-    if (room.gameStarted) {
+    if (room.gameState !== GAME_STATES.LOBBY) {
       socket.emit('error', { message: 'Game already in progress' })
       return
     }
@@ -133,11 +151,91 @@ io.on('connection', (socket) => {
       return
     }
 
-    room.gameStarted = true
+    if (room.gameState !== GAME_STATES.LOBBY) {
+      socket.emit('error', { message: 'Game already started' })
+      return
+    }
+
+    // Change game state to role assignment
+    room.gameState = GAME_STATES.ROLE_ASSIGNMENT
     
-    // Notify all players that game is starting
-    io.to(roomId).emit(SOCKET_EVENTS.GAME_START, { roomId })
-    console.log(`Game started in room ${roomId}`)
+    try {
+      // Assign roles to players
+      const roles = assignRoles(room.players.length)
+      
+      // Store role assignments and initialize readiness to false
+      room.players.forEach((player, index) => {
+        room.playerRoles.set(player.id, roles[index])
+        room.playerReadiness.set(player.id, false)
+      })
+      
+      console.log(`Roles assigned in room ${roomId}:`)
+      room.players.forEach(player => {
+        const role = room.playerRoles.get(player.id)
+        console.log(`  ${player.name}: ${role.name}`)
+      })
+      
+      // Send role assignments to each player
+      room.players.forEach(player => {
+        const playerSocket = io.sockets.sockets.get(player.id)
+        if (playerSocket) {
+          const role = room.playerRoles.get(player.id)
+          playerSocket.emit(SOCKET_EVENTS.ROLE_ASSIGNED, {
+            role: role,
+            playerName: player.name
+          })
+          console.log(`Sent role ${role.name} to ${player.name}`)
+        } else {
+          console.log(`Warning: Could not find socket for player ${player.name} (${player.id})`)
+        }
+      })
+      
+      // Send initial readiness update to host (all players start as not ready)
+      broadcastReadinessUpdate(roomId)
+      
+    } catch (error) {
+      console.error('Error assigning roles:', error)
+      socket.emit('error', { message: 'Failed to assign roles' })
+      // Revert game state on error
+      room.gameState = GAME_STATES.LOBBY
+    }
+  })
+
+  // Player confirms they're ready after seeing their role
+  socket.on(SOCKET_EVENTS.PLAYER_READY, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot ready up' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    
+    if (room.gameState !== GAME_STATES.ROLE_ASSIGNMENT) {
+      socket.emit('error', { message: 'Not in role assignment phase' })
+      return
+    }
+
+    // Set player as ready
+    room.playerReadiness.set(socket.id, true)
+    console.log(`Player ${socket.playerName} is ready in room ${socket.roomId}`)
+    
+    // Broadcast updated readiness to host
+    broadcastReadinessUpdate(socket.roomId)
+    
+    // Check if all players are ready
+    const allReady = room.players.every(player => room.playerReadiness.get(player.id))
+    
+    if (allReady) {
+      // All players are ready, start the night phase
+      room.gameState = GAME_STATES.IN_PROGRESS
+      io.to(socket.roomId).emit(SOCKET_EVENTS.START_NIGHT_PHASE, { roomId: socket.roomId })
+      console.log(`All players ready, starting night phase in room ${socket.roomId}`)
+    }
   })
 
   // Handle disconnection
@@ -157,8 +255,17 @@ io.on('connection', (socket) => {
           const removedPlayer = room.players.splice(playerIndex, 1)[0]
           console.log(`Player ${removedPlayer.name} left room ${socket.roomId}`)
           
+          // Clean up player data
+          room.playerRoles.delete(socket.id)
+          room.playerReadiness.delete(socket.id)
+          
           // Broadcast updated player list
           broadcastPlayersUpdate(socket.roomId)
+          
+          // If in role assignment phase, update readiness
+          if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+            broadcastReadinessUpdate(socket.roomId)
+          }
         }
       }
     }

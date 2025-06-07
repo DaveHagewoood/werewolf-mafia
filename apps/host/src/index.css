@@ -174,6 +174,167 @@ body {
   cursor: not-allowed;
 }
 
+/* Waiting for players to confirm roles screen */
+.waiting-container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.waiting-header {
+  background: linear-gradient(135deg, #ffa726, #fb8c00);
+  color: white;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.waiting-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.waiting-header h2 {
+  font-size: 1.3rem;
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.waiting-content {
+  padding: 40px;
+  text-align: center;
+}
+
+.waiting-content h2 {
+  font-size: 1.8rem;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.waiting-content > p {
+  color: #666;
+  font-size: 1.1rem;
+  margin-bottom: 30px;
+}
+
+.readiness-list {
+  background: #f8f9fa;
+  border-radius: 15px;
+  padding: 20px;
+  margin: 30px 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.readiness-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  margin-bottom: 10px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.readiness-item:last-child {
+  margin-bottom: 0;
+}
+
+.readiness-status {
+  font-size: 1.5rem;
+  margin-right: 15px;
+  min-width: 30px;
+}
+
+.player-name {
+  flex: 1;
+  font-weight: 600;
+  color: #333;
+  text-align: left;
+}
+
+.ready-text {
+  color: #666;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+.waiting-progress {
+  margin-top: 30px;
+}
+
+.progress-info {
+  font-size: 1.1rem;
+  color: #666;
+  margin-bottom: 15px;
+}
+
+.all-ready-message {
+  background: linear-gradient(135deg, #51cf66, #40c057);
+  color: white;
+  padding: 15px 25px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* Game in progress screen */
+.game-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.game-header {
+  background: linear-gradient(135deg, #6c5ce7, #5f3dc4);
+  color: white;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.game-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.game-header h2 {
+  font-size: 1.3rem;
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.game-content {
+  padding: 40px;
+  text-align: center;
+}
+
+.game-content h2 {
+  font-size: 2rem;
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.game-content p {
+  color: #666;
+  font-size: 1.1rem;
+  margin-bottom: 20px;
+}
+
 @media (max-width: 768px) {
   .lobby-content {
     grid-template-columns: 1fr;
@@ -189,4 +350,50 @@ body {
     width: 160px !important;
     height: 160px !important;
   }
+
+  .waiting-header h1,
+  .game-header h1 {
+    font-size: 2rem;
+  }
+
+  .waiting-content,
+  .game-content {
+    padding: 30px 20px;
+  }
+
+  .readiness-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .ready-text {
+    align-self: flex-end;
+  }
+}
+
+.loading-roles {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.loading-roles .spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #ffa726;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+.loading-roles p {
+  color: #666;
+  font-size: 1.1rem;
+  font-style: italic;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 } 
