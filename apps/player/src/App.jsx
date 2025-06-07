@@ -29,6 +29,14 @@ function JoinRoom() {
   const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
   const [mafiaVotes, setMafiaVotes] = useState({}) // { playerId: { name, target, targetName } }
   const [consensusTimer, setConsensusTimer] = useState(null) // { targetId, targetName, timeLeft }
+  const [mafiaVotesLocked, setMafiaVotesLocked] = useState(false) // Whether Mafia votes are locked
+  const [healTargets, setHealTargets] = useState([]) // Available targets for Doctor to heal
+  const [selectedHeal, setSelectedHeal] = useState(null) // Doctor's selected heal target
+  const [hasHealed, setHasHealed] = useState(false) // Whether Doctor has made their choice
+  const [investigateTargets, setInvestigateTargets] = useState([]) // Available targets for Seer to investigate
+  const [selectedInvestigation, setSelectedInvestigation] = useState(null) // Seer's selected target
+  const [hasInvestigated, setHasInvestigated] = useState(false) // Whether Seer has investigated
+  const [investigationResult, setInvestigationResult] = useState(null) // Seer's investigation result
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -80,6 +88,7 @@ function JoinRoom() {
       setHasVoted(false)
       setSelectedTarget(null)
       setEliminatedPlayer(null)
+      setMafiaVotesLocked(false) // Reset vote lock for new night
       console.log('Night phase started!')
     })
 
@@ -115,6 +124,30 @@ function JoinRoom() {
     newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_CANCELLED, () => {
       setConsensusTimer(null)
       console.log('Consensus timer cancelled')
+    })
+
+    // Listen for Mafia votes locked
+    newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_LOCKED, () => {
+      setMafiaVotesLocked(true)
+      console.log('Mafia votes are now locked')
+    })
+
+    // Listen for Doctor action start (only Doctor will receive this)
+    newSocket.on(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, (data) => {
+      setHealTargets(data.targets)
+      console.log('Doctor action started, heal targets:', data.targets)
+    })
+
+    // Listen for Seer action start (only Seer will receive this)
+    newSocket.on(SOCKET_EVENTS.BEGIN_SEER_ACTION, (data) => {
+      setInvestigateTargets(data.targets)
+      console.log('Seer action started, investigation targets:', data.targets)
+    })
+
+    // Listen for Seer investigation result
+    newSocket.on(SOCKET_EVENTS.SEER_RESULT, (data) => {
+      setInvestigationResult(data.result)
+      console.log('Investigation result received:', data.result)
     })
 
     // Listen for errors
@@ -178,7 +211,7 @@ function JoinRoom() {
   }
 
   const handleMafiaVote = (targetId) => {
-    if (socket) {
+    if (socket && !mafiaVotesLocked) {
       // Toggle vote off if clicking same target
       if (selectedTarget === targetId) {
         socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId: null })
@@ -191,6 +224,24 @@ function JoinRoom() {
         setHasVoted(true)
         console.log('Voted for target:', targetId)
       }
+    }
+  }
+
+  const handleDoctorHeal = (targetId) => {
+    if (socket && !hasHealed) {
+      socket.emit(SOCKET_EVENTS.DOCTOR_HEAL, { targetId })
+      setSelectedHeal(targetId)
+      setHasHealed(true)
+      console.log('Healed target:', targetId)
+    }
+  }
+
+  const handleSeerInvestigate = (targetId) => {
+    if (socket && !hasInvestigated) {
+      socket.emit(SOCKET_EVENTS.SEER_INVESTIGATE, { targetId })
+      setSelectedInvestigation(targetId)
+      setHasInvestigated(true)
+      console.log('Investigated target:', targetId)
     }
   }
 
@@ -237,8 +288,9 @@ function JoinRoom() {
                 {voteTargets.map((target) => (
                   <button
                     key={target.id}
-                    className={`target-btn ${selectedTarget === target.id ? 'selected' : ''}`}
+                    className={`target-btn ${selectedTarget === target.id ? 'selected' : ''} ${mafiaVotesLocked ? 'locked' : ''}`}
                     onClick={() => handleMafiaVote(target.id)}
+                    disabled={mafiaVotesLocked}
                   >
                     <span className="target-name">{target.name}</span>
                     {selectedTarget === target.id && <span className="vote-indicator">✓ Voted</span>}
@@ -271,11 +323,20 @@ function JoinRoom() {
                 </div>
               )}
 
-              {hasVoted && !consensusTimer && (
+              {hasVoted && !consensusTimer && !mafiaVotesLocked && (
                 <div className="vote-confirmation">
                   <p>Vote cast! Click the same target again to remove your vote.</p>
                   <div className="consensus-info">
                     <small>All Mafia must agree for 5 seconds to lock in the target</small>
+                  </div>
+                </div>
+              )}
+
+              {mafiaVotesLocked && (
+                <div className="vote-locked">
+                  <p>🔒 Votes are locked! Waiting for other night actions to complete...</p>
+                  <div className="locked-info">
+                    <small>Your vote has been finalized and cannot be changed</small>
                   </div>
                 </div>
               )}
@@ -292,7 +353,166 @@ function JoinRoom() {
       )
     }
 
-    // Non-Mafia night phase (waiting screen)
+    // Doctor healing interface
+    if (playerRole.name === 'Doctor') {
+      // If we haven't received heal targets yet, show loading
+      if (healTargets.length === 0) {
+        return (
+          <div className="doctor-heal-container">
+            <div className="doctor-heal-content">
+              <div className="night-header">
+                <div className="night-icon">🌙</div>
+                <h1>Night Phase</h1>
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+              </div>
+
+              <div className="heal-section">
+                <h2>Preparing...</h2>
+                <div className="night-progress">
+                  <div className="night-spinner"></div>
+                  <p>Gathering medical supplies...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="doctor-heal-container">
+          <div className="doctor-heal-content">
+            <div className="night-header">
+              <div className="night-icon">🌙</div>
+              <h1>Night Phase</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
+
+            <div className="heal-section">
+              <h2>Choose Who to Protect</h2>
+              <p>Select one player to save from a potential Mafia attack:</p>
+              
+              <div className="heal-list">
+                {healTargets.map((target) => (
+                  <button
+                    key={target.id}
+                    className={`heal-btn ${selectedHeal === target.id ? 'selected' : ''}`}
+                    onClick={() => handleDoctorHeal(target.id)}
+                    disabled={hasHealed}
+                  >
+                    <span className="heal-name">{target.name}</span>
+                    {selectedHeal === target.id && <span className="heal-indicator">✅ Protected</span>}
+                  </button>
+                ))}
+              </div>
+
+              {hasHealed && (
+                <div className="heal-confirmation">
+                  <p>Protection cast! Waiting for other night actions...</p>
+                  <div className="heal-info">
+                    <small>Your choice is final and cannot be changed</small>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {eliminatedPlayer && (
+              <div className="elimination-result">
+                <h3>Dawn Breaks</h3>
+                <p><strong>{eliminatedPlayer.name}</strong> was found eliminated.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Seer investigation interface
+    if (playerRole.name === 'Seer') {
+      // If we haven't received investigation targets yet, show loading
+      if (investigateTargets.length === 0) {
+        return (
+          <div className="seer-investigate-container">
+            <div className="seer-investigate-content">
+              <div className="night-header">
+                <div className="night-icon">🌙</div>
+                <h1>Night Phase</h1>
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+              </div>
+
+              <div className="investigate-section">
+                <h2>Preparing...</h2>
+                <div className="night-progress">
+                  <div className="night-spinner"></div>
+                  <p>Gathering clues...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="seer-investigate-container">
+          <div className="seer-investigate-content">
+            <div className="night-header">
+              <div className="night-icon">🌙</div>
+              <h1>Night Phase</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
+
+            {!hasInvestigated ? (
+              <div className="investigate-section">
+                <h2>Choose Who to Investigate</h2>
+                <p>Select one player to learn their true alignment:</p>
+                
+                <div className="investigate-list">
+                  {investigateTargets.map((target) => (
+                    <button
+                      key={target.id}
+                      className={`investigate-btn ${selectedInvestigation === target.id ? 'selected' : ''}`}
+                      onClick={() => handleSeerInvestigate(target.id)}
+                      disabled={hasInvestigated}
+                    >
+                      <span className="investigate-name">{target.name}</span>
+                      {selectedInvestigation === target.id && <span className="investigate-indicator">🔍 Investigating</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="investigate-section">
+                <h2>Investigation Complete</h2>
+                
+                {investigationResult && (
+                  <div className="investigation-result">
+                    <div className="result-content">
+                      <div className="result-icon">🔍</div>
+                      <p className="result-text">{investigationResult}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="investigate-confirmation">
+                  <p>Waiting for other night actions to complete...</p>
+                  <div className="investigate-info">
+                    <small>Your investigation is complete and private to you</small>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {eliminatedPlayer && (
+              <div className="elimination-result">
+                <h3>Dawn Breaks</h3>
+                <p><strong>{eliminatedPlayer.name}</strong> was found eliminated.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Non-Mafia, Non-Doctor, Non-Seer night phase (waiting screen)
     return (
       <div className="night-wait-container">
         <div className="night-wait-content">

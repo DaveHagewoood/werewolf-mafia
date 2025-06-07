@@ -12,6 +12,7 @@ function GameLobby() {
   const [gameState, setGameState] = useState(GAME_STATES.LOBBY)
   const [playerReadiness, setPlayerReadiness] = useState([])
   const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
+  const [savedPlayer, setSavedPlayer] = useState(null)
 
   // Player app URL - you'll need to update this with your actual player app URL
   const PLAYER_APP_URL = 'http://localhost:3001'
@@ -46,9 +47,22 @@ function GameLobby() {
       console.log('Night phase started!')
     })
 
-    // Listen for night action completion
+    // Listen for night resolution
+    hostSocket.on(SOCKET_EVENTS.NIGHT_RESOLUTION, (data) => {
+      console.log('Night resolution:', data)
+      setEliminatedPlayer(data.killedPlayer)
+      setSavedPlayer(data.savedPlayer)
+      
+      // After 3 seconds, start day phase (placeholder)
+      setTimeout(() => {
+        console.log('Starting day phase placeholder...')
+        // TODO: Implement day phase
+      }, 3000)
+    })
+
+    // Listen for night action completion (legacy event)
     hostSocket.on(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, (data) => {
-      console.log('Night action completed:', data.eliminatedPlayer)
+      console.log('Night action completed (legacy):', data.eliminatedPlayer)
       setEliminatedPlayer(data.eliminatedPlayer)
     })
 
@@ -102,14 +116,32 @@ function GameLobby() {
           <h2>Night Phase</h2>
           <p>The town sleeps while the Mafia makes their move...</p>
           
-          {eliminatedPlayer ? (
+          {eliminatedPlayer || savedPlayer ? (
             <div className="night-result">
-              <div className="elimination-notice">
-                <h3>Night Action Complete</h3>
-                <p>
-                  <strong>{eliminatedPlayer.name}</strong> was eliminated by the Mafia.
-                </p>
-              </div>
+              {eliminatedPlayer && (
+                <div className="elimination-notice">
+                  <h3>Night Action Complete</h3>
+                  <p>
+                    <strong>{eliminatedPlayer.name}</strong> was eliminated by the Mafia.
+                  </p>
+                </div>
+              )}
+              
+              {savedPlayer && (
+                <div className="save-notice">
+                  <h3>A Life Saved!</h3>
+                  <p>
+                    The Doctor successfully saved someone from certain death!
+                  </p>
+                </div>
+              )}
+              
+              {!eliminatedPlayer && savedPlayer && (
+                <div className="no-elimination-notice">
+                  <h3>No One Was Killed</h3>
+                  <p>The Mafia's plan was thwarted by excellent medical intervention!</p>
+                </div>
+              )}
               
               <div className="next-phase-info">
                 <p>The night phase is complete. Day phase coming soon...</p>

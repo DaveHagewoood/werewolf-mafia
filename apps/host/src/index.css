@@ -517,6 +517,46 @@ body {
   margin: 0;
 }
 
+.save-notice {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-radius: 15px;
+  padding: 30px;
+  margin-bottom: 25px;
+  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+}
+
+.save-notice h3 {
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+  color: white;
+}
+
+.save-notice p {
+  font-size: 1.2rem;
+  color: #a7f3d0;
+  margin: 0;
+}
+
+.no-elimination-notice {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border-radius: 15px;
+  padding: 30px;
+  margin-bottom: 25px;
+  box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+}
+
+.no-elimination-notice h3 {
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+  color: white;
+}
+
+.no-elimination-notice p {
+  font-size: 1.2rem;
+  color: #bfdbfe;
+  margin: 0;
+}
+
 .next-phase-info {
   background: rgba(226, 232, 240, 0.1);
   border-radius: 10px;

@@ -13,6 +13,14 @@ export const SOCKET_EVENTS = {
   MAFIA_VOTES_UPDATE: 'mafia-votes-update',
   CONSENSUS_TIMER_START: 'consensus-timer-start',
   CONSENSUS_TIMER_CANCELLED: 'consensus-timer-cancelled',
+  MAFIA_VOTES_LOCKED: 'mafia-votes-locked',
+  BEGIN_DOCTOR_ACTION: 'begin-doctor-action',
+  DOCTOR_HEAL: 'doctor-heal',
+  BEGIN_SEER_ACTION: 'begin-seer-action',
+  SEER_INVESTIGATE: 'seer-investigate',
+  SEER_RESULT: 'seer-result',
+  NIGHT_RESOLUTION: 'night-resolution',
+  START_DAY_PHASE: 'start-day-phase',
   NIGHT_ACTION_COMPLETE: 'night-action-complete',
   DISCONNECT: 'disconnect'
 }

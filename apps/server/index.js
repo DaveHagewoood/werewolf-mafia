@@ -27,6 +27,9 @@ function getRoom(roomId) {
       alivePlayers: new Set(), // Set of alive player IDs
       mafiaVotes: new Map(), // mafiaPlayerId -> targetPlayerId
       voteConsensusTimer: null,
+      mafiaVotesLocked: false, // Whether Mafia votes are locked in
+      healedPlayerId: null, // Doctor's heal target
+      seerInvestigatedPlayerId: null, // Seer's investigation target
       createdAt: new Date()
     })
   }
@@ -47,6 +50,22 @@ function getAliveNonMafiaPlayers(room) {
     room.playerRoles.get(player.id)?.name !== ROLES.MAFIA.name &&
     room.alivePlayers.has(player.id)
   )
+}
+
+// Helper function to get Doctor players
+function getDoctorPlayers(room) {
+  return room.players.filter(player => {
+    const role = room.playerRoles.get(player.id)
+    return role?.name === ROLES.DOCTOR.name && room.alivePlayers.has(player.id)
+  })
+}
+
+// Helper function to get Seer players
+function getSeerPlayers(room) {
+  return room.players.filter(player => {
+    const role = room.playerRoles.get(player.id)
+    return role?.name === ROLES.SEER.name && room.alivePlayers.has(player.id)
+  })
 }
 
 // Helper function to broadcast current Mafia votes to all Mafia players
@@ -92,6 +111,73 @@ function checkMafiaVoteConsensus(room) {
   return allSameTarget ? firstVote : null
 }
 
+// Helper function to check if night phase is complete
+function checkNightCompletion(room) {
+  const mafiaPlayers = getMafiaPlayers(room)
+  const doctorPlayers = getDoctorPlayers(room)
+  const seerPlayers = getSeerPlayers(room)
+  
+  // Check if Mafia action is complete (consensus reached and timer expired)
+  const mafiaTarget = checkMafiaVoteConsensus(room)
+  const mafiaActionComplete = mafiaTarget && !room.voteConsensusTimer
+  
+  // Check if Doctor action is complete (no doctor or doctor has acted)
+  const doctorActionComplete = doctorPlayers.length === 0 || room.healedPlayerId !== null
+  
+  // Check if Seer action is complete (no seer or seer has investigated)
+  const seerActionComplete = seerPlayers.length === 0 || room.seerInvestigatedPlayerId !== null
+  
+  console.log(`Night completion check - Mafia: ${mafiaActionComplete}, Doctor: ${doctorActionComplete}, Seer: ${seerActionComplete}`)
+  
+  if (mafiaActionComplete && doctorActionComplete && seerActionComplete) {
+    // All actions complete, resolve the night
+    resolveNightPhase(room)
+  }
+}
+
+// Helper function to resolve night phase
+function resolveNightPhase(room) {
+  const mafiaTarget = checkMafiaVoteConsensus(room)
+  const healedTarget = room.healedPlayerId
+  
+  let killedPlayer = null
+  let savedPlayer = null
+  
+  console.log(`Resolving night in room ${room.id}: Mafia target=${mafiaTarget}, Healed=${healedTarget}`)
+  
+  if (mafiaTarget) {
+    if (mafiaTarget === healedTarget) {
+      // Doctor saved the target!
+      savedPlayer = room.players.find(p => p.id === mafiaTarget)
+      console.log(`Doctor saved ${savedPlayer?.name} from elimination!`)
+    } else {
+      // Target is eliminated
+      room.alivePlayers.delete(mafiaTarget)
+      killedPlayer = room.players.find(p => p.id === mafiaTarget)
+      console.log(`${killedPlayer?.name} was eliminated by the Mafia`)
+    }
+  }
+  
+  // Send night resolution to host
+  const hostSocket = io.sockets.sockets.get(room.host)
+  if (hostSocket) {
+    hostSocket.emit(SOCKET_EVENTS.NIGHT_RESOLUTION, {
+      killedPlayer: killedPlayer ? { id: killedPlayer.id, name: killedPlayer.name } : null,
+      savedPlayer: savedPlayer ? { id: savedPlayer.id, name: savedPlayer.name } : null,
+      roomId: room.id
+    })
+  }
+  
+  // Reset night phase data
+  room.mafiaVotes.clear()
+  room.healedPlayerId = null
+  room.seerInvestigatedPlayerId = null
+  room.voteConsensusTimer = null
+  room.mafiaVotesLocked = false
+  
+  console.log(`Night resolution sent to host for room ${room.id}`)
+}
+
 // Helper function to start consensus timer
 function startConsensusTimer(room) {
   // Clear existing timer
@@ -102,27 +188,25 @@ function startConsensusTimer(room) {
   room.voteConsensusTimer = setTimeout(() => {
     const consensusTarget = checkMafiaVoteConsensus(room)
     if (consensusTarget) {
-      // Lock in the kill and complete night action
       console.log(`Mafia consensus reached in room ${room.id}: targeting ${consensusTarget}`)
       
-      // Remove target from alive players (they are eliminated)
-      room.alivePlayers.delete(consensusTarget)
+      // Lock the votes so they can't be changed
+      room.mafiaVotesLocked = true
       
-      // Find target player name for logging
-      const targetPlayer = room.players.find(p => p.id === consensusTarget)
-      console.log(`Player ${targetPlayer?.name} was eliminated by the Mafia in room ${room.id}`)
-      
-      // Notify all players that night action is complete
-      io.to(room.id).emit(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, {
-        eliminatedPlayer: {
-          id: consensusTarget,
-          name: targetPlayer?.name
+      // Notify all Mafia that votes are now locked
+      const mafiaPlayers = getMafiaPlayers(room)
+      mafiaPlayers.forEach(mafiaPlayer => {
+        const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id)
+        if (mafiaSocket) {
+          mafiaSocket.emit(SOCKET_EVENTS.MAFIA_VOTES_LOCKED)
         }
       })
       
-      // Reset for next phase
-      room.mafiaVotes.clear()
+      // Clear the timer (action is now complete)
       room.voteConsensusTimer = null
+      
+      // Check if night phase is complete
+      checkNightCompletion(room)
     }
   }, GAME_CONFIG.MAFIA_VOTE_CONSENSUS_TIME)
 }
@@ -373,6 +457,47 @@ io.on('connection', (socket) => {
           console.log(`ERROR: No Mafia players found in room ${socket.roomId}!`)
         }
         
+        // Begin Doctor action
+        const doctorPlayers = getDoctorPlayers(room)
+        const allAlivePlayers = room.players.filter(player => room.alivePlayers.has(player.id))
+        
+        console.log(`Found ${doctorPlayers.length} Doctor players`)
+        
+        doctorPlayers.forEach(doctorPlayer => {
+          const doctorSocket = io.sockets.sockets.get(doctorPlayer.id)
+          if (doctorSocket) {
+            doctorSocket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
+              targets: allAlivePlayers.map(player => ({
+                id: player.id,
+                name: player.name
+              }))
+            })
+            console.log(`Sent healing options to Doctor ${doctorPlayer.name}`)
+          } else {
+            console.log(`ERROR: Could not find socket for Doctor player ${doctorPlayer.name} (${doctorPlayer.id})`)
+          }
+        })
+        
+        // Begin Seer action
+        const seerPlayers = getSeerPlayers(room)
+        
+        console.log(`Found ${seerPlayers.length} Seer players`)
+        
+        seerPlayers.forEach(seerPlayer => {
+          const seerSocket = io.sockets.sockets.get(seerPlayer.id)
+          if (seerSocket) {
+            seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
+              targets: allAlivePlayers.map(player => ({
+                id: player.id,
+                name: player.name
+              }))
+            })
+            console.log(`Sent investigation options to Seer ${seerPlayer.name}`)
+          } else {
+            console.log(`ERROR: Could not find socket for Seer player ${seerPlayer.name} (${seerPlayer.id})`)
+          }
+        })
+        
         console.log(`=== NIGHT PHASE DEBUG END ===`)
       } catch (error) {
         console.error(`ERROR in night phase setup for room ${socket.roomId}:`, error)
@@ -403,6 +528,12 @@ io.on('connection', (socket) => {
     const playerRole = room.playerRoles.get(socket.id)
     if (playerRole?.name !== ROLES.MAFIA.name) {
       socket.emit('error', { message: 'Only Mafia can vote during night phase' })
+      return
+    }
+
+    // Check if votes are locked
+    if (room.mafiaVotesLocked) {
+      socket.emit('error', { message: 'Voting is locked - consensus has been reached' })
       return
     }
 
@@ -474,6 +605,110 @@ io.on('connection', (socket) => {
       
       startConsensusTimer(room)
     }
+  })
+
+  // Doctor player heals a target
+  socket.on(SOCKET_EVENTS.DOCTOR_HEAL, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot heal' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    
+    if (room.gameState !== GAME_STATES.NIGHT_PHASE) {
+      socket.emit('error', { message: 'Not in night phase' })
+      return
+    }
+
+    // Verify player is Doctor
+    const playerRole = room.playerRoles.get(socket.id)
+    if (playerRole?.name !== ROLES.DOCTOR.name) {
+      socket.emit('error', { message: 'Only Doctor can heal during night phase' })
+      return
+    }
+
+    const { targetId } = data
+    
+    // Verify target is valid (alive player)
+    if (!room.alivePlayers.has(targetId)) {
+      socket.emit('error', { message: 'Invalid heal target' })
+      return
+    }
+
+    // Store the heal target
+    room.healedPlayerId = targetId
+    const targetPlayer = room.players.find(p => p.id === targetId)
+    console.log(`Doctor ${socket.playerName} chose to heal ${targetPlayer?.name} in room ${socket.roomId}`)
+    
+    // Check if both Mafia and Doctor actions are complete
+    checkNightCompletion(room)
+  })
+
+  // Seer player investigates a target
+  socket.on(SOCKET_EVENTS.SEER_INVESTIGATE, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot investigate' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    
+    if (room.gameState !== GAME_STATES.NIGHT_PHASE) {
+      socket.emit('error', { message: 'Not in night phase' })
+      return
+    }
+
+    // Verify player is Seer
+    const playerRole = room.playerRoles.get(socket.id)
+    if (playerRole?.name !== ROLES.SEER.name) {
+      socket.emit('error', { message: 'Only Seer can investigate during night phase' })
+      return
+    }
+
+    const { targetId } = data
+    
+    // Verify target is valid (alive player)
+    if (!room.alivePlayers.has(targetId)) {
+      socket.emit('error', { message: 'Invalid investigation target' })
+      return
+    }
+
+    // Store the investigation target
+    room.seerInvestigatedPlayerId = targetId
+    const targetPlayer = room.players.find(p => p.id === targetId)
+    const targetRole = room.playerRoles.get(targetId)
+    
+    console.log(`Seer ${socket.playerName} investigated ${targetPlayer?.name} in room ${socket.roomId}`)
+    
+    // Determine investigation result based on alignment
+    let resultMessage
+    if (targetRole?.alignment === 'evil') {
+      resultMessage = `${targetPlayer?.name} appears to be aligned with evil.`
+    } else {
+      resultMessage = `${targetPlayer?.name} appears innocent... for now.`
+    }
+    
+    // Send result back to Seer
+    socket.emit(SOCKET_EVENTS.SEER_RESULT, {
+      targetName: targetPlayer?.name,
+      result: resultMessage
+    })
+    
+    console.log(`Sent investigation result to Seer ${socket.playerName}: ${resultMessage}`)
+    
+    // Check if all night actions are complete
+    checkNightCompletion(room)
   })
 
   // Handle disconnection
