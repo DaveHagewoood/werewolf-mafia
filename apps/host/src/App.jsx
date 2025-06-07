@@ -11,6 +11,7 @@ function GameLobby() {
   const [socket, setSocket] = useState(null)
   const [gameState, setGameState] = useState(GAME_STATES.LOBBY)
   const [playerReadiness, setPlayerReadiness] = useState([])
+  const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
 
   // Player app URL - you'll need to update this with your actual player app URL
   const PLAYER_APP_URL = 'http://localhost:3001'
@@ -40,9 +41,15 @@ function GameLobby() {
 
     // Listen for night phase start
     hostSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, (data) => {
-      setGameState(GAME_STATES.IN_PROGRESS)
+      setGameState(GAME_STATES.NIGHT_PHASE)
+      setEliminatedPlayer(null) // Reset for new night
       console.log('Night phase started!')
-      // TODO: Navigate to night phase screen
+    })
+
+    // Listen for night action completion
+    hostSocket.on(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, (data) => {
+      console.log('Night action completed:', data.eliminatedPlayer)
+      setEliminatedPlayer(data.eliminatedPlayer)
     })
 
     // Listen for errors
@@ -67,6 +74,44 @@ function GameLobby() {
   }
 
   const qrCodeUrl = `${PLAYER_APP_URL}/join/${roomId}`
+
+  // Show night phase screen
+  if (gameState === GAME_STATES.NIGHT_PHASE) {
+    return (
+      <div className="night-container">
+        <div className="night-header">
+          <h1>Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="night-content">
+          <div className="night-icon">🌙</div>
+          <h2>Night Phase</h2>
+          <p>The town sleeps while the Mafia makes their move...</p>
+          
+          {eliminatedPlayer ? (
+            <div className="night-result">
+              <div className="elimination-notice">
+                <h3>Night Action Complete</h3>
+                <p>
+                  <strong>{eliminatedPlayer.name}</strong> was eliminated by the Mafia.
+                </p>
+              </div>
+              
+              <div className="next-phase-info">
+                <p>The night phase is complete. Day phase coming soon...</p>
+              </div>
+            </div>
+          ) : (
+            <div className="night-progress">
+              <div className="night-spinner"></div>
+              <p>Mafia is selecting their target...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   // Show waiting for players to confirm roles screen
   if (gameState === GAME_STATES.ROLE_ASSIGNMENT) {

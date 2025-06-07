@@ -396,4 +396,115 @@ body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* Night Phase Screen */
+.night-container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #1e293b, #334155);
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  color: white;
+}
+
+.night-header {
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: white;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.night-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.night-header h2 {
+  font-size: 1.3rem;
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.night-content {
+  padding: 40px;
+  text-align: center;
+}
+
+.night-icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+  opacity: 0.8;
+}
+
+.night-content h2 {
+  font-size: 2rem;
+  margin-bottom: 15px;
+  color: #e2e8f0;
+}
+
+.night-content > p {
+  font-size: 1.1rem;
+  margin-bottom: 30px;
+  color: #cbd5e1;
+}
+
+.night-progress {
+  margin: 40px 0;
+}
+
+.night-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(226, 232, 240, 0.3);
+  border-top: 4px solid #fbbf24;
+  border-radius: 50%;
+  animation: spin 1.5s linear infinite;
+  margin: 0 auto 20px;
+}
+
+.night-progress p {
+  font-size: 1.1rem;
+  color: #cbd5e1;
+  font-style: italic;
+}
+
+.night-result {
+  margin: 40px 0;
+}
+
+.elimination-notice {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border-radius: 15px;
+  padding: 30px;
+  margin-bottom: 25px;
+  box-shadow: 0 10px 25px rgba(220, 38, 38, 0.3);
+}
+
+.elimination-notice h3 {
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+  color: white;
+}
+
+.elimination-notice p {
+  font-size: 1.2rem;
+  color: #fecaca;
+  margin: 0;
+}
+
+.next-phase-info {
+  background: rgba(226, 232, 240, 0.1);
+  border-radius: 10px;
+  padding: 20px;
+  border: 1px solid rgba(226, 232, 240, 0.2);
+}
+
+.next-phase-info p {
+  font-size: 1rem;
+  color: #cbd5e1;
+  margin: 0;
+  font-style: italic;
 } 

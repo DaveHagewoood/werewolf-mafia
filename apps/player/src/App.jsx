@@ -23,6 +23,12 @@ function JoinRoom() {
   const [gameState, setGameState] = useState(GAME_STATES.LOBBY)
   const [playerRole, setPlayerRole] = useState(null)
   const [isReady, setIsReady] = useState(false)
+  const [voteTargets, setVoteTargets] = useState([])
+  const [selectedTarget, setSelectedTarget] = useState(null)
+  const [hasVoted, setHasVoted] = useState(false)
+  const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
+  const [mafiaVotes, setMafiaVotes] = useState({}) // { playerId: { name, target, targetName } }
+  const [consensusTimer, setConsensusTimer] = useState(null) // { targetId, targetName, timeLeft }
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -49,9 +55,45 @@ function JoinRoom() {
 
     // Listen for night phase start
     newSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, (data) => {
-      setGameState(GAME_STATES.IN_PROGRESS)
+      setGameState(GAME_STATES.NIGHT_PHASE)
+      setHasVoted(false)
+      setSelectedTarget(null)
+      setEliminatedPlayer(null)
       console.log('Night phase started!')
-      // TODO: Navigate to game screen
+    })
+
+    // Listen for Mafia voting (only Mafia will receive this)
+    newSocket.on(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, (data) => {
+      setVoteTargets(data.targets)
+      console.log('Mafia voting started, targets:', data.targets)
+    })
+
+    // Listen for night action completion
+    newSocket.on(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, (data) => {
+      setEliminatedPlayer(data.eliminatedPlayer)
+      console.log('Night action completed:', data.eliminatedPlayer)
+    })
+
+    // Listen for Mafia vote updates (real-time vote sharing)
+    newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_UPDATE, (data) => {
+      setMafiaVotes(data.votes)
+      console.log('Mafia votes updated:', data.votes)
+    })
+
+    // Listen for consensus timer start
+    newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_START, (data) => {
+      setConsensusTimer({
+        targetId: data.targetId,
+        targetName: data.targetName,
+        timeLeft: Math.floor(data.duration / 1000) // Convert to seconds
+      })
+      console.log('Consensus timer started for:', data.targetName)
+    })
+
+    // Listen for consensus timer cancelled
+    newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_CANCELLED, () => {
+      setConsensusTimer(null)
+      console.log('Consensus timer cancelled')
     })
 
     // Listen for errors
@@ -73,6 +115,16 @@ function JoinRoom() {
       }
     }
   }, [])
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (consensusTimer && consensusTimer.timeLeft > 0) {
+      const timer = setTimeout(() => {
+        setConsensusTimer(prev => prev ? { ...prev, timeLeft: prev.timeLeft - 1 } : null)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [consensusTimer])
 
   const handleJoinRoom = (e) => {
     e.preventDefault()
@@ -102,6 +154,153 @@ function JoinRoom() {
       socket.emit(SOCKET_EVENTS.PLAYER_READY, { roomId })
       setIsReady(true)
     }
+  }
+
+  const handleMafiaVote = (targetId) => {
+    if (socket) {
+      // Toggle vote off if clicking same target
+      if (selectedTarget === targetId) {
+        socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId: null })
+        setSelectedTarget(null)
+        setHasVoted(false)
+        console.log('Removed vote')
+      } else {
+        socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId })
+        setSelectedTarget(targetId)
+        setHasVoted(true)
+        console.log('Voted for target:', targetId)
+      }
+    }
+  }
+
+  // Show night phase screen
+  if (gameState === GAME_STATES.NIGHT_PHASE && playerRole) {
+    // Mafia voting interface - check if this player is Mafia
+    if (playerRole.name === 'Mafia') {
+      // If we haven't received vote targets yet, show loading
+      if (voteTargets.length === 0) {
+        return (
+          <div className="mafia-vote-container">
+            <div className="mafia-vote-content">
+              <div className="night-header">
+                <div className="night-icon">🌙</div>
+                <h1>Night Phase</h1>
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+              </div>
+
+              <div className="vote-section">
+                <h2>Preparing...</h2>
+                <div className="night-progress">
+                  <div className="night-spinner"></div>
+                  <p>Gathering intelligence on targets...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+      return (
+        <div className="mafia-vote-container">
+          <div className="mafia-vote-content">
+            <div className="night-header">
+              <div className="night-icon">🌙</div>
+              <h1>Night Phase</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
+
+            <div className="vote-section">
+              <h2>Choose Your Target</h2>
+              <p>Select a player to eliminate tonight:</p>
+              
+              <div className="target-list">
+                {voteTargets.map((target) => (
+                  <button
+                    key={target.id}
+                    className={`target-btn ${selectedTarget === target.id ? 'selected' : ''}`}
+                    onClick={() => handleMafiaVote(target.id)}
+                  >
+                    <span className="target-name">{target.name}</span>
+                    {selectedTarget === target.id && <span className="vote-indicator">✓ Voted</span>}
+                  </button>
+                ))}
+              </div>
+
+              {Object.keys(mafiaVotes).length > 1 && (
+                <div className="other-votes-section">
+                  <h3>Team Votes</h3>
+                  {Object.entries(mafiaVotes).map(([playerId, voteData]) => (
+                    <div key={playerId} className="vote-status">
+                      <span className="voter-name">{voteData.name}:</span>
+                      <span className="vote-target">
+                        {voteData.target ? voteData.targetName : 'No vote'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {consensusTimer && (
+                <div className="consensus-timer">
+                  <h3>🎯 Consensus Reached!</h3>
+                  <p>Targeting: <strong>{consensusTimer.targetName}</strong></p>
+                  <div className="countdown">
+                    <span className="timer">{consensusTimer.timeLeft}</span>
+                    <small>seconds to lock in</small>
+                  </div>
+                </div>
+              )}
+
+              {hasVoted && !consensusTimer && (
+                <div className="vote-confirmation">
+                  <p>Vote cast! Click the same target again to remove your vote.</p>
+                  <div className="consensus-info">
+                    <small>All Mafia must agree for 5 seconds to lock in the target</small>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {eliminatedPlayer && (
+              <div className="elimination-result">
+                <h3>Target Eliminated</h3>
+                <p><strong>{eliminatedPlayer.name}</strong> has been eliminated.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Non-Mafia night phase (waiting screen)
+    return (
+      <div className="night-wait-container">
+        <div className="night-wait-content">
+          <div className="night-header">
+            <div className="night-icon">🌙</div>
+            <h1>Night Phase</h1>
+            <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+          </div>
+
+          <div className="sleep-section">
+            <div className="sleep-icon">😴</div>
+            <h2>Sleep Tight</h2>
+            <p>The town sleeps while dark forces move in the shadows...</p>
+            
+            <div className="night-progress">
+              <div className="night-spinner"></div>
+              <p>Waiting for night actions to complete...</p>
+            </div>
+          </div>
+
+          {eliminatedPlayer && (
+            <div className="elimination-result">
+              <h3>Dawn Breaks</h3>
+              <p>The town wakes to discover that <strong>{eliminatedPlayer.name}</strong> has been eliminated.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
   }
 
   // Show role assignment screen

@@ -8,13 +8,20 @@ export const SOCKET_EVENTS = {
   PLAYER_READY: 'player-ready',
   READINESS_UPDATE: 'readiness-update',
   START_NIGHT_PHASE: 'start-night-phase',
+  BEGIN_MAFIA_VOTE: 'begin-mafia-vote',
+  MAFIA_VOTE: 'mafia-vote',
+  MAFIA_VOTES_UPDATE: 'mafia-votes-update',
+  CONSENSUS_TIMER_START: 'consensus-timer-start',
+  CONSENSUS_TIMER_CANCELLED: 'consensus-timer-cancelled',
+  NIGHT_ACTION_COMPLETE: 'night-action-complete',
   DISCONNECT: 'disconnect'
 }
 
 export const GAME_CONFIG = {
   MIN_PLAYERS: 5,
   MAX_PLAYERS: 15,
-  ROOM_ID_LENGTH: 4
+  ROOM_ID_LENGTH: 4,
+  MAFIA_VOTE_CONSENSUS_TIME: 5000 // 5 seconds in milliseconds
 }
 
 // Role Definitions
@@ -104,6 +111,14 @@ export const GAME_STATES = {
   LOBBY: 'lobby',
   STARTING: 'starting',
   ROLE_ASSIGNMENT: 'role-assignment',
+  NIGHT_PHASE: 'night-phase',
+  DAY_PHASE: 'day-phase',
   IN_PROGRESS: 'in-progress',
   ENDED: 'ended'
+}
+
+// Game Phases
+export const PHASES = {
+  NIGHT: 'night',
+  DAY: 'day'
 } 
