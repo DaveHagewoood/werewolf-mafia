@@ -371,8 +371,10 @@ function startNextNightPhase(room) {
     seerPlayers.forEach(seerPlayer => {
       const seerSocket = io.sockets.sockets.get(seerPlayer.id)
       if (seerSocket) {
+        // Filter out the Seer themselves from investigation targets
+        const investigationTargets = allAlivePlayers.filter(player => player.id !== seerPlayer.id)
         seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
-          targets: allAlivePlayers.map(player => ({ id: player.id, name: player.name }))
+          targets: investigationTargets.map(player => ({ id: player.id, name: player.name }))
         })
       }
     })
@@ -752,8 +754,10 @@ io.on('connection', (socket) => {
         seerPlayers.forEach(seerPlayer => {
           const seerSocket = io.sockets.sockets.get(seerPlayer.id)
           if (seerSocket) {
+            // Filter out the Seer themselves from investigation targets
+            const investigationTargets = allAlivePlayers.filter(player => player.id !== seerPlayer.id)
             seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
-              targets: allAlivePlayers.map(player => ({
+              targets: investigationTargets.map(player => ({
                 id: player.id,
                 name: player.name
               }))
