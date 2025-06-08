@@ -190,6 +190,12 @@ function resolveNightPhase(room) {
   
   console.log(`Night resolution sent to host for room ${room.id}`)
   
+  // Check for win conditions after night resolution
+  const gameEnded = checkWinConditions(room)
+  if (gameEnded) {
+    return // Game has ended, don't continue to day phase
+  }
+  
   // Start day phase after a brief delay
   setTimeout(() => {
     startDayPhase(room)
@@ -303,8 +309,13 @@ function eliminatePlayer(room, playerId) {
   // Reset accusations
   room.accusations.clear()
   
-  // Check for game end conditions (TODO: implement win/loss detection)
-  // For now, just start the next night phase after a delay
+  // Check for win conditions after elimination
+  const gameEnded = checkWinConditions(room)
+  if (gameEnded) {
+    return // Game has ended, don't continue to next night phase
+  }
+  
+  // Start the next night phase after a delay
   setTimeout(() => {
     startNextNightPhase(room)
   }, 5000) // 5 second delay to show elimination results
@@ -372,6 +383,61 @@ function startNextNightPhase(room) {
   } catch (error) {
     console.error(`ERROR in next night phase setup for room ${room.id}:`, error)
   }
+}
+
+// Helper function to check win conditions
+function checkWinConditions(room) {
+  const alivePlayers = room.players.filter(player => room.alivePlayers.has(player.id))
+  const aliveRoles = alivePlayers.map(player => room.playerRoles.get(player.id))
+  
+  const aliveMafia = aliveRoles.filter(role => role.alignment === 'evil').length
+  const aliveGood = aliveRoles.filter(role => role.alignment === 'good').length
+  
+  console.log(`Win condition check: ${aliveMafia} mafia, ${aliveGood} good players alive`)
+  
+  let winner = null
+  let winCondition = null
+  
+  // Mafia wins if they equal or outnumber good players
+  if (aliveMafia >= aliveGood && aliveMafia > 0) {
+    winner = 'mafia'
+    winCondition = 'Mafia has achieved parity or superiority'
+  }
+  // Good wins if all mafia are eliminated
+  else if (aliveMafia === 0) {
+    winner = 'villagers'
+    winCondition = 'All mafia members have been eliminated'
+  }
+  
+  if (winner) {
+    // Game has ended!
+    room.gameState = GAME_STATES.ENDED
+    
+    const gameEndData = {
+      winner,
+      winCondition,
+      alivePlayers: alivePlayers.map(player => ({
+        id: player.id,
+        name: player.name,
+        role: room.playerRoles.get(player.id)
+      })),
+      allPlayers: room.players.map(player => ({
+        id: player.id,
+        name: player.name,
+        role: room.playerRoles.get(player.id),
+        alive: room.alivePlayers.has(player.id)
+      })),
+      roomId: room.id
+    }
+    
+    // Send game end event to all players
+    io.to(room.id).emit(SOCKET_EVENTS.GAME_END, gameEndData)
+    
+    console.log(`Game ended in room ${room.id}: ${winner} wins - ${winCondition}`)
+    return true // Game has ended
+  }
+  
+  return false // Game continues
 }
 
 // Helper function to start consensus timer

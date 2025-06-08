@@ -27,6 +27,7 @@ export const SOCKET_EVENTS = {
   COUNTDOWN_CANCELLED: 'countdown-cancelled',
   PLAYER_ELIMINATED: 'player-eliminated',
   NIGHT_ACTION_COMPLETE: 'night-action-complete',
+  GAME_END: 'game-end',
   DISCONNECT: 'disconnect'
 }
 

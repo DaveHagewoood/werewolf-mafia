@@ -17,6 +17,7 @@ function GameLobby() {
   const [eliminationCountdown, setEliminationCountdown] = useState(null)
   const [dayEliminatedPlayer, setDayEliminatedPlayer] = useState(null)
   const [message, setMessage] = useState(null)
+  const [gameEndData, setGameEndData] = useState(null)
 
   // Player app URL - you'll need to update this with your actual player app URL
   const PLAYER_APP_URL = 'http://localhost:3001'
@@ -112,6 +113,13 @@ function GameLobby() {
       setEliminatedPlayer(data.eliminatedPlayer)
     })
 
+    // Listen for game end
+    hostSocket.on(SOCKET_EVENTS.GAME_END, (data) => {
+      console.log('Game ended:', data)
+      setGameEndData(data)
+      setGameState(GAME_STATES.ENDED)
+    })
+
     // Listen for errors
     hostSocket.on('error', (error) => {
       console.error('Socket error:', error.message)
@@ -157,6 +165,81 @@ function GameLobby() {
   }
 
   const qrCodeUrl = `${PLAYER_APP_URL}/join/${roomId}`
+
+  // Show game end screen
+  if (gameState === GAME_STATES.ENDED && gameEndData) {
+    return (
+      <div className="game-end-container">
+        <div className="game-end-header">
+          <h1>Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="game-end-content">
+          <div className={`victory-announcement ${gameEndData.winner}`}>
+            <div className="victory-icon">
+              {gameEndData.winner === 'mafia' ? '🔥' : '🏆'}
+            </div>
+            <h2>
+              {gameEndData.winner === 'mafia' ? 'Mafia Victory!' : 'Villagers Victory!'}
+            </h2>
+            <p className="win-condition">{gameEndData.winCondition}</p>
+          </div>
+
+          <div className="final-results">
+            <h3>Final Results</h3>
+            <div className="results-grid">
+              <div className="alive-players">
+                <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
+                {gameEndData.alivePlayers.map(player => (
+                  <div key={player.id} className="result-player alive">
+                    <span className="player-name">{player.name}</span>
+                    <span className="player-role" style={{ color: player.role.color }}>
+                      {player.role.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="eliminated-players">
+                <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
+                {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
+                  <div key={player.id} className="result-player eliminated">
+                    <span className="player-name">{player.name}</span>
+                    <span className="player-role" style={{ color: player.role.color }}>
+                      {player.role.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="game-summary">
+            <h3>Game Summary</h3>
+            <div className="summary-stats">
+              <div className="stat">
+                <span className="stat-label">Total Players:</span>
+                <span className="stat-value">{gameEndData.allPlayers.length}</span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">Mafia Players:</span>
+                <span className="stat-value">
+                  {gameEndData.allPlayers.filter(p => p.role.alignment === 'evil').length}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">Good Players:</span>
+                <span className="stat-value">
+                  {gameEndData.allPlayers.filter(p => p.role.alignment === 'good').length}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // Show day phase screen
   if (gameState === GAME_STATES.DAY_PHASE) {

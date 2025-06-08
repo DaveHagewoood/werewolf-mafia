@@ -1479,4 +1479,249 @@ body {
     text-align: left;
     margin-top: 5px;
   }
+}
+
+/* Game End Screen Styles */
+.game-end-container {
+  width: 100%;
+  max-width: 600px;
+}
+
+.game-end-content {
+  background: white;
+  border-radius: 20px;
+  padding: 40px 30px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.victory-announcement {
+  padding: 30px;
+  border-radius: 15px;
+  margin-bottom: 30px;
+}
+
+.victory-announcement.mafia {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(239, 68, 68, 0.1));
+  border: 2px solid #dc2626;
+}
+
+.victory-announcement.villagers {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(59, 130, 246, 0.1));
+  border: 2px solid #22c55e;
+}
+
+.victory-icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+  animation: gameEndBounce 2s infinite;
+}
+
+@keyframes gameEndBounce {
+  0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-20px); }
+  60% { transform: translateY(-10px); }
+}
+
+.victory-announcement h1 {
+  font-size: 2rem;
+  margin-bottom: 15px;
+  font-weight: 700;
+}
+
+.victory-announcement.mafia h1 {
+  color: #dc2626;
+}
+
+.victory-announcement.villagers h1 {
+  color: #22c55e;
+}
+
+.win-condition {
+  font-size: 1rem;
+  color: #6b7280;
+  font-style: italic;
+  margin: 0;
+}
+
+.personal-result {
+  padding: 25px;
+  border-radius: 15px;
+  margin-bottom: 30px;
+  border: 2px solid;
+}
+
+.personal-result.won {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(16, 185, 129, 0.1));
+  border-color: #22c55e;
+}
+
+.personal-result.lost {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.1));
+  border-color: #ef4444;
+}
+
+.personal-result h2 {
+  font-size: 1.8rem;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+.personal-result.won h2 {
+  color: #22c55e;
+}
+
+.personal-result.lost h2 {
+  color: #ef4444;
+}
+
+.player-summary {
+  text-align: left;
+}
+
+.player-summary p {
+  margin-bottom: 10px;
+  font-size: 1rem;
+  color: #374151;
+}
+
+.player-summary p:last-child {
+  margin-bottom: 0;
+}
+
+.alive-status {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.dead-status {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.final-results {
+  margin-bottom: 25px;
+}
+
+.final-results h3 {
+  font-size: 1.4rem;
+  color: #374151;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.results-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 25px;
+  text-align: left;
+}
+
+.survivors-section h4,
+.eliminated-section h4 {
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+  text-align: center;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.survivors-section h4 {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+}
+
+.eliminated-section h4 {
+  background: rgba(156, 163, 175, 0.1);
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
+.players-list {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.result-player {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 0.9rem;
+}
+
+.result-player.alive {
+  background: rgba(34, 197, 94, 0.05);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.result-player.eliminated {
+  background: rgba(156, 163, 175, 0.05);
+  border-color: rgba(156, 163, 175, 0.3);
+}
+
+.result-player .player-name {
+  font-weight: 600;
+  color: #374151;
+}
+
+.result-player .player-role {
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.room-info {
+  text-align: center;
+  padding-top: 20px;
+  border-top: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.room-info p {
+  color: #6b7280;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+.room-info strong {
+  color: #374151;
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .game-end-content {
+    padding: 30px 20px;
+  }
+  
+  .victory-announcement {
+    padding: 20px;
+  }
+  
+  .victory-icon {
+    font-size: 3rem;
+  }
+  
+  .victory-announcement h1 {
+    font-size: 1.6rem;
+  }
+  
+  .personal-result {
+    padding: 20px;
+  }
+  
+  .personal-result h2 {
+    font-size: 1.5rem;
+  }
+  
+  .results-sections {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .players-list {
+    max-height: 120px;
+  }
 } 

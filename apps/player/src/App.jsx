@@ -45,6 +45,7 @@ function JoinRoom() {
   const [message, setMessage] = useState(null) // Added message state
   const [isEliminated, setIsEliminated] = useState(false) // Track if this player is eliminated
   const [eliminationInfo, setEliminationInfo] = useState(null) // Store elimination details
+  const [gameEndData, setGameEndData] = useState(null) // Store game end data
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -237,6 +238,14 @@ function JoinRoom() {
       setMessage(null) // Clear any old messages
     })
 
+    // Listen for game end
+    newSocket.on(SOCKET_EVENTS.GAME_END, (data) => {
+      console.log('Game ended:', data)
+      setGameEndData(data)
+      setGameState(GAME_STATES.ENDED)
+      setMessage(null) // Clear any old messages
+    })
+
     // Listen for game start (legacy - now handled by role assignment)
     newSocket.on(SOCKET_EVENTS.GAME_START, () => {
       console.log('Game is starting!')
@@ -382,6 +391,83 @@ function JoinRoom() {
         setMessage(null) // Clear any old messages
       }
     }
+  }
+
+  // Show game end screen if game has ended
+  if (gameState === GAME_STATES.ENDED && gameEndData) {
+    const thisPlayer = gameEndData.allPlayers.find(p => p.id === playerId)
+    const playerWon = thisPlayer && 
+      ((gameEndData.winner === 'mafia' && thisPlayer.role.alignment === 'evil') ||
+       (gameEndData.winner === 'villagers' && thisPlayer.role.alignment === 'good'))
+
+    return (
+      <div className="game-end-container">
+        <div className="game-end-content">
+          <div className={`victory-announcement ${gameEndData.winner}`}>
+            <div className="victory-icon">
+              {gameEndData.winner === 'mafia' ? '🔥' : '🏆'}
+            </div>
+            <h1>
+              {gameEndData.winner === 'mafia' ? 'Mafia Victory!' : 'Villagers Victory!'}
+            </h1>
+            <p className="win-condition">{gameEndData.winCondition}</p>
+          </div>
+
+          <div className={`personal-result ${playerWon ? 'won' : 'lost'}`}>
+            <h2>{playerWon ? '🎉 You Won!' : '💔 You Lost'}</h2>
+            <div className="player-summary">
+              <p>You played as: <strong style={{ color: thisPlayer?.role.color }}>
+                {thisPlayer?.role.name}
+              </strong></p>
+              <p>Your alignment: <span className={`alignment-${thisPlayer?.role.alignment}`}>
+                {thisPlayer?.role.alignment === 'good' ? '😇 Good' : '😈 Evil'}
+              </span></p>
+              <p>Status: <span className={thisPlayer?.alive ? 'alive-status' : 'dead-status'}>
+                {thisPlayer?.alive ? '👑 Survived' : '💀 Eliminated'}
+              </span></p>
+            </div>
+          </div>
+
+          <div className="final-results">
+            <h3>Final Results</h3>
+            <div className="results-sections">
+              <div className="survivors-section">
+                <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
+                <div className="players-list">
+                  {gameEndData.alivePlayers.map(player => (
+                    <div key={player.id} className="result-player alive">
+                      <span className="player-name">{player.name}</span>
+                      <span className="player-role" style={{ color: player.role.color }}>
+                        {player.role.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="eliminated-section">
+                <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
+                <div className="players-list">
+                  {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
+                    <div key={player.id} className="result-player eliminated">
+                      <span className="player-name">{player.name}</span>
+                      <span className="player-role" style={{ color: player.role.color }}>
+                        {player.role.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="room-info">
+            <p>Room Code: <strong>{roomId}</strong></p>
+            <p>Thanks for playing Werewolf Mafia!</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Show eliminated player screen if this player is dead
