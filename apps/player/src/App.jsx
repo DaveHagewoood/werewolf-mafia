@@ -16,6 +16,7 @@ function HomePage() {
 function JoinRoom() {
   const { roomId } = useParams()
   const [playerName, setPlayerName] = useState('')
+  const [playerId, setPlayerId] = useState(null) // Add missing playerId state
   const [isJoining, setIsJoining] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false)
   const [error, setError] = useState('')
@@ -37,6 +38,10 @@ function JoinRoom() {
   const [selectedInvestigation, setSelectedInvestigation] = useState(null) // Seer's selected target
   const [hasInvestigated, setHasInvestigated] = useState(false) // Whether Seer has investigated
   const [investigationResult, setInvestigationResult] = useState(null) // Seer's investigation result
+  const [dayPhaseTargets, setDayPhaseTargets] = useState([]) // Available targets for day phase voting
+  const [accusationTarget, setAccusationTarget] = useState(null) // Current accusation target
+  const [accusations, setAccusations] = useState({}) // Current accusations { accusedId: { name, accusers, voteCount } }
+  const [eliminationCountdown, setEliminationCountdown] = useState(null) // { targetId, targetName, timeLeft }
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -67,10 +72,12 @@ function JoinRoom() {
     // Listen for join confirmation
     newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
       if (data.success) {
+        setPlayerId(data.playerId) // Set the player ID
         setIsWaiting(true)
         setIsJoining(false)
         setError('')
         setGameState(GAME_STATES.LOBBY)
+        console.log('Joined successfully with ID:', data.playerId)
       }
     })
 
@@ -150,6 +157,46 @@ function JoinRoom() {
       console.log('Investigation result received:', data.result)
     })
 
+    // Listen for day phase start
+    newSocket.on(SOCKET_EVENTS.START_DAY_PHASE, (data) => {
+      setGameState(GAME_STATES.DAY_PHASE)
+      setDayPhaseTargets(data.alivePlayers)
+      setAccusationTarget(null)
+      setAccusations({})
+      setEliminationCountdown(null)
+      console.log('Day phase started, alive players:', data.alivePlayers)
+    })
+
+    // Listen for accusation updates
+    newSocket.on(SOCKET_EVENTS.ACCUSATIONS_UPDATE, (data) => {
+      setAccusations(data.accusations)
+      console.log('Accusations updated:', data.accusations)
+    })
+
+    // Listen for elimination countdown
+    newSocket.on(SOCKET_EVENTS.ELIMINATION_COUNTDOWN, (data) => {
+      setEliminationCountdown({
+        targetId: data.targetId,
+        targetName: data.targetName,
+        timeLeft: Math.floor(data.duration / 1000) // Convert to seconds
+      })
+      console.log('Elimination countdown started for:', data.targetName)
+    })
+
+    // Listen for countdown cancelled
+    newSocket.on(SOCKET_EVENTS.COUNTDOWN_CANCELLED, () => {
+      setEliminationCountdown(null)
+      console.log('Elimination countdown cancelled')
+    })
+
+    // Listen for player elimination
+    newSocket.on(SOCKET_EVENTS.PLAYER_ELIMINATED, (data) => {
+      console.log('Player eliminated:', data.eliminatedPlayer)
+      setEliminationCountdown(null)
+      setAccusations({})
+      // Update eliminated player state or show elimination screen
+    })
+
     // Listen for errors
     newSocket.on('error', (data) => {
       setError(data.message)
@@ -179,6 +226,16 @@ function JoinRoom() {
       return () => clearTimeout(timer)
     }
   }, [consensusTimer])
+
+  // Elimination countdown effect
+  useEffect(() => {
+    if (eliminationCountdown && eliminationCountdown.timeLeft > 0) {
+      const timer = setTimeout(() => {
+        setEliminationCountdown(prev => prev ? { ...prev, timeLeft: prev.timeLeft - 1 } : null)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [eliminationCountdown])
 
   const handleJoinRoom = (e) => {
     e.preventDefault()
@@ -243,6 +300,110 @@ function JoinRoom() {
       setHasInvestigated(true)
       console.log('Investigated target:', targetId)
     }
+  }
+
+  const handleAccusation = (targetId) => {
+    if (socket) {
+      // Toggle accusation off if clicking same target
+      if (accusationTarget === targetId) {
+        socket.emit(SOCKET_EVENTS.PLAYER_ACCUSE, { targetId: null })
+        setAccusationTarget(null)
+        console.log('Cleared accusation')
+      } else {
+        socket.emit(SOCKET_EVENTS.PLAYER_ACCUSE, { targetId })
+        setAccusationTarget(targetId)
+        console.log('Accused target:', targetId)
+      }
+    }
+  }
+
+  // Show day phase screen
+  if (gameState === GAME_STATES.DAY_PHASE && playerRole) {
+    // Filter out self, but show all players if filtering results in empty list (fallback)
+    const votableTargets = dayPhaseTargets.filter(player => player.id !== playerId)
+    const playersToShow = votableTargets.length > 0 ? votableTargets : dayPhaseTargets
+    
+    console.log('Day phase debug:', {
+      playerId,
+      totalTargets: dayPhaseTargets.length,
+      votableTargets: votableTargets.length,
+      playersToShow: playersToShow.length
+    })
+    
+    return (
+      <div className="day-phase-container">
+        <div className="day-phase-content">
+          <div className="day-header">
+            <div className="day-icon">☀️</div>
+            <h1>Day Phase</h1>
+            <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+          </div>
+
+          <div className="voting-section">
+            <h2>Discuss and Vote</h2>
+            <p>Select a player to accuse and vote for elimination:</p>
+            
+                        <div className="player-list">
+              {playersToShow.length > 0 ? (
+                playersToShow.map((player) => (
+                  <button
+                    key={player.id}
+                    className={`player-btn ${accusationTarget === player.id ? 'selected' : ''}`}
+                    onClick={() => handleAccusation(player.id)}
+                  >
+                    <span className="player-name">{player.name}</span>
+                    <div className="vote-info">
+                      {accusationTarget === player.id && <span className="vote-indicator">✓ Accused</span>}
+                      {accusations[player.id] && (
+                        <span className="vote-count">({accusations[player.id].voteCount} votes)</span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="no-players">
+                  <p>No players available to vote for</p>
+                  <small>Debug: Total targets: {dayPhaseTargets.length}, Player ID: {playerId}</small>
+                </div>
+              )}
+            </div>
+
+            {accusationTarget && (
+              <div className="accusation-confirmation">
+                <p>You are accusing <strong>{playersToShow.find(p => p.id === accusationTarget)?.name}</strong></p>
+                <div className="accusation-info">
+                  <small>Click the same player again to clear your accusation</small>
+                </div>
+              </div>
+            )}
+
+            {eliminationCountdown && (
+              <div className="elimination-timer">
+                <h3>⚖️ Majority Reached!</h3>
+                <p>Eliminating: <strong>{eliminationCountdown.targetName}</strong></p>
+                <div className="countdown">
+                  <span className="timer">{eliminationCountdown.timeLeft}</span>
+                  <small>seconds to cancel</small>
+                </div>
+              </div>
+            )}
+
+            {Object.keys(accusations).length > 0 && !eliminationCountdown && (
+              <div className="vote-summary">
+                <h3>Current Accusations</h3>
+                {Object.entries(accusations).map(([accusedId, accusationData]) => (
+                  <div key={accusedId} className="accusation-item">
+                    <span className="accused-name">{accusationData.name}:</span>
+                    <span className="accusers">{accusationData.accusers.join(', ')}</span>
+                    <span className="vote-count">({accusationData.voteCount} votes)</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Show night phase screen

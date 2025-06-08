@@ -30,6 +30,8 @@ function getRoom(roomId) {
       mafiaVotesLocked: false, // Whether Mafia votes are locked in
       healedPlayerId: null, // Doctor's heal target
       seerInvestigatedPlayerId: null, // Seer's investigation target
+      accusations: new Map(), // accusedPlayerId -> Set of voterPlayerIds
+      eliminationCountdown: null, // Timer for elimination countdown
       createdAt: new Date()
     })
   }
@@ -176,6 +178,189 @@ function resolveNightPhase(room) {
   room.mafiaVotesLocked = false
   
   console.log(`Night resolution sent to host for room ${room.id}`)
+  
+  // Start day phase after a brief delay
+  setTimeout(() => {
+    startDayPhase(room)
+  }, 3000) // 3 second delay to show night results
+}
+
+// Helper function to start day phase
+function startDayPhase(room) {
+  console.log(`Starting day phase in room ${room.id}`)
+  
+  // Change game state to day phase
+  room.gameState = GAME_STATES.DAY_PHASE
+  room.currentPhase = PHASES.DAY
+  
+  // Reset accusations for new day
+  room.accusations.clear()
+  
+  // Notify all clients that day phase is starting
+  io.to(room.id).emit(SOCKET_EVENTS.START_DAY_PHASE, { 
+    roomId: room.id,
+    alivePlayers: room.players.filter(player => room.alivePlayers.has(player.id))
+  })
+  
+  console.log(`Day phase started in room ${room.id}`)
+}
+
+// Helper function to broadcast accusation updates
+function broadcastAccusations(room) {
+  const accusationData = {}
+  
+  // Build accusation data: { accusedId: { name: "PlayerName", accusers: ["AccuserName1", "AccuserName2"] } }
+  room.accusations.forEach((accusers, accusedId) => {
+    const accusedPlayer = room.players.find(p => p.id === accusedId)
+    const accuserNames = Array.from(accusers).map(accuserId => {
+      const accuserPlayer = room.players.find(p => p.id === accuserId)
+      return accuserPlayer?.name || 'Unknown'
+    })
+    
+    accusationData[accusedId] = {
+      name: accusedPlayer?.name || 'Unknown',
+      accusers: accuserNames,
+      voteCount: accusers.size
+    }
+  })
+  
+  // Send to all clients in the room
+  io.to(room.id).emit(SOCKET_EVENTS.ACCUSATIONS_UPDATE, { accusations: accusationData })
+}
+
+// Helper function to check for majority vote
+function checkMajorityVote(room) {
+  const aliveCount = room.alivePlayers.size
+  const majorityThreshold = Math.floor(aliveCount / 2) + 1
+  
+  // Find player with majority votes
+  for (const [accusedId, accusers] of room.accusations) {
+    if (accusers.size >= majorityThreshold) {
+      return accusedId
+    }
+  }
+  
+  return null
+}
+
+// Helper function to start elimination countdown
+function startEliminationCountdown(room, targetId) {
+  const targetPlayer = room.players.find(p => p.id === targetId)
+  console.log(`Starting elimination countdown for ${targetPlayer?.name} in room ${room.id}`)
+  
+  // Notify all clients about the countdown
+  io.to(room.id).emit(SOCKET_EVENTS.ELIMINATION_COUNTDOWN, {
+    targetId,
+    targetName: targetPlayer?.name,
+    duration: GAME_CONFIG.ELIMINATION_COUNTDOWN_TIME
+  })
+  
+  // Start countdown timer
+  room.eliminationCountdown = setTimeout(() => {
+    eliminatePlayer(room, targetId)
+  }, GAME_CONFIG.ELIMINATION_COUNTDOWN_TIME)
+}
+
+// Helper function to eliminate a player
+function eliminatePlayer(room, playerId) {
+  const eliminatedPlayer = room.players.find(p => p.id === playerId)
+  const eliminatedRole = room.playerRoles.get(playerId)
+  
+  if (!eliminatedPlayer) {
+    console.error(`Could not find player to eliminate: ${playerId}`)
+    return
+  }
+  
+  // Remove from alive players
+  room.alivePlayers.delete(playerId)
+  
+  console.log(`${eliminatedPlayer.name} (${eliminatedRole?.name}) was eliminated in room ${room.id}`)
+  
+  // Notify all clients about the elimination
+  io.to(room.id).emit(SOCKET_EVENTS.PLAYER_ELIMINATED, {
+    eliminatedPlayer: {
+      id: playerId,
+      name: eliminatedPlayer.name,
+      role: eliminatedRole
+    },
+    roomId: room.id
+  })
+  
+  // Clear elimination countdown
+  room.eliminationCountdown = null
+  
+  // Reset accusations
+  room.accusations.clear()
+  
+  // Check for game end conditions (TODO: implement win/loss detection)
+  // For now, just start the next night phase after a delay
+  setTimeout(() => {
+    startNextNightPhase(room)
+  }, 5000) // 5 second delay to show elimination results
+}
+
+// Helper function to start next night phase
+function startNextNightPhase(room) {
+  console.log(`Starting next night phase in room ${room.id}`)
+  
+  // Change game state back to night phase
+  room.gameState = GAME_STATES.NIGHT_PHASE
+  room.currentPhase = PHASES.NIGHT
+  
+  // Reset night phase data
+  room.mafiaVotes.clear()
+  room.healedPlayerId = null
+  room.seerInvestigatedPlayerId = null
+  room.mafiaVotesLocked = false
+  
+  // Notify all players that night phase is starting
+  io.to(room.id).emit(SOCKET_EVENTS.START_NIGHT_PHASE, { roomId: room.id })
+  console.log(`Next night phase started in room ${room.id}`)
+  
+  // Begin night actions for remaining alive players
+  try {
+    const mafiaPlayers = getMafiaPlayers(room)
+    const doctorPlayers = getDoctorPlayers(room)
+    const seerPlayers = getSeerPlayers(room)
+    const allAlivePlayers = room.players.filter(player => room.alivePlayers.has(player.id))
+    const aliveNonMafiaPlayers = getAliveNonMafiaPlayers(room)
+    
+    console.log(`Next night - Alive: ${allAlivePlayers.length}, Mafia: ${mafiaPlayers.length}, Doctor: ${doctorPlayers.length}, Seer: ${seerPlayers.length}`)
+    
+    // Send actions to each role type
+    mafiaPlayers.forEach(mafiaPlayer => {
+      const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id)
+      if (mafiaSocket) {
+        mafiaSocket.emit(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, {
+          targets: aliveNonMafiaPlayers.map(player => ({ id: player.id, name: player.name }))
+        })
+      }
+    })
+    
+    doctorPlayers.forEach(doctorPlayer => {
+      const doctorSocket = io.sockets.sockets.get(doctorPlayer.id)
+      if (doctorSocket) {
+        doctorSocket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
+          targets: allAlivePlayers.map(player => ({ id: player.id, name: player.name }))
+        })
+      }
+    })
+    
+    seerPlayers.forEach(seerPlayer => {
+      const seerSocket = io.sockets.sockets.get(seerPlayer.id)
+      if (seerSocket) {
+        seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
+          targets: allAlivePlayers.map(player => ({ id: player.id, name: player.name }))
+        })
+      }
+    })
+    
+    // Broadcast initial empty vote state to all Mafia
+    broadcastMafiaVotes(room)
+    
+  } catch (error) {
+    console.error(`ERROR in next night phase setup for room ${room.id}:`, error)
+  }
 }
 
 // Helper function to start consensus timer
@@ -311,7 +496,11 @@ io.on('connection', (socket) => {
     console.log(`Player ${playerName} joined room ${roomId}`)
 
     // Confirm join to the player
-    socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { success: true })
+    socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
+      success: true, 
+      playerId: socket.id,
+      playerName: playerName.trim()
+    })
 
     // Broadcast updated player list to room
     broadcastPlayersUpdate(roomId)
@@ -709,6 +898,84 @@ io.on('connection', (socket) => {
     
     // Check if all night actions are complete
     checkNightCompletion(room)
+  })
+
+  // Player makes an accusation during day phase
+  socket.on(SOCKET_EVENTS.PLAYER_ACCUSE, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot vote' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    
+    if (room.gameState !== GAME_STATES.DAY_PHASE) {
+      socket.emit('error', { message: 'Not in day phase' })
+      return
+    }
+
+    // Verify player is alive
+    if (!room.alivePlayers.has(socket.id)) {
+      socket.emit('error', { message: 'Dead players cannot vote' })
+      return
+    }
+
+    const { targetId } = data
+    
+    // Clear any existing accusation by this player
+    room.accusations.forEach((accusers, accusedId) => {
+      accusers.delete(socket.id)
+      if (accusers.size === 0) {
+        room.accusations.delete(accusedId)
+      }
+    })
+    
+    // If targetId is provided and valid, add the new accusation
+    if (targetId) {
+      // Verify target is valid (alive player, not self)
+      if (!room.alivePlayers.has(targetId)) {
+        socket.emit('error', { message: 'Invalid accusation target' })
+        return
+      }
+      
+      if (targetId === socket.id) {
+        socket.emit('error', { message: 'Cannot accuse yourself' })
+        return
+      }
+      
+      // Add the accusation
+      if (!room.accusations.has(targetId)) {
+        room.accusations.set(targetId, new Set())
+      }
+      room.accusations.get(targetId).add(socket.id)
+      
+      const targetPlayer = room.players.find(p => p.id === targetId)
+      console.log(`${socket.playerName} accused ${targetPlayer?.name} in room ${socket.roomId}`)
+    } else {
+      console.log(`${socket.playerName} cleared their accusation in room ${socket.roomId}`)
+    }
+    
+    // Broadcast updated accusations
+    broadcastAccusations(room)
+    
+    // Clear any existing elimination countdown
+    if (room.eliminationCountdown) {
+      clearTimeout(room.eliminationCountdown)
+      room.eliminationCountdown = null
+      io.to(room.id).emit(SOCKET_EVENTS.COUNTDOWN_CANCELLED)
+      console.log(`Elimination countdown cancelled in room ${room.id}`)
+    }
+    
+    // Check for majority vote
+    const majorityTarget = checkMajorityVote(room)
+    if (majorityTarget) {
+      startEliminationCountdown(room, majorityTarget)
+    }
   })
 
   // Handle disconnection

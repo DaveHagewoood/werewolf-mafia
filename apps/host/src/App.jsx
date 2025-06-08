@@ -13,6 +13,9 @@ function GameLobby() {
   const [playerReadiness, setPlayerReadiness] = useState([])
   const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
   const [savedPlayer, setSavedPlayer] = useState(null)
+  const [accusations, setAccusations] = useState({})
+  const [eliminationCountdown, setEliminationCountdown] = useState(null)
+  const [dayEliminatedPlayer, setDayEliminatedPlayer] = useState(null)
 
   // Player app URL - you'll need to update this with your actual player app URL
   const PLAYER_APP_URL = 'http://localhost:3001'
@@ -60,6 +63,45 @@ function GameLobby() {
       }, 3000)
     })
 
+    // Listen for day phase start
+    hostSocket.on(SOCKET_EVENTS.START_DAY_PHASE, (data) => {
+      setGameState(GAME_STATES.DAY_PHASE)
+      setAccusations({})
+      setEliminationCountdown(null)
+      setDayEliminatedPlayer(null)
+      console.log('Day phase started!')
+    })
+
+    // Listen for accusation updates
+    hostSocket.on(SOCKET_EVENTS.ACCUSATIONS_UPDATE, (data) => {
+      setAccusations(data.accusations)
+      console.log('Accusations updated:', data.accusations)
+    })
+
+    // Listen for elimination countdown
+    hostSocket.on(SOCKET_EVENTS.ELIMINATION_COUNTDOWN, (data) => {
+      setEliminationCountdown({
+        targetId: data.targetId,
+        targetName: data.targetName,
+        timeLeft: Math.floor(data.duration / 1000)
+      })
+      console.log('Elimination countdown started for:', data.targetName)
+    })
+
+    // Listen for countdown cancelled
+    hostSocket.on(SOCKET_EVENTS.COUNTDOWN_CANCELLED, () => {
+      setEliminationCountdown(null)
+      console.log('Elimination countdown cancelled')
+    })
+
+    // Listen for player elimination
+    hostSocket.on(SOCKET_EVENTS.PLAYER_ELIMINATED, (data) => {
+      console.log('Player eliminated during day:', data.eliminatedPlayer)
+      setDayEliminatedPlayer(data.eliminatedPlayer)
+      setEliminationCountdown(null)
+      setAccusations({})
+    })
+
     // Listen for night action completion (legacy event)
     hostSocket.on(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, (data) => {
       console.log('Night action completed (legacy):', data.eliminatedPlayer)
@@ -78,6 +120,16 @@ function GameLobby() {
       }
     }
   }, [])
+
+  // Elimination countdown effect
+  useEffect(() => {
+    if (eliminationCountdown && eliminationCountdown.timeLeft > 0) {
+      const timer = setTimeout(() => {
+        setEliminationCountdown(prev => prev ? { ...prev, timeLeft: prev.timeLeft - 1 } : null)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [eliminationCountdown])
 
   const handleStartGame = () => {
     if (canStartGame && socket) {
@@ -101,6 +153,74 @@ function GameLobby() {
   }
 
   const qrCodeUrl = `${PLAYER_APP_URL}/join/${roomId}`
+
+  // Show day phase screen
+  if (gameState === GAME_STATES.DAY_PHASE) {
+    return (
+      <div className="day-container">
+        <div className="day-header">
+          <h1>Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="day-content">
+          <div className="day-icon">☀️</div>
+          <h2>Day Phase</h2>
+          <p>Day has begun. Discuss and vote to eliminate a suspected killer.</p>
+          
+          {dayEliminatedPlayer ? (
+            <div className="day-result">
+              <div className="elimination-notice">
+                <h3>Player Eliminated</h3>
+                <p>
+                  <strong>{dayEliminatedPlayer.name}</strong> was eliminated by majority vote.
+                </p>
+                <p className="mystery-text">Their role remains a mystery...</p>
+              </div>
+              
+              <div className="next-phase-info">
+                <p>The day phase is complete. Night phase starting soon...</p>
+              </div>
+            </div>
+          ) : (
+            <div className="day-progress">
+              {eliminationCountdown ? (
+                <div className="countdown-display">
+                  <h3>⚖️ Majority Reached!</h3>
+                  <p>Eliminating: <strong>{eliminationCountdown.targetName}</strong></p>
+                  <div className="countdown-timer">
+                    <span className="timer">{eliminationCountdown.timeLeft}</span>
+                    <small>seconds remaining</small>
+                  </div>
+                </div>
+              ) : (
+                <div className="voting-progress">
+                  <p>Players are discussing and voting...</p>
+                  
+                  {Object.keys(accusations).length > 0 ? (
+                    <div className="accusations-display">
+                      <h3>Current Accusations</h3>
+                      {Object.entries(accusations).map(([accusedId, accusationData]) => (
+                        <div key={accusedId} className="accusation-summary">
+                          <span className="accused">{accusationData.name}</span>
+                          <span className="accusers">accused by: {accusationData.accusers.join(', ')}</span>
+                          <span className="vote-count">({accusationData.voteCount} votes)</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="no-accusations">
+                      <p>No accusations yet. Players are still discussing...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   // Show night phase screen
   if (gameState === GAME_STATES.NIGHT_PHASE) {

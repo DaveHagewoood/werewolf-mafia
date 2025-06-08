@@ -945,6 +945,234 @@ body {
   font-style: italic;
 }
 
+/* Day Phase Interface */
+.day-phase-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #1f2937;
+  padding: 20px;
+}
+
+.day-phase-content {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.day-header {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  text-align: center;
+  padding: 30px 20px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+  color: white;
+}
+
+.day-header .day-icon {
+  font-size: 3rem;
+  margin-bottom: 15px;
+  opacity: 0.9;
+}
+
+.day-header h1 {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.voting-section {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 15px;
+  padding: 30px;
+  margin: 20px 0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.voting-section h2 {
+  color: #d97706;
+  font-size: 1.8rem;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.voting-section > p {
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 25px;
+  font-size: 1.1rem;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.player-btn {
+  background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 15px 20px;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.player-btn:hover {
+  background: linear-gradient(135deg, #e5e7eb, #d1d5db);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.player-btn.selected {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  border-color: #d97706;
+  color: white;
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+}
+
+.player-name {
+  font-weight: 600;
+}
+
+.vote-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vote-indicator {
+  color: #059669;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.vote-count {
+  color: #6b7280;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+.accusation-confirmation {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+  text-align: center;
+}
+
+.accusation-confirmation p {
+  color: #d97706;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.accusation-info small {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.vote-summary {
+  background: rgba(107, 114, 128, 0.1);
+  border: 1px solid rgba(107, 114, 128, 0.2);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.vote-summary h3 {
+  color: #374151;
+  font-size: 1.2rem;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.accusation-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.accusation-item:last-child {
+  border-bottom: none;
+}
+
+.accused-name {
+  font-weight: 600;
+  color: #374151;
+}
+
+.accusers {
+  color: #6b7280;
+  font-style: italic;
+  flex: 1;
+  margin: 0 10px;
+}
+
+.elimination-timer {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.2), rgba(239, 68, 68, 0.2));
+  border: 2px solid #dc2626;
+  border-radius: 15px;
+  padding: 25px;
+  margin: 20px 0;
+  text-align: center;
+  animation: pulse-elimination 2s infinite;
+}
+
+@keyframes pulse-elimination {
+  0%, 100% { 
+    border-color: #dc2626;
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+  }
+  50% { 
+    border-color: #ef4444;
+    box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
+  }
+}
+
+.elimination-timer h3 {
+  color: #dc2626;
+  font-size: 1.4rem;
+  margin-bottom: 10px;
+}
+
+.elimination-timer p {
+  color: #991b1b;
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+}
+
+.elimination-timer .countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.elimination-timer .timer {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #dc2626;
+  text-shadow: 0 0 10px rgba(220, 38, 38, 0.5);
+  animation: countdown-pulse 1s infinite;
+}
+
+.elimination-timer .countdown small {
+  color: #991b1b;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 /* Elimination Results */
 .elimination-result {
   background: rgba(220, 38, 38, 0.1);

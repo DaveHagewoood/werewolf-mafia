@@ -21,6 +21,11 @@ export const SOCKET_EVENTS = {
   SEER_RESULT: 'seer-result',
   NIGHT_RESOLUTION: 'night-resolution',
   START_DAY_PHASE: 'start-day-phase',
+  PLAYER_ACCUSE: 'player-accuse',
+  ACCUSATIONS_UPDATE: 'accusations-update',
+  ELIMINATION_COUNTDOWN: 'elimination-countdown',
+  COUNTDOWN_CANCELLED: 'countdown-cancelled',
+  PLAYER_ELIMINATED: 'player-eliminated',
   NIGHT_ACTION_COMPLETE: 'night-action-complete',
   DISCONNECT: 'disconnect'
 }
@@ -29,7 +34,8 @@ export const GAME_CONFIG = {
   MIN_PLAYERS: 5,
   MAX_PLAYERS: 15,
   ROOM_ID_LENGTH: 4,
-  MAFIA_VOTE_CONSENSUS_TIME: 5000 // 5 seconds in milliseconds
+  MAFIA_VOTE_CONSENSUS_TIME: 5000, // 5 seconds in milliseconds
+  ELIMINATION_COUNTDOWN_TIME: 10000 // 10 seconds in milliseconds
 }
 
 // Role Definitions
