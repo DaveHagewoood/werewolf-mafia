@@ -42,6 +42,9 @@ function JoinRoom() {
   const [accusationTarget, setAccusationTarget] = useState(null) // Current accusation target
   const [accusations, setAccusations] = useState({}) // Current accusations { accusedId: { name, accusers, voteCount } }
   const [eliminationCountdown, setEliminationCountdown] = useState(null) // { targetId, targetName, timeLeft }
+  const [message, setMessage] = useState(null) // Added message state
+  const [isEliminated, setIsEliminated] = useState(false) // Track if this player is eliminated
+  const [eliminationInfo, setEliminationInfo] = useState(null) // Store elimination details
 
   useEffect(() => {
     // Connect to Socket.IO server
@@ -78,6 +81,7 @@ function JoinRoom() {
         setError('')
         setGameState(GAME_STATES.LOBBY)
         console.log('Joined successfully with ID:', data.playerId)
+        setMessage(null) // Clear any old messages
       }
     })
 
@@ -87,6 +91,7 @@ function JoinRoom() {
       setGameState(GAME_STATES.ROLE_ASSIGNMENT)
       setIsReady(false)
       console.log('Role assigned:', data.role.name)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for night phase start
@@ -96,25 +101,42 @@ function JoinRoom() {
       setSelectedTarget(null)
       setEliminatedPlayer(null)
       setMafiaVotesLocked(false) // Reset vote lock for new night
+      // Reset Doctor actions
+      setHasHealed(false)
+      setSelectedHeal(null)
+      setHealTargets([])
+      // Reset Seer actions
+      setHasInvestigated(false)
+      setSelectedInvestigation(null)
+      setInvestigateTargets([])
+      setInvestigationResult(null)
+      // Reset Mafia voting
+      setVoteTargets([])
+      setMafiaVotes({})
+      setConsensusTimer(null)
       console.log('Night phase started!')
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for Mafia voting (only Mafia will receive this)
     newSocket.on(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, (data) => {
       setVoteTargets(data.targets)
       console.log('Mafia voting started, targets:', data.targets)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for night action completion
     newSocket.on(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, (data) => {
       setEliminatedPlayer(data.eliminatedPlayer)
       console.log('Night action completed:', data.eliminatedPlayer)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for Mafia vote updates (real-time vote sharing)
     newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_UPDATE, (data) => {
       setMafiaVotes(data.votes)
       console.log('Mafia votes updated:', data.votes)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for consensus timer start
@@ -125,36 +147,42 @@ function JoinRoom() {
         timeLeft: Math.floor(data.duration / 1000) // Convert to seconds
       })
       console.log('Consensus timer started for:', data.targetName)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for consensus timer cancelled
     newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_CANCELLED, () => {
       setConsensusTimer(null)
       console.log('Consensus timer cancelled')
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for Mafia votes locked
     newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_LOCKED, () => {
       setMafiaVotesLocked(true)
       console.log('Mafia votes are now locked')
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for Doctor action start (only Doctor will receive this)
     newSocket.on(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, (data) => {
       setHealTargets(data.targets)
       console.log('Doctor action started, heal targets:', data.targets)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for Seer action start (only Seer will receive this)
     newSocket.on(SOCKET_EVENTS.BEGIN_SEER_ACTION, (data) => {
       setInvestigateTargets(data.targets)
       console.log('Seer action started, investigation targets:', data.targets)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for Seer investigation result
     newSocket.on(SOCKET_EVENTS.SEER_RESULT, (data) => {
       setInvestigationResult(data.result)
       console.log('Investigation result received:', data.result)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for day phase start
@@ -165,12 +193,14 @@ function JoinRoom() {
       setAccusations({})
       setEliminationCountdown(null)
       console.log('Day phase started, alive players:', data.alivePlayers)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for accusation updates
     newSocket.on(SOCKET_EVENTS.ACCUSATIONS_UPDATE, (data) => {
       setAccusations(data.accusations)
       console.log('Accusations updated:', data.accusations)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for elimination countdown
@@ -181,32 +211,37 @@ function JoinRoom() {
         timeLeft: Math.floor(data.duration / 1000) // Convert to seconds
       })
       console.log('Elimination countdown started for:', data.targetName)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for countdown cancelled
     newSocket.on(SOCKET_EVENTS.COUNTDOWN_CANCELLED, () => {
       setEliminationCountdown(null)
       console.log('Elimination countdown cancelled')
+      setMessage(null) // Clear any old messages
     })
 
-    // Listen for player elimination
+    // Listen for player elimination (general cleanup only)
     newSocket.on(SOCKET_EVENTS.PLAYER_ELIMINATED, (data) => {
       console.log('Player eliminated:', data.eliminatedPlayer)
       setEliminationCountdown(null)
       setAccusations({})
-      // Update eliminated player state or show elimination screen
+      setMessage(null) // Clear any old messages
+      // Note: Individual player elimination check is handled in separate useEffect
     })
 
     // Listen for errors
     newSocket.on('error', (data) => {
       setError(data.message)
       setIsJoining(false)
+      setMessage(null) // Clear any old messages
     })
 
     // Listen for game start (legacy - now handled by role assignment)
     newSocket.on(SOCKET_EVENTS.GAME_START, () => {
       console.log('Game is starting!')
       // This event is now replaced by ROLE_ASSIGNED
+      setMessage(null) // Clear any old messages
     })
 
     // Cleanup on unmount
@@ -216,6 +251,32 @@ function JoinRoom() {
       }
     }
   }, [])
+
+  // Separate effect to handle elimination events when playerId is available
+  useEffect(() => {
+    if (!socket || !playerId) return
+
+    const handlePlayerElimination = (data) => {
+      console.log('ELIMINATION EVENT:', {
+        eliminatedId: data.eliminatedPlayer.id,
+        eliminatedName: data.eliminatedPlayer.name,
+        currentPlayerId: playerId,
+        isMatch: data.eliminatedPlayer.id === playerId
+      })
+      
+      if (data.eliminatedPlayer.id === playerId) {
+        setIsEliminated(true)
+        setEliminationInfo(data.eliminatedPlayer)
+        console.log('You have been eliminated!')
+      }
+    }
+
+    socket.on(SOCKET_EVENTS.PLAYER_ELIMINATED, handlePlayerElimination)
+
+    return () => {
+      socket.off(SOCKET_EVENTS.PLAYER_ELIMINATED, handlePlayerElimination)
+    }
+  }, [socket, playerId])
 
   // Countdown timer effect
   useEffect(() => {
@@ -268,53 +329,116 @@ function JoinRoom() {
   }
 
   const handleMafiaVote = (targetId) => {
-    if (socket && !mafiaVotesLocked) {
+    if (socket && !mafiaVotesLocked && !isEliminated) { // Prevent dead players from voting
       // Toggle vote off if clicking same target
       if (selectedTarget === targetId) {
         socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId: null })
         setSelectedTarget(null)
         setHasVoted(false)
         console.log('Removed vote')
+        setMessage(null) // Clear any old messages
       } else {
         socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId })
         setSelectedTarget(targetId)
         setHasVoted(true)
         console.log('Voted for target:', targetId)
+        setMessage(null) // Clear any old messages
       }
     }
   }
 
   const handleDoctorHeal = (targetId) => {
-    if (socket && !hasHealed) {
+    if (socket && !hasHealed && !isEliminated) { // Prevent dead players from healing
       socket.emit(SOCKET_EVENTS.DOCTOR_HEAL, { targetId })
       setSelectedHeal(targetId)
       setHasHealed(true)
       console.log('Healed target:', targetId)
+      setMessage(null) // Clear any old messages
     }
   }
 
   const handleSeerInvestigate = (targetId) => {
-    if (socket && !hasInvestigated) {
+    if (socket && !hasInvestigated && !isEliminated) { // Prevent dead players from investigating
       socket.emit(SOCKET_EVENTS.SEER_INVESTIGATE, { targetId })
       setSelectedInvestigation(targetId)
       setHasInvestigated(true)
       console.log('Investigated target:', targetId)
+      setMessage(null) // Clear any old messages
     }
   }
 
   const handleAccusation = (targetId) => {
-    if (socket) {
+    if (socket && !isEliminated) { // Prevent dead players from voting
       // Toggle accusation off if clicking same target
       if (accusationTarget === targetId) {
         socket.emit(SOCKET_EVENTS.PLAYER_ACCUSE, { targetId: null })
         setAccusationTarget(null)
         console.log('Cleared accusation')
+        setMessage(null) // Clear any old messages
       } else {
         socket.emit(SOCKET_EVENTS.PLAYER_ACCUSE, { targetId })
         setAccusationTarget(targetId)
         console.log('Accused target:', targetId)
+        setMessage(null) // Clear any old messages
       }
     }
+  }
+
+  // Show eliminated player screen if this player is dead
+  if (isEliminated && eliminationInfo) {
+    return (
+      <div className="eliminated-container">
+        <div className="eliminated-content">
+          <div className="eliminated-header">
+            <div className="death-icon">💀</div>
+            <h1>You Have Been Eliminated</h1>
+            <p className="elimination-subtitle">Your time in this world has ended...</p>
+          </div>
+
+          <div className="elimination-details">
+            <div className="player-info">
+              <h2>Final Information</h2>
+              <div className="info-card">
+                <div className="info-row">
+                  <span className="label">Player Name:</span>
+                  <span className="value">{eliminationInfo.name}</span>
+                </div>
+                <div className="info-row">
+                  <span className="label">Your Role:</span>
+                  <span className="value" style={{ color: eliminationInfo.role?.color }}>
+                    {eliminationInfo.role?.name || 'Unknown'}
+                  </span>
+                </div>
+                <div className="info-row">
+                  <span className="label">Alignment:</span>
+                  <span className={`value alignment-${eliminationInfo.role?.alignment}`}>
+                    {eliminationInfo.role?.alignment === 'good' ? '😇 Good' : '😈 Evil'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="spectator-info">
+              <h3>👻 You are now a spectator</h3>
+              <p>You can continue to watch the game unfold, but you cannot:</p>
+              <ul>
+                <li>• Vote during day phases</li>
+                <li>• Use special abilities during night phases</li>
+                <li>• Participate in discussions that affect the game</li>
+              </ul>
+              <p className="encouragement">
+                Stay and watch to see if your team wins!
+              </p>
+            </div>
+
+            <div className="room-info">
+              <p>Room Code: <strong>{roomId}</strong></p>
+              <p>Game continues with the remaining players...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Show day phase screen

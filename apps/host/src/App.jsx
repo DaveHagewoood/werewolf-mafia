@@ -16,6 +16,7 @@ function GameLobby() {
   const [accusations, setAccusations] = useState({})
   const [eliminationCountdown, setEliminationCountdown] = useState(null)
   const [dayEliminatedPlayer, setDayEliminatedPlayer] = useState(null)
+  const [message, setMessage] = useState(null)
 
   // Player app URL - you'll need to update this with your actual player app URL
   const PLAYER_APP_URL = 'http://localhost:3001'
@@ -47,6 +48,8 @@ function GameLobby() {
     hostSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, (data) => {
       setGameState(GAME_STATES.NIGHT_PHASE)
       setEliminatedPlayer(null) // Reset for new night
+      setSavedPlayer(null) // Reset saved player for new night
+      setMessage(null) // Clear any old messages
       console.log('Night phase started!')
     })
 
@@ -69,6 +72,7 @@ function GameLobby() {
       setAccusations({})
       setEliminationCountdown(null)
       setDayEliminatedPlayer(null)
+      setMessage(null) // Clear any old messages
       console.log('Day phase started!')
     })
 
@@ -140,7 +144,7 @@ function GameLobby() {
   }
 
   const autoFillPlayers = () => {
-    const playerNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Henry']
+    const playerNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve']
     const baseUrl = 'http://localhost:3001'
     
     playerNames.forEach((name, index) => {
@@ -148,7 +152,7 @@ function GameLobby() {
       setTimeout(() => {
         window.open(url, `_blank_player_${index}`)
         console.log(`Opening tab for ${name}: ${url}`)
-      }, index * 300) // Slightly faster stagger for 8 players
+      }, index * 300) // Stagger for 5 players
     })
   }
 
@@ -403,7 +407,7 @@ function GameLobby() {
               className="auto-fill-btn" 
               onClick={autoFillPlayers}
             >
-              🚀 Auto-fill 8 Players
+              🚀 Auto-fill 5 Players
             </button>
           )}
         </div>

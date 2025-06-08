@@ -157,6 +157,17 @@ function resolveNightPhase(room) {
       room.alivePlayers.delete(mafiaTarget)
       killedPlayer = room.players.find(p => p.id === mafiaTarget)
       console.log(`${killedPlayer?.name} was eliminated by the Mafia`)
+      
+      // Send PLAYER_ELIMINATED event to all clients including the killed player
+      const killedRole = room.playerRoles.get(mafiaTarget)
+      io.to(room.id).emit(SOCKET_EVENTS.PLAYER_ELIMINATED, {
+        eliminatedPlayer: {
+          id: mafiaTarget,
+          name: killedPlayer.name,
+          role: killedRole
+        },
+        roomId: room.id
+      })
     }
   }
   
