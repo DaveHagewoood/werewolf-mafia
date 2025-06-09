@@ -30,6 +30,10 @@ export const SOCKET_EVENTS = {
   GAME_END: 'game-end',
   SELECT_GAME_TYPE: 'select-game-type',
   GAME_TYPE_SELECTED: 'game-type-selected',
+  SELECT_PROFILE_IMAGE: 'select-profile-image',
+  PROFILE_IMAGE_SELECTED: 'profile-image-selected',
+  GET_ROOM_INFO: 'get-room-info',
+  ROOM_INFO: 'room-info',
   DISCONNECT: 'disconnect'
 }
 
@@ -113,6 +117,27 @@ export const ROLE_SETS = {
 
 // Legacy ROLES export for backward compatibility (defaults to Werewolf)
 export const ROLES = ROLE_SETS[GAME_TYPES.WEREWOLF]
+
+// Profile Images
+export const PROFILE_IMAGES = {
+  [GAME_TYPES.WEREWOLF]: [
+    'wolf_1', 'wolf_2', 'wolf_3', 'wolf_4', 'wolf_5', 'wolf_6', 'wolf_7', 'wolf_8', 'wolf_9', 'wolf_10',
+    'wolf_11', 'wolf_12', 'wolf_13', 'wolf_14', 'wolf_15', 'wolf_16', 'wolf_17', 'wolf_18', 'wolf_19', 'wolf_20',
+    'wolf_21', 'wolf_22', 'wolf_23', 'wolf_24', 'wolf_25', 'wolf_26', 'wolf_27', 'wolf_28', 'wolf_29', 'wolf_30',
+    'wolf_31', 'wolf_32', 'wolf_33'
+  ],
+  [GAME_TYPES.MAFIA]: [
+    'mafia_1', 'mafia_2', 'mafia_3', 'mafia_4', 'mafia_5', 'mafia_6', 'mafia_7', 'mafia_8', 'mafia_9', 'mafia_10',
+    'mafia_11', 'mafia_12', 'mafia_13', 'mafia_14', 'mafia_15', 'mafia_16', 'mafia_17', 'mafia_18', 'mafia_19', 'mafia_20',
+    'mafia_21', 'mafia_22', 'mafia_23', 'mafia_24', 'mafia_25', 'mafia_26', 'mafia_27', 'mafia_28', 'mafia_29', 'mafia_30',
+    'mafia_31', 'mafia_32', 'mafia_33', 'mafia_34', 'mafia_35', 'mafia_36', 'mafia_37', 'mafia_38', 'mafia_39'
+  ]
+}
+
+export function getProfileImageUrl(gameType, imageName) {
+  const gameFolder = gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'
+  return `/images/ProfileImages/${gameFolder}/${imageName}.png`
+}
 
 // Role Assignment Logic
 export function assignRoles(playerCount, gameType = GAME_TYPES.WEREWOLF) {

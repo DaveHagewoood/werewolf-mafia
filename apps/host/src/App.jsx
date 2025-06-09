@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
-import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES } from '@werewolf-mafia/shared'
+import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl } from '@werewolf-mafia/shared'
 
 function GameLobby() {
   const [roomId, setRoomId] = useState('')
@@ -517,6 +517,15 @@ function GameLobby() {
               players.map((player, index) => (
                 <div key={player.id} className="player-item">
                   <span className="player-number">{index + 1}.</span>
+                  {player.profileImage && selectedGameType && (
+                    <div className="player-avatar">
+                      <img 
+                        src={getProfileImageUrl(selectedGameType, player.profileImage)} 
+                        alt={`${player.name}'s avatar`}
+                        className="player-profile-image"
+                      />
+                    </div>
+                  )}
                   <span className="player-name">{player.name}</span>
                   <span className={`player-status ${player.connected ? 'connected' : 'disconnected'}`}>
                     {player.connected ? '🟢' : '🔴'}

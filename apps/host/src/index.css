@@ -246,6 +246,23 @@ body {
   min-width: 24px;
 }
 
+.player-avatar {
+  margin-right: 12px;
+}
+
+.player-profile-image {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #e9ecef;
+  transition: border-color 0.2s ease;
+}
+
+.player-item:hover .player-profile-image {
+  border-color: #007bff;
+}
+
 .player-name {
   flex: 1;
   font-weight: 500;

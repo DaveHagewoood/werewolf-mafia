@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { SOCKET_EVENTS, validatePlayerName, GAME_STATES } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS } from '@werewolf-mafia/shared'
 
 function HomePage() {
   return (
@@ -46,11 +46,21 @@ function JoinRoom() {
   const [isEliminated, setIsEliminated] = useState(false) // Track if this player is eliminated
   const [eliminationInfo, setEliminationInfo] = useState(null) // Store elimination details
   const [gameEndData, setGameEndData] = useState(null) // Store game end data
+  const [gameType, setGameType] = useState(null) // Store game type
+  const [availableImages, setAvailableImages] = useState([]) // Available profile images
+  const [currentProfileImage, setCurrentProfileImage] = useState(null) // Current profile image
 
   useEffect(() => {
     // Connect to Socket.IO server
     const newSocket = io('http://localhost:3002')
     setSocket(newSocket)
+
+    // Get room info when component loads
+    if (roomId) {
+      newSocket.on('connect', () => {
+        newSocket.emit(SOCKET_EVENTS.GET_ROOM_INFO, { roomId })
+      })
+    }
 
     // Check for auto-join URL parameters
     const urlParams = new URLSearchParams(window.location.search)
@@ -58,19 +68,9 @@ function JoinRoom() {
     const shouldAutoJoin = urlParams.get('autoJoin') === 'true'
 
     if (shouldAutoJoin && autoJoinPlayerName && roomId) {
-      // Auto-join with pre-filled data
+      // Auto-join with pre-filled data - wait for room info first
       console.log(`Auto-join detected: ${autoJoinPlayerName} -> ${roomId}`)
       setPlayerName(autoJoinPlayerName)
-      setIsJoining(true)
-      
-      // Wait for socket to connect, then join
-      newSocket.on('connect', () => {
-        console.log('Socket connected, auto-joining...')
-        newSocket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
-          roomId: roomId,
-          playerName: autoJoinPlayerName
-        })
-      })
     }
 
     // Listen for join confirmation
@@ -246,6 +246,28 @@ function JoinRoom() {
       setMessage(null) // Clear any old messages
     })
 
+    // Listen for room info
+    newSocket.on(SOCKET_EVENTS.ROOM_INFO, (data) => {
+      console.log('Room info received:', data)
+      setGameType(data.gameType)
+      setAvailableImages(data.availableImages)
+      setCurrentProfileImage(data.defaultImage)
+      
+      // If this was an auto-join, automatically join now
+      const urlParams = new URLSearchParams(window.location.search)
+      const autoJoinPlayerName = urlParams.get('playerName')
+      const shouldAutoJoin = urlParams.get('autoJoin') === 'true'
+      
+      if (shouldAutoJoin && autoJoinPlayerName && !isJoining) {
+        setIsJoining(true)
+        newSocket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
+          roomId: roomId,
+          playerName: autoJoinPlayerName,
+          profileImage: data.defaultImage
+        })
+      }
+    })
+
     // Listen for game start (legacy - now handled by role assignment)
     newSocket.on(SOCKET_EVENTS.GAME_START, () => {
       console.log('Game is starting!')
@@ -315,6 +337,11 @@ function JoinRoom() {
       return
     }
 
+    if (!currentProfileImage) {
+      setError('Please select a character image')
+      return
+    }
+
     if (!socket) {
       setError('Connection failed. Please try again.')
       return
@@ -326,7 +353,8 @@ function JoinRoom() {
     // Emit join event to server
     socket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
       playerName: playerName.trim(),
-      roomId: roomId
+      roomId: roomId,
+      profileImage: currentProfileImage
     })
   }
 
@@ -392,6 +420,10 @@ function JoinRoom() {
       }
     }
   }
+
+
+
+
 
   // Show game end screen if game has ended
   if (gameState === GAME_STATES.ENDED && gameEndData) {
@@ -618,8 +650,8 @@ function JoinRoom() {
 
   // Show night phase screen
   if (gameState === GAME_STATES.NIGHT_PHASE && playerRole) {
-    // Mafia voting interface - check if this player is Mafia
-    if (playerRole.name === 'Mafia') {
+    // Mafia voting interface - check if this player is evil (Mafia/Werewolf)
+    if (playerRole.alignment === 'evil') {
       // If we haven't received vote targets yet, show loading
       if (voteTargets.length === 0) {
         return (
@@ -724,8 +756,9 @@ function JoinRoom() {
       )
     }
 
-    // Doctor healing interface
-    if (playerRole.name === 'Doctor') {
+    // Doctor/Healer healing interface - check if this player is the protector
+    const roleSet = gameType ? ROLE_SETS[gameType] : null
+    if (roleSet && playerRole.name === roleSet.PROTECTOR.name) {
       // If we haven't received heal targets yet, show loading
       if (healTargets.length === 0) {
         return (
@@ -797,8 +830,8 @@ function JoinRoom() {
       )
     }
 
-    // Seer investigation interface
-    if (playerRole.name === 'Seer') {
+    // Seer/Detective investigation interface - check if this player is the investigator
+    if (roleSet && playerRole.name === roleSet.INVESTIGATOR.name) {
       // If we haven't received investigation targets yet, show loading
       if (investigateTargets.length === 0) {
         return (
@@ -883,7 +916,7 @@ function JoinRoom() {
       )
     }
 
-    // Non-Mafia, Non-Doctor, Non-Seer night phase (waiting screen)
+    // Regular citizens (Villager/Townsperson) night phase (waiting screen)
     return (
       <div className="night-wait-container">
         <div className="night-wait-content">
@@ -1007,6 +1040,9 @@ function JoinRoom() {
       <div className="join-content">
         <h1>Join Game</h1>
         <p className="room-info">Room: <strong>{roomId}</strong></p>
+        {gameType && (
+          <p className="game-type-info">Game Type: <strong>{gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'}</strong></p>
+        )}
         
         <form onSubmit={handleJoinRoom} className="join-form">
           <div className="form-group">
@@ -1022,13 +1058,52 @@ function JoinRoom() {
               required
             />
           </div>
+
+          {gameType && availableImages.length > 0 && (
+            <div className="form-group character-selection">
+              <label>Choose Your Character</label>
+              
+              {/* Current Selection Preview */}
+              {currentProfileImage && (
+                <div className="current-selection">
+                  <div className="current-avatar">
+                    <img 
+                      src={getProfileImageUrl(gameType, currentProfileImage)} 
+                      alt="Current selection"
+                      className="selected-profile-image"
+                    />
+                  </div>
+                  <p className="selection-name">
+                    {currentProfileImage?.replace(/\.(jpg|jpeg|png|gif)$/i, '').replace(/_/g, ' ')}
+                  </p>
+                </div>
+              )}
+
+              {/* Character Grid */}
+              <div className="profile-grid">
+                {availableImages.map(imageName => (
+                  <div 
+                    key={imageName}
+                    className={`profile-option ${currentProfileImage === imageName ? 'selected' : ''}`}
+                    onClick={() => setCurrentProfileImage(imageName)}
+                  >
+                    <img 
+                      src={getProfileImageUrl(gameType, imageName)} 
+                      alt={`Character ${imageName}`}
+                      className="profile-option-image"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           
           {error && <div className="error-message">{error}</div>}
           
           <button 
             type="submit" 
             className="join-btn"
-            disabled={isJoining || !playerName.trim()}
+            disabled={isJoining || !playerName.trim() || (gameType && !currentProfileImage)}
           >
             {isJoining ? 'Joining...' : 'Join Game'}
           </button>
