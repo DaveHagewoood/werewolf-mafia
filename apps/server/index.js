@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
-import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, assignRoles } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, assignRoles } from '@werewolf-mafia/shared'
 
 const httpServer = createServer()
 const io = new Server(httpServer, {
@@ -12,6 +12,9 @@ const io = new Server(httpServer, {
 
 // Store game rooms in memory
 const gameRooms = new Map()
+
+// Store game types for each room
+const roomGameTypes = new Map()
 
 // Helper function to get or create room
 function getRoom(roomId) {
@@ -40,33 +43,37 @@ function getRoom(roomId) {
 
 // Helper function to get Mafia players
 function getMafiaPlayers(room) {
-  return room.players.filter(player => 
-    room.playerRoles.get(player.id)?.name === ROLES.MAFIA.name &&
-    room.alivePlayers.has(player.id)
-  )
+  return room.players.filter(player => {
+    const role = room.playerRoles.get(player.id)
+    return role?.alignment === 'evil' && room.alivePlayers.has(player.id)
+  })
 }
 
 // Helper function to get alive non-Mafia players
 function getAliveNonMafiaPlayers(room) {
-  return room.players.filter(player =>
-    room.playerRoles.get(player.id)?.name !== ROLES.MAFIA.name &&
-    room.alivePlayers.has(player.id)
-  )
-}
-
-// Helper function to get Doctor players
-function getDoctorPlayers(room) {
   return room.players.filter(player => {
     const role = room.playerRoles.get(player.id)
-    return role?.name === ROLES.DOCTOR.name && room.alivePlayers.has(player.id)
+    return role?.alignment !== 'evil' && room.alivePlayers.has(player.id)
   })
 }
 
-// Helper function to get Seer players
-function getSeerPlayers(room) {
+// Helper function to get Doctor players (Protector role)
+function getDoctorPlayers(room) {
+  const gameType = roomGameTypes.get(room.id) || GAME_TYPES.WEREWOLF
+  const roleSet = ROLE_SETS[gameType]
   return room.players.filter(player => {
     const role = room.playerRoles.get(player.id)
-    return role?.name === ROLES.SEER.name && room.alivePlayers.has(player.id)
+    return role?.name === roleSet.PROTECTOR.name && room.alivePlayers.has(player.id)
+  })
+}
+
+// Helper function to get Seer players (Investigator role)
+function getSeerPlayers(room) {
+  const gameType = roomGameTypes.get(room.id) || GAME_TYPES.WEREWOLF
+  const roleSet = ROLE_SETS[gameType]
+  return room.players.filter(player => {
+    const role = room.playerRoles.get(player.id)
+    return role?.name === roleSet.INVESTIGATOR.name && room.alivePlayers.has(player.id)
   })
 }
 
@@ -522,6 +529,31 @@ io.on('connection', (socket) => {
     broadcastPlayersUpdate(roomId)
   })
 
+  // Host selects game type
+  socket.on(SOCKET_EVENTS.SELECT_GAME_TYPE, (data) => {
+    const { roomId, gameType } = data
+    
+    if (!socket.isHost) {
+      socket.emit('error', { message: 'Only host can select game type' })
+      return
+    }
+
+    const room = getRoom(roomId)
+    
+    if (room.gameState !== GAME_STATES.LOBBY) {
+      socket.emit('error', { message: 'Can only select game type in lobby' })
+      return
+    }
+
+    // Store the game type for this room
+    roomGameTypes.set(roomId, gameType)
+    
+    console.log(`Host selected game type ${gameType} for room ${roomId}`)
+    
+    // Confirm to host
+    socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, gameType)
+  })
+
   // Player joins a room
   socket.on(SOCKET_EVENTS.PLAYER_JOIN, (data) => {
     const { playerName, roomId } = data
@@ -611,7 +643,8 @@ io.on('connection', (socket) => {
     
     try {
       // Assign roles to players
-      const roles = assignRoles(room.players.length)
+      const gameType = roomGameTypes.get(roomId) || 'werewolf'
+      const roles = assignRoles(room.players.length, gameType)
       
       // Store role assignments and initialize readiness to false
       room.players.forEach((player, index) => {

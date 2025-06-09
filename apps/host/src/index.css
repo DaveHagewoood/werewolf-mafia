@@ -24,6 +24,122 @@ body {
   padding: 20px;
 }
 
+/* Main Menu Screen */
+.main-menu-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  margin: -20px;
+}
+
+.main-menu-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.main-menu-header h1 {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.main-menu-header h2 {
+  font-size: 1.5rem;
+  opacity: 0.9;
+  font-weight: normal;
+}
+
+.main-menu-content {
+  max-width: 1000px;
+  width: 100%;
+}
+
+.game-selection {
+  text-align: center;
+}
+
+.game-selection h3 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.game-selection p {
+  font-size: 1.1rem;
+  opacity: 0.9;
+  margin-bottom: 3rem;
+}
+
+.game-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.game-option {
+  width: 384px;
+  height: 400px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 3px solid transparent;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  display: block;
+}
+
+.game-option::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  cursor: pointer;
+}
+
+.game-option:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.game-option-werewolf {
+  background-image: url('/images/WerewolfMainMenu.png');
+}
+
+.game-option-mafia {
+  background-image: url('/images/MafiaMainMenu.png');
+}
+
+@media (max-width: 768px) {
+  .game-options {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .main-menu-header h1 {
+    font-size: 2.5rem;
+  }
+  
+  .game-option {
+    width: 100%;
+    max-width: 384px;
+    height: 400px;
+    margin: 0 auto;
+  }
+}
+
 .lobby-container {
   max-width: 1200px;
   margin: 0 auto;

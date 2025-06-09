@@ -28,6 +28,8 @@ export const SOCKET_EVENTS = {
   PLAYER_ELIMINATED: 'player-eliminated',
   NIGHT_ACTION_COMPLETE: 'night-action-complete',
   GAME_END: 'game-end',
+  SELECT_GAME_TYPE: 'select-game-type',
+  GAME_TYPE_SELECTED: 'game-type-selected',
   DISCONNECT: 'disconnect'
 }
 
@@ -39,62 +41,104 @@ export const GAME_CONFIG = {
   ELIMINATION_COUNTDOWN_TIME: 10000 // 10 seconds in milliseconds
 }
 
-// Role Definitions
-export const ROLES = {
-  MAFIA: {
-    name: 'Mafia',
-    alignment: 'evil',
-    description: 'You are part of the mafia. Your goal is to eliminate all villagers.',
-    ability: 'Each night, you and other mafia members can eliminate one player.',
-    color: '#dc2626' // red
+// Game Types
+export const GAME_TYPES = {
+  WEREWOLF: 'werewolf',
+  MAFIA: 'mafia'
+}
+
+// Role Definitions by Game Type
+export const ROLE_SETS = {
+  [GAME_TYPES.WEREWOLF]: {
+    EVIL: {
+      name: 'Werewolf',
+      alignment: 'evil',
+      description: 'You are a werewolf. Your goal is to eliminate all villagers.',
+      ability: 'Each night, you and other werewolves can eliminate one player.',
+      color: '#dc2626' // red
+    },
+    INVESTIGATOR: {
+      name: 'Seer',
+      alignment: 'good',
+      description: 'You are a villager with mystical powers. Find the werewolves before they eliminate you.',
+      ability: 'Each night, you may investigate one player to learn their alignment.',
+      color: '#7c3aed' // purple
+    },
+    PROTECTOR: {
+      name: 'Healer',
+      alignment: 'good',
+      description: 'You are a villager with healing powers. Protect the innocent from the werewolves.',
+      ability: 'Each night, you may protect one player from elimination.',
+      color: '#059669' // green
+    },
+    CITIZEN: {
+      name: 'Villager',
+      alignment: 'good',
+      description: 'You are an ordinary villager. Work with others to identify and eliminate the werewolves.',
+      ability: 'Vote during the day phase to eliminate suspected werewolves.',
+      color: '#0284c7' // blue
+    }
   },
-  SEER: {
-    name: 'Seer',
-    alignment: 'good',
-    description: 'You are a villager with special powers. Find the mafia before they eliminate you.',
-    ability: 'Each night, you may investigate one player to learn their alignment.',
-    color: '#7c3aed' // purple
-  },
-  DOCTOR: {
-    name: 'Doctor',
-    alignment: 'good',
-    description: 'You are a villager with healing powers. Protect the innocent from the mafia.',
-    ability: 'Each night, you may protect one player from elimination.',
-    color: '#059669' // green
-  },
-  VILLAGER: {
-    name: 'Villager',
-    alignment: 'good',
-    description: 'You are an ordinary villager. Work with others to identify and eliminate the mafia.',
-    ability: 'Vote during the day phase to eliminate suspected mafia members.',
-    color: '#0284c7' // blue
+  [GAME_TYPES.MAFIA]: {
+    EVIL: {
+      name: 'Mafia',
+      alignment: 'evil',
+      description: 'You are part of the mafia. Your goal is to eliminate all townspeople.',
+      ability: 'Each night, you and other mafia members can eliminate one player.',
+      color: '#dc2626' // red
+    },
+    INVESTIGATOR: {
+      name: 'Detective',
+      alignment: 'good',
+      description: 'You are a detective with investigative skills. Find the mafia before they eliminate you.',
+      ability: 'Each night, you may investigate one player to learn their alignment.',
+      color: '#7c3aed' // purple
+    },
+    PROTECTOR: {
+      name: 'Doctor',
+      alignment: 'good',
+      description: 'You are a doctor with medical skills. Protect the innocent from the mafia.',
+      ability: 'Each night, you may protect one player from elimination.',
+      color: '#059669' // green
+    },
+    CITIZEN: {
+      name: 'Townsperson',
+      alignment: 'good',
+      description: 'You are an ordinary townsperson. Work with others to identify and eliminate the mafia.',
+      ability: 'Vote during the day phase to eliminate suspected mafia members.',
+      color: '#0284c7' // blue
+    }
   }
 }
 
+// Legacy ROLES export for backward compatibility (defaults to Werewolf)
+export const ROLES = ROLE_SETS[GAME_TYPES.WEREWOLF]
+
 // Role Assignment Logic
-export function assignRoles(playerCount) {
+export function assignRoles(playerCount, gameType = GAME_TYPES.WEREWOLF) {
   if (playerCount < GAME_CONFIG.MIN_PLAYERS) {
     throw new Error(`Need at least ${GAME_CONFIG.MIN_PLAYERS} players`)
   }
 
+  const roleSet = ROLE_SETS[gameType]
   const roles = []
   
-  // Determine mafia count based on player count
-  const mafiaCount = playerCount <= 7 ? 1 : 2
+  // Determine evil count based on player count
+  const evilCount = playerCount <= 7 ? 1 : 2
   
-  // Add mafia roles
-  for (let i = 0; i < mafiaCount; i++) {
-    roles.push(ROLES.MAFIA)
+  // Add evil roles
+  for (let i = 0; i < evilCount; i++) {
+    roles.push(roleSet.EVIL)
   }
   
   // Add special roles
-  roles.push(ROLES.SEER)
-  roles.push(ROLES.DOCTOR)
+  roles.push(roleSet.INVESTIGATOR)
+  roles.push(roleSet.PROTECTOR)
   
-  // Fill remaining slots with villagers
+  // Fill remaining slots with citizens
   const remainingSlots = playerCount - roles.length
   for (let i = 0; i < remainingSlots; i++) {
-    roles.push(ROLES.VILLAGER)
+    roles.push(roleSet.CITIZEN)
   }
   
   // Shuffle roles randomly
@@ -123,6 +167,7 @@ export const validatePlayerName = (name) => {
 
 // Game States
 export const GAME_STATES = {
+  MAIN_MENU: 'main-menu',
   LOBBY: 'lobby',
   STARTING: 'starting',
   ROLE_ASSIGNMENT: 'role-assignment',

@@ -18,6 +18,7 @@ function GameLobby() {
   const [dayEliminatedPlayer, setDayEliminatedPlayer] = useState(null)
   const [message, setMessage] = useState(null)
   const [gameEndData, setGameEndData] = useState(null)
+  const [selectedGameType, setSelectedGameType] = useState(null)
 
   // Player app URL - you'll need to update this with your actual player app URL
   const PLAYER_APP_URL = 'http://localhost:3001'
@@ -120,6 +121,13 @@ function GameLobby() {
       setGameState(GAME_STATES.ENDED)
     })
 
+    // Listen for game type selected
+    hostSocket.on(SOCKET_EVENTS.GAME_TYPE_SELECTED, (gameType) => {
+      console.log('Game type selected:', gameType)
+      setSelectedGameType(gameType)
+      setGameState(GAME_STATES.LOBBY)
+    })
+
     // Listen for errors
     hostSocket.on('error', (error) => {
       console.error('Socket error:', error.message)
@@ -164,7 +172,51 @@ function GameLobby() {
     })
   }
 
+  const handleGameTypeSelect = (gameType) => {
+    console.log('Game type selected:', gameType)
+    if (socket) {
+      socket.emit(SOCKET_EVENTS.SELECT_GAME_TYPE, { roomId, gameType })
+    } else {
+      console.log('Socket not available')
+    }
+  }
+
   const qrCodeUrl = `${PLAYER_APP_URL}/join/${roomId}`
+
+  // Show main menu screen (before game type is selected)
+  if (!selectedGameType) {
+    return (
+      <div className="main-menu-container">
+        <div className="main-menu-header">
+          <h1>🎭 Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="main-menu-content">
+          <div className="game-selection">
+            <h3>Choose Your Game</h3>
+            <p>Both games use the same mechanics but different themes and role names</p>
+            
+            <div className="game-options">
+              <div 
+                className="game-option game-option-werewolf" 
+                onClick={() => handleGameTypeSelect('werewolf')}
+              >
+                {/* Content handled by background image */}
+              </div>
+              
+              <div 
+                className="game-option game-option-mafia" 
+                onClick={() => handleGameTypeSelect('mafia')}
+              >
+                {/* Content handled by background image */}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // Show game end screen
   if (gameState === GAME_STATES.ENDED && gameEndData) {
@@ -438,7 +490,7 @@ function GameLobby() {
   return (
     <div className="lobby-container">
       <div className="lobby-header">
-        <h1>Werewolf Mafia</h1>
+        <h1>{selectedGameType === 'mafia' ? '🕴️ Mafia' : '🐺 Werewolf'}</h1>
         <h2>Room Code: {roomId}</h2>
       </div>
 
