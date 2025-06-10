@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
-import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl } from '@werewolf-mafia/shared'
+import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport } from '@werewolf-mafia/shared'
 
 function GameLobby() {
   const [roomId, setRoomId] = useState('')
@@ -20,16 +20,38 @@ function GameLobby() {
   const [gameEndData, setGameEndData] = useState(null)
   const [selectedGameType, setSelectedGameType] = useState(null)
   const [imagesLoaded, setImagesLoaded] = useState(false)
+  const [supportsWebP, setSupportsWebP] = useState(false)
 
   // Player app URL - updated to use serveo tunnel
   const PLAYER_APP_URL = 'https://werewolf-player.serveo.net'
 
   // Preload images
   useEffect(() => {
+    // WebP detection
+    const checkWebPSupport = () => {
+      return new Promise((resolve) => {
+        const webP = new Image()
+        webP.onload = webP.onerror = () => {
+          const isSupported = webP.height === 2
+          if (isSupported) {
+            document.documentElement.classList.add('webp')
+          } else {
+            document.documentElement.classList.add('no-webp')
+          }
+          resolve(isSupported)
+        }
+        webP.src = 'data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAACyAgCdASoCAAIALmk0mk0iIiIiIgBoSygABc6WWgAA/veff/0PP8bA//LwYAAA'
+      })
+    }
+
     const preloadImages = async () => {
+      const supportsWebP = await checkWebPSupport()
+      setSupportsWebP(supportsWebP)
+      const imageExtension = supportsWebP ? '.webp' : '.png'
+      
       const imagePromises = [
-        '/images/WerewolfMainMenu.png',
-        '/images/MafiaMainMenu.png'
+        `/images/WerewolfMainMenu${imageExtension}`,
+        `/images/MafiaMainMenu${imageExtension}`
       ].map(src => {
         return new Promise((resolve, reject) => {
           const img = new Image()
@@ -42,6 +64,7 @@ function GameLobby() {
       try {
         await Promise.all(imagePromises)
         setImagesLoaded(true)
+        console.log(`Loaded main menu images in ${imageExtension.slice(1).toUpperCase()} format`)
       } catch (error) {
         console.log('Some images failed to load:', error)
         setImagesLoaded(true) // Show interface anyway
@@ -565,9 +588,14 @@ function GameLobby() {
                   {player.profileImage && selectedGameType && (
                     <div className="player-avatar">
                       <img 
-                        src={getProfileImageUrl(selectedGameType, player.profileImage)} 
+                        src={getProfileImageUrl(selectedGameType, player.profileImage, supportsWebP)} 
                         alt={`${player.name}'s avatar`}
                         className="player-profile-image"
+                        onError={(e) => {
+                          if (supportsWebP && e.target.src.includes('.webp')) {
+                            e.target.src = getProfileImageUrl(selectedGameType, player.profileImage, false)
+                          }
+                        }}
                       />
                     </div>
                   )}

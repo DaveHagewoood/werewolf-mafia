@@ -134,9 +134,10 @@ export const PROFILE_IMAGES = {
   ]
 }
 
-export function getProfileImageUrl(gameType, imageName) {
+export function getProfileImageUrl(gameType, imageName, useWebP = true) {
   const gameFolder = gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'
-  return `/images/ProfileImages/${gameFolder}/${imageName}.png`
+  const extension = useWebP ? '.webp' : '.png'
+  return `/images/ProfileImages/${gameFolder}/${imageName}${extension}`
 }
 
 // Role Assignment Logic

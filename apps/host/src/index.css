@@ -104,7 +104,7 @@ body {
 
 .game-option {
   width: 384px;
-  height: 400px;
+  height: 384px;
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -138,8 +138,18 @@ body {
   background-image: url('/images/WerewolfMainMenu.png');
 }
 
+/* WebP support with fallback */
+.webp .game-option-werewolf {
+  background-image: url('/images/WerewolfMainMenu.webp');
+}
+
 .game-option-mafia {
   background-image: url('/images/MafiaMainMenu.png');
+}
+
+/* WebP support with fallback */
+.webp .game-option-mafia {
+  background-image: url('/images/MafiaMainMenu.webp');
 }
 
 @media (max-width: 768px) {
@@ -155,8 +165,9 @@ body {
   .game-option {
     width: 100%;
     max-width: 384px;
-    height: 400px;
+    height: 384px;
     margin: 0 auto;
+    aspect-ratio: 1;
   }
 }
 

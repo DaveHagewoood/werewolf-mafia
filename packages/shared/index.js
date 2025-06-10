@@ -134,9 +134,21 @@ export const PROFILE_IMAGES = {
   ]
 }
 
-export function getProfileImageUrl(gameType, imageName) {
+export function getProfileImageUrl(gameType, imageName, useWebP = true) {
   const gameFolder = gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'
-  return `/images/ProfileImages/${gameFolder}/${imageName}.png`
+  const extension = useWebP ? '.webp' : '.png'
+  return `/images/ProfileImages/${gameFolder}/${imageName}${extension}`
+}
+
+// WebP detection for profile images
+export function checkWebPSupport() {
+  return new Promise((resolve) => {
+    const webP = new Image()
+    webP.onload = webP.onerror = () => {
+      resolve(webP.height === 2)
+    }
+    webP.src = 'data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAACyAgCdASoCAAIALmk0mk0iIiIiIgBoSygABc6WWgAA/veff/0PP8bA//LwYAAA'
+  })
 }
 
 // Role Assignment Logic

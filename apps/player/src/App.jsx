@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport } from '@werewolf-mafia/shared'
 
 function HomePage() {
   return (
@@ -49,8 +49,12 @@ function JoinRoom() {
   const [gameType, setGameType] = useState(null) // Store game type
   const [availableImages, setAvailableImages] = useState([]) // Available profile images
   const [currentProfileImage, setCurrentProfileImage] = useState(null) // Current profile image
+  const [supportsWebP, setSupportsWebP] = useState(false) // WebP support detection
 
   useEffect(() => {
+    // Check WebP support
+    checkWebPSupport().then(setSupportsWebP)
+    
     // Connect to Socket.IO server
     const newSocket = io('https://werewolf-server.serveo.net')
     setSocket(newSocket)
@@ -420,10 +424,6 @@ function JoinRoom() {
       }
     }
   }
-
-
-
-
 
   // Show game end screen if game has ended
   if (gameState === GAME_STATES.ENDED && gameEndData) {
@@ -1068,9 +1068,14 @@ function JoinRoom() {
                 <div className="current-selection">
                   <div className="current-avatar">
                     <img 
-                      src={getProfileImageUrl(gameType, currentProfileImage)} 
+                      src={getProfileImageUrl(gameType, currentProfileImage, supportsWebP)} 
                       alt="Current selection"
                       className="selected-profile-image"
+                      onError={(e) => {
+                        if (supportsWebP && e.target.src.includes('.webp')) {
+                          e.target.src = getProfileImageUrl(gameType, currentProfileImage, false)
+                        }
+                      }}
                     />
                   </div>
                   <p className="selection-name">
@@ -1088,9 +1093,14 @@ function JoinRoom() {
                     onClick={() => setCurrentProfileImage(imageName)}
                   >
                     <img 
-                      src={getProfileImageUrl(gameType, imageName)} 
+                      src={getProfileImageUrl(gameType, imageName, supportsWebP)} 
                       alt={`Character ${imageName}`}
                       className="profile-option-image"
+                      onError={(e) => {
+                        if (supportsWebP && e.target.src.includes('.webp')) {
+                          e.target.src = getProfileImageUrl(gameType, imageName, false)
+                        }
+                      }}
                     />
                   </div>
                 ))}
