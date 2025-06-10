@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "socket.io": "^4.7.4",
-    "cors": "^2.8.5",
-    "@werewolf-mafia/shared": "workspace:*"
+    "cors": "^2.8.5"
   }
 } 

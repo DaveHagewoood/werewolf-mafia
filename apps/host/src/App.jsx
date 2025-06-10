@@ -19,9 +19,37 @@ function GameLobby() {
   const [message, setMessage] = useState(null)
   const [gameEndData, setGameEndData] = useState(null)
   const [selectedGameType, setSelectedGameType] = useState(null)
+  const [imagesLoaded, setImagesLoaded] = useState(false)
 
-  // Player app URL - you'll need to update this with your actual player app URL
-  const PLAYER_APP_URL = 'http://localhost:3001'
+  // Player app URL - updated to use serveo tunnel
+  const PLAYER_APP_URL = 'https://werewolf-player.serveo.net'
+
+  // Preload images
+  useEffect(() => {
+    const preloadImages = async () => {
+      const imagePromises = [
+        '/images/WerewolfMainMenu.png',
+        '/images/MafiaMainMenu.png'
+      ].map(src => {
+        return new Promise((resolve, reject) => {
+          const img = new Image()
+          img.onload = resolve
+          img.onerror = reject
+          img.src = src
+        })
+      })
+      
+      try {
+        await Promise.all(imagePromises)
+        setImagesLoaded(true)
+      } catch (error) {
+        console.log('Some images failed to load:', error)
+        setImagesLoaded(true) // Show interface anyway
+      }
+    }
+    
+    preloadImages()
+  }, [])
 
   useEffect(() => {
     // Generate room ID
@@ -29,8 +57,17 @@ function GameLobby() {
     setRoomId(newRoomId)
     
     // Connect to Socket.IO server
-    const hostSocket = io('http://localhost:3002')
+    const hostSocket = io('https://werewolf-server.serveo.net')
     setSocket(hostSocket)
+
+    // Socket connection events
+    hostSocket.on('connect', () => {
+      console.log('Connected to game server')
+    })
+
+    hostSocket.on('disconnect', (reason) => {
+      console.log('Disconnected from server:', reason)
+    })
 
     // Join the room as host
     hostSocket.emit('host-room', { roomId: newRoomId })
@@ -161,7 +198,7 @@ function GameLobby() {
 
   const autoFillPlayers = () => {
     const playerNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve']
-    const baseUrl = 'http://localhost:3001'
+    const baseUrl = 'https://werewolf-player.serveo.net'
     
     playerNames.forEach((name, index) => {
       const url = `${baseUrl}/join/${roomId}?playerName=${name}&autoJoin=true`
@@ -174,10 +211,11 @@ function GameLobby() {
 
   const handleGameTypeSelect = (gameType) => {
     console.log('Game type selected:', gameType)
+    
     if (socket) {
       socket.emit(SOCKET_EVENTS.SELECT_GAME_TYPE, { roomId, gameType })
     } else {
-      console.log('Socket not available')
+      console.log('Socket not available - cannot select game type')
     }
   }
 
@@ -197,21 +235,28 @@ function GameLobby() {
             <h3>Choose Your Game</h3>
             <p>Both games use the same mechanics but different themes and role names</p>
             
-            <div className="game-options">
-              <div 
-                className="game-option game-option-werewolf" 
-                onClick={() => handleGameTypeSelect('werewolf')}
-              >
-                {/* Content handled by background image */}
+            {!imagesLoaded ? (
+              <div className="loading-images">
+                <div className="spinner"></div>
+                <p>Loading game themes...</p>
               </div>
-              
-              <div 
-                className="game-option game-option-mafia" 
-                onClick={() => handleGameTypeSelect('mafia')}
-              >
-                {/* Content handled by background image */}
+            ) : (
+              <div className="game-options">
+                <div 
+                  className="game-option game-option-werewolf" 
+                  onClick={() => handleGameTypeSelect('werewolf')}
+                >
+                  {/* Content handled by background image */}
+                </div>
+                
+                <div 
+                  className="game-option game-option-mafia" 
+                  onClick={() => handleGameTypeSelect('mafia')}
+                >
+                  {/* Content handled by background image */}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

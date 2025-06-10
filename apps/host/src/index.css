@@ -74,6 +74,26 @@ body {
   margin-bottom: 3rem;
 }
 
+.loading-images {
+  text-align: center;
+  padding: 3rem 2rem;
+}
+
+.loading-images .spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+.loading-images p {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.1rem;
+}
+
 .game-options {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -52,7 +52,7 @@ function JoinRoom() {
 
   useEffect(() => {
     // Connect to Socket.IO server
-    const newSocket = io('http://localhost:3002')
+    const newSocket = io('https://werewolf-server.serveo.net')
     setSocket(newSocket)
 
     // Get room info when component loads

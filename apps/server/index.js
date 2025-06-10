@@ -1,12 +1,26 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
-import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles } from './shared.js'
 
 const httpServer = createServer()
+
+// Configure CORS for both development and production
+const allowedOrigins = [
+  "http://localhost:3000", 
+  "http://localhost:3001",
+  // Add Serveo URLs (clean and free!)
+  "https://werewolf-host.serveo.net", // Host Serveo URL
+  "https://werewolf-player.serveo.net", // Player Serveo URL
+  // Add production URLs when you deploy the client apps
+  process.env.HOST_URL,
+  process.env.PLAYER_URL
+].filter(Boolean)
+
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3001"],
-    methods: ["GET", "POST"]
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true
   }
 })
 
@@ -1205,6 +1219,8 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3002
 httpServer.listen(PORT, () => {
   console.log(`🚀 Werewolf Mafia Server running on port ${PORT}`)
-  console.log(`🎮 Host: http://localhost:3000`)
-  console.log(`📱 Player: http://localhost:3001`)
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`)
+  console.log(`🎮 Host URL: ${process.env.HOST_URL || 'http://localhost:3000'}`)
+  console.log(`📱 Player URL: ${process.env.PLAYER_URL || 'http://localhost:3001'}`)
+  console.log(`🔌 CORS origins:`, allowedOrigins)
 }) 
