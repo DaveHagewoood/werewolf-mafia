@@ -51,9 +51,89 @@ function JoinRoom() {
   const [currentProfileImage, setCurrentProfileImage] = useState(null) // Current profile image
   const [supportsWebP, setSupportsWebP] = useState(false) // WebP support detection
 
+  // Connection management
+  const [reconnectToken, setReconnectToken] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState('connecting')
+  const [isReconnecting, setIsReconnecting] = useState(false)
+  const [gamePaused, setGamePaused] = useState(false)
+  const [pauseReason, setPauseReason] = useState('')
+  const [reconnectAttempts, setReconnectAttempts] = useState(0)
+  const [lastHeartbeat, setLastHeartbeat] = useState(Date.now())
+
+  // Connection management configuration
+  const CONNECTION_CONFIG = {
+    RECONNECT_DELAY: 2000,      // 2 seconds between reconnect attempts
+    MAX_RECONNECT_ATTEMPTS: 10, // Try 10 times
+    HEARTBEAT_RESPONSE_DELAY: 100 // Small delay for heartbeat response
+  }
+
+  // Helper functions for localStorage persistence
+  const saveReconnectionData = (data) => {
+    try {
+      localStorage.setItem('werewolf-reconnect', JSON.stringify({
+        ...data,
+        timestamp: Date.now()
+      }))
+    } catch (error) {
+      console.warn('Failed to save reconnection data:', error)
+    }
+  }
+
+  const loadReconnectionData = () => {
+    try {
+      const stored = localStorage.getItem('werewolf-reconnect')
+      if (!stored) return null
+      
+      const data = JSON.parse(stored)
+      // Check if data is less than 10 minutes old (grace period buffer)
+      const isRecent = (Date.now() - data.timestamp) < 600000 // 10 minutes
+      
+      if (isRecent && data.reconnectToken && data.roomId) {
+        return data
+      } else {
+        // Clean up old data
+        localStorage.removeItem('werewolf-reconnect')
+        return null
+      }
+    } catch (error) {
+      console.warn('Failed to load reconnection data:', error)
+      localStorage.removeItem('werewolf-reconnect')
+      return null
+    }
+  }
+
+  const clearReconnectionData = () => {
+    try {
+      localStorage.removeItem('werewolf-reconnect')
+    } catch (error) {
+      console.warn('Failed to clear reconnection data:', error)
+    }
+  }
+
   useEffect(() => {
     // Check WebP support
     checkWebPSupport().then(setSupportsWebP)
+    
+    // Check for stored reconnection data first
+    const storedReconnectData = loadReconnectionData()
+    console.log('Stored reconnection data:', storedReconnectData)
+    if (storedReconnectData && storedReconnectData.roomId === roomId) {
+      // Only attempt reconnection if we were in an active game (not lobby)
+      if (storedReconnectData.gameState && storedReconnectData.gameState !== GAME_STATES.LOBBY) {
+        console.log('Found stored reconnection data for active game, will attempt reconnection...', storedReconnectData)
+        setReconnectToken(storedReconnectData.reconnectToken)
+        setPlayerId(storedReconnectData.playerId)
+        setPlayerName(storedReconnectData.playerName)
+        setGameState(storedReconnectData.gameState)
+        setIsReconnecting(true)
+        setIsWaiting(true) // Show waiting screen during reconnection attempt
+      } else {
+        console.log('Found stored data for lobby phase, clearing and allowing normal join...')
+        clearReconnectionData() // Clear lobby data and let them join normally
+      }
+    } else {
+      console.log('No valid reconnection data found')
+    }
     
     // Connect to Socket.IO server
     const newSocket = io('https://werewolf-server.serveo.net')
@@ -63,6 +143,34 @@ function JoinRoom() {
     if (roomId) {
       newSocket.on('connect', () => {
         newSocket.emit(SOCKET_EVENTS.GET_ROOM_INFO, { roomId })
+        
+        // If we have stored reconnection data, attempt reconnection
+        if (storedReconnectData && storedReconnectData.roomId === roomId) {
+          console.log('Attempting automatic reconnection...')
+          
+          // Set a timeout for reconnection attempts
+          const reconnectTimeout = setTimeout(() => {
+            if (isReconnecting) {
+              console.log('Reconnection timed out, allowing normal join')
+              setIsReconnecting(false)
+              setIsWaiting(false)
+              clearReconnectionData()
+              setError('Reconnection failed. Please join the game again.')
+            }
+          }, 10000) // 10 second timeout
+          
+          setTimeout(() => {
+            newSocket.emit(SOCKET_EVENTS.PLAYER_RECONNECT, {
+              roomId: roomId,
+              reconnectToken: storedReconnectData.reconnectToken
+            })
+          }, 1000) // Small delay to ensure connection is stable
+          
+          // Clear timeout when reconnection succeeds
+          newSocket.once(SOCKET_EVENTS.PLAYER_RECONNECTED, () => {
+            clearTimeout(reconnectTimeout)
+          })
+        }
       })
     }
 
@@ -71,22 +179,171 @@ function JoinRoom() {
     const autoJoinPlayerName = urlParams.get('playerName')
     const shouldAutoJoin = urlParams.get('autoJoin') === 'true'
 
-    if (shouldAutoJoin && autoJoinPlayerName && roomId) {
+    if (shouldAutoJoin && autoJoinPlayerName && roomId && !storedReconnectData) {
       // Auto-join with pre-filled data - wait for room info first
       console.log(`Auto-join detected: ${autoJoinPlayerName} -> ${roomId}`)
       setPlayerName(autoJoinPlayerName)
     }
 
+    // ===================== CONNECTION MANAGEMENT =====================
+    
+    // Handle heartbeat pings
+    newSocket.on(SOCKET_EVENTS.HEARTBEAT, () => {
+      setTimeout(() => {
+        if (newSocket.connected) {
+          newSocket.emit(SOCKET_EVENTS.HEARTBEAT_RESPONSE)
+          setLastHeartbeat(Date.now())
+        }
+      }, CONNECTION_CONFIG.HEARTBEAT_RESPONSE_DELAY)
+    })
+    
+    // Handle connection status changes
+    newSocket.on('connect', () => {
+      console.log('Connected to server')
+      setConnectionStatus('connected')
+      setReconnectAttempts(0)
+      if (!storedReconnectData) {
+        setIsReconnecting(false)
+      }
+    })
+    
+    newSocket.on('disconnect', (reason) => {
+      console.log('Disconnected from server:', reason)
+      setConnectionStatus('disconnected')
+      
+      // Attempt reconnection if we have a token and are in an active game (not lobby)
+      if (reconnectToken && playerId && roomId && gameState !== GAME_STATES.LOBBY) {
+        console.log('Will attempt reconnection - have token and player ID in active game')
+        attemptReconnection()
+      } else {
+        console.log('No reconnection attempt:', {
+          hasToken: !!reconnectToken,
+          hasPlayerId: !!playerId,
+          hasRoomId: !!roomId,
+          gameState: gameState,
+          reason: gameState === GAME_STATES.LOBBY ? 'In lobby - will be removed and can rejoin normally' : 'Missing required data'
+        })
+        
+        // If we were in lobby, clear reconnection data since player will be removed
+        // For active games, keep the data so we can reconnect
+        if (gameState === GAME_STATES.LOBBY) {
+          console.log('Disconnected from lobby, clearing reconnection data')
+          clearReconnectionData()
+        } else {
+          console.log('Disconnected from active game, keeping reconnection data for reconnection attempt')
+        }
+      }
+    })
+    
+    // Reconnection function
+    const attemptReconnection = () => {
+      if (reconnectAttempts >= CONNECTION_CONFIG.MAX_RECONNECT_ATTEMPTS) {
+        console.log('Max reconnection attempts reached')
+        setError('Connection lost. Please refresh and rejoin.')
+        setIsReconnecting(false)
+        clearReconnectionData()
+        return
+      }
+      
+      setIsReconnecting(true)
+      setReconnectAttempts(prev => prev + 1)
+      
+      setTimeout(() => {
+        if (roomId && reconnectToken && newSocket.connected) {
+          console.log(`Reconnection attempt ${reconnectAttempts + 1}`)
+          newSocket.emit(SOCKET_EVENTS.PLAYER_RECONNECT, {
+            roomId: roomId,
+            reconnectToken: reconnectToken
+          })
+        } else if (roomId && reconnectToken && !newSocket.connected) {
+          // Socket not connected yet, wait and try again
+          console.log('Socket not connected, waiting...')
+          attemptReconnection()
+        }
+      }, CONNECTION_CONFIG.RECONNECT_DELAY * Math.min(reconnectAttempts, 5)) // Cap the delay
+    }
+    
+    // Handle successful reconnection
+    newSocket.on(SOCKET_EVENTS.PLAYER_RECONNECTED, (data) => {
+      console.log('Reconnection successful:', data)
+      setPlayerId(data.playerId)
+      setPlayerName(data.playerName)
+      setGameState(data.gameState)
+      setIsEliminated(data.isEliminated)
+      setIsReconnecting(false)
+      setReconnectAttempts(0)
+      setConnectionStatus('connected')
+      
+      if (data.role) {
+        setPlayerRole(data.role)
+      }
+      
+      // Update stored reconnection data
+      saveReconnectionData({
+        reconnectToken: data.reconnectToken,
+        playerId: data.playerId,
+        playerName: data.playerName,
+        roomId: roomId,
+        gameState: data.gameState
+      })
+      
+      setError('')
+      setMessage({ type: 'success', text: 'Reconnected successfully!' })
+      setTimeout(() => setMessage(null), 3000)
+    })
+    
+    // Handle other players disconnecting
+    newSocket.on(SOCKET_EVENTS.PLAYER_DISCONNECTED, (data) => {
+      console.log('Player disconnected:', data.playerName)
+      setMessage({ 
+        type: 'warning', 
+        text: `${data.playerName} disconnected. They have ${Math.floor(data.reconnectTimeLeft / 1000)}s to reconnect.` 
+      })
+      setTimeout(() => setMessage(null), 5000)
+    })
+    
+    // Handle game pause/resume
+    newSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
+      console.log('Game paused:', data.reason)
+      setGamePaused(true)
+      setPauseReason(data.reason)
+      setMessage({ 
+        type: 'warning', 
+        text: `Game paused: ${data.reason}. ${data.connectedPlayers}/${data.totalPlayers} players connected.` 
+      })
+    })
+    
+    newSocket.on(SOCKET_EVENTS.GAME_RESUMED, () => {
+      console.log('Game resumed')
+      setGamePaused(false)
+      setPauseReason('')
+      setMessage({ type: 'success', text: 'Game resumed!' })
+      setTimeout(() => setMessage(null), 3000)
+    })
+    
+    // ===================== END CONNECTION MANAGEMENT =====================
+
     // Listen for join confirmation
     newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
       if (data.success) {
         setPlayerId(data.playerId) // Set the player ID
+        setReconnectToken(data.reconnectToken) // Store reconnect token
         setIsWaiting(true)
         setIsJoining(false)
         setError('')
         setGameState(GAME_STATES.LOBBY)
+        setConnectionStatus('connected')
         console.log('Joined successfully with ID:', data.playerId)
         setMessage(null) // Clear any old messages
+        
+        // Save reconnection data for future use
+        saveReconnectionData({
+          reconnectToken: data.reconnectToken,
+          playerId: data.playerId,
+          playerName: data.playerName,
+          roomId: roomId,
+          gameState: GAME_STATES.LOBBY
+        })
       }
     })
 
@@ -97,6 +354,17 @@ function JoinRoom() {
       setIsReady(false)
       console.log('Role assigned:', data.role.name)
       setMessage(null) // Clear any old messages
+      
+      // Update stored reconnection data with new game state
+      if (reconnectToken && playerId) {
+        saveReconnectionData({
+          reconnectToken: reconnectToken,
+          playerId: playerId,
+          playerName: playerName,
+          roomId: roomId,
+          gameState: GAME_STATES.ROLE_ASSIGNMENT
+        })
+      }
     })
 
     // Listen for night phase start
@@ -121,6 +389,17 @@ function JoinRoom() {
       setConsensusTimer(null)
       console.log('Night phase started!')
       setMessage(null) // Clear any old messages
+      
+      // Update stored reconnection data with new game state
+      if (reconnectToken && playerId) {
+        saveReconnectionData({
+          reconnectToken: reconnectToken,
+          playerId: playerId,
+          playerName: playerName,
+          roomId: roomId,
+          gameState: GAME_STATES.NIGHT_PHASE
+        })
+      }
     })
 
     // Listen for Mafia voting (only Mafia will receive this)
@@ -199,6 +478,17 @@ function JoinRoom() {
       setEliminationCountdown(null)
       console.log('Day phase started, alive players:', data.alivePlayers)
       setMessage(null) // Clear any old messages
+      
+      // Update stored reconnection data with new game state
+      if (reconnectToken && playerId) {
+        saveReconnectionData({
+          reconnectToken: reconnectToken,
+          playerId: playerId,
+          playerName: playerName,
+          roomId: roomId,
+          gameState: GAME_STATES.DAY_PHASE
+        })
+      }
     })
 
     // Listen for accusation updates
@@ -240,6 +530,19 @@ function JoinRoom() {
       setError(data.message)
       setIsJoining(false)
       setMessage(null) // Clear any old messages
+      
+      // Clear reconnection data on certain errors
+      if (data.message.includes('not found') || data.message.includes('Invalid reconnect token') || data.message.includes('Player not found')) {
+        console.log('Clearing reconnection data due to error:', data.message)
+        clearReconnectionData()
+        setIsReconnecting(false)
+        setIsWaiting(false)
+        // Reset to allow normal joining
+        setGameState('')
+        setPlayerId('')
+        setPlayerName('')
+        setReconnectToken('')
+      }
     })
 
     // Listen for game end
@@ -248,6 +551,9 @@ function JoinRoom() {
       setGameEndData(data)
       setGameState(GAME_STATES.ENDED)
       setMessage(null) // Clear any old messages
+      
+      // Clear reconnection data when game ends
+      clearReconnectionData()
     })
 
     // Listen for room info
@@ -1023,22 +1329,104 @@ function JoinRoom() {
       <div className="waiting-container">
         <div className="waiting-content">
           <div className="spinner"></div>
-          <h2>You're in the game!</h2>
-          <p>Room: <strong>{roomId}</strong></p>
-          <p>Waiting for the host to start the game...</p>
-          <div className="player-info">
-            <span className="player-name">Playing as: {playerName}</span>
-          </div>
+          {isReconnecting ? (
+            <>
+              <h2>Reconnecting...</h2>
+              <p>Room: <strong>{roomId}</strong></p>
+              <p>Attempting to restore your game session...</p>
+              <div className="reconnect-info">
+                <span className="reconnect-status">
+                  Attempt {reconnectAttempts}/{CONNECTION_CONFIG.MAX_RECONNECT_ATTEMPTS}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2>You're in the game!</h2>
+              <p>Room: <strong>{roomId}</strong></p>
+              <p>Waiting for the host to start the game...</p>
+              <div className="player-info">
+                <span className="player-name">Playing as: {playerName}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
   }
 
+  // Manual reconnect function for button
+  const handleManualReconnect = () => {
+    if (socket && roomId) {
+      const storedReconnectData = loadReconnectionData()
+      if (storedReconnectData && storedReconnectData.reconnectToken) {
+        console.log('Manual reconnection attempt')
+        setIsReconnecting(true)
+        setReconnectAttempts(0)
+        socket.emit(SOCKET_EVENTS.PLAYER_RECONNECT, {
+          roomId: roomId,
+          reconnectToken: storedReconnectData.reconnectToken
+        })
+      } else {
+        setError('No reconnection data available. Please refresh and rejoin.')
+      }
+    }
+  }
+
   // Show join form
   return (
-    <div className="join-container">
-      <div className="join-content">
-        <h1>Join Game</h1>
+    <div className="app-wrapper">
+      {/* Connection Status Indicator */}
+      {connectionStatus !== 'connected' && (
+        <div className={`connection-status ${connectionStatus}`}>
+          {connectionStatus === 'connecting' && '🔄 Connecting...'}
+          {connectionStatus === 'disconnected' && !isReconnecting && (
+            <div>
+              🔴 Disconnected 
+              {loadReconnectionData() && (
+                <button 
+                  onClick={handleManualReconnect}
+                  style={{
+                    marginLeft: '10px',
+                    padding: '4px 8px',
+                    fontSize: '12px',
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Reconnect
+                </button>
+              )}
+            </div>
+          )}
+          {isReconnecting && `🔄 Reconnecting... (${reconnectAttempts}/${CONNECTION_CONFIG.MAX_RECONNECT_ATTEMPTS})`}
+        </div>
+      )}
+      
+      {/* Game Pause Overlay */}
+      {gamePaused && (
+        <div className="game-pause-overlay">
+          <div className="pause-content">
+            <h2>⏸️ Game Paused</h2>
+            <p>{pauseReason}</p>
+            <p>Waiting for players to reconnect...</p>
+          </div>
+        </div>
+      )}
+      
+      {/* Message Display */}
+      {message && (
+        <div className={`message ${message.type}`}>
+          {message.text}
+        </div>
+      )}
+      
+      <div className="join-container">
+        <div className="join-content">
+          <h1>Join Game</h1>
         <p className="room-info">Room: <strong>{roomId}</strong></p>
         {gameType && (
           <p className="game-type-info">Game Type: <strong>{gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'}</strong></p>
@@ -1119,6 +1507,7 @@ function JoinRoom() {
           </button>
         </form>
       </div>
+    </div>
     </div>
   )
 }

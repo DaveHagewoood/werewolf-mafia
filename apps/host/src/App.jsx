@@ -21,6 +21,7 @@ function GameLobby() {
   const [selectedGameType, setSelectedGameType] = useState(null)
   const [imagesLoaded, setImagesLoaded] = useState(false)
   const [supportsWebP, setSupportsWebP] = useState(false)
+  const [showDebugLinks, setShowDebugLinks] = useState(false)
 
   // Player app URL - updated to use serveo tunnel
   const PLAYER_APP_URL = 'https://werewolf-player.serveo.net'
@@ -188,6 +189,31 @@ function GameLobby() {
       setGameState(GAME_STATES.LOBBY)
     })
 
+    // Listen for game pause/resume events
+    hostSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
+      console.log('Game paused:', data.reason)
+      setMessage({ 
+        type: 'warning', 
+        text: `Game paused: ${data.reason}. ${data.connectedPlayers}/${data.totalPlayers} players connected.` 
+      })
+    })
+
+    hostSocket.on(SOCKET_EVENTS.GAME_RESUMED, () => {
+      console.log('Game resumed')
+      setMessage({ type: 'success', text: 'Game resumed! All players reconnected.' })
+      setTimeout(() => setMessage(null), 3000)
+    })
+
+    // Listen for player disconnections
+    hostSocket.on(SOCKET_EVENTS.PLAYER_DISCONNECTED, (data) => {
+      console.log('Player disconnected:', data.playerName)
+      setMessage({ 
+        type: 'warning', 
+        text: `${data.playerName} disconnected. They have ${Math.floor(data.reconnectTimeLeft / 1000)}s to reconnect.` 
+      })
+      setTimeout(() => setMessage(null), 5000)
+    })
+
     // Listen for errors
     hostSocket.on('error', (error) => {
       console.error('Socket error:', error.message)
@@ -211,6 +237,48 @@ function GameLobby() {
     }
   }, [eliminationCountdown])
 
+  // Update disconnection timers during role assignment
+  useEffect(() => {
+    if (gameState === GAME_STATES.ROLE_ASSIGNMENT && playerReadiness.some(p => !p.connected)) {
+      const timer = setInterval(() => {
+        // Request updated readiness data from server to get fresh timers
+        if (socket && roomId) {
+          socket.emit('request-readiness-update', { roomId })
+        }
+      }, 1000)
+      
+      return () => clearInterval(timer)
+    }
+  }, [gameState, playerReadiness, socket, roomId])
+
+  // Update disconnection timers during active gameplay phases
+  useEffect(() => {
+    let timer
+    
+    if ((gameState === GAME_STATES.NIGHT_PHASE || gameState === GAME_STATES.DAY_PHASE)) {
+      // Check if any players are disconnected
+      const hasDisconnectedPlayers = players.some(p => !p.connected)
+      
+      if (hasDisconnectedPlayers) {
+        console.log('Starting timer updates for disconnected players during', gameState)
+        timer = setInterval(() => {
+          // Request updated player data from server to get fresh timers
+          if (socket && roomId) {
+            console.log('Requesting player update for timer refresh')
+            socket.emit('request-player-update', { roomId })
+          }
+        }, 1000)
+      }
+    }
+    
+    return () => {
+      if (timer) {
+        console.log('Clearing disconnection timer updates')
+        clearInterval(timer)
+      }
+    }
+  }, [gameState, players.map(p => p.connected).join(','), socket, roomId]) // Use connection status as dependency
+
   const handleStartGame = () => {
     if (canStartGame && socket) {
       socket.emit(SOCKET_EVENTS.GAME_START, { roomId })
@@ -223,12 +291,39 @@ function GameLobby() {
     const playerNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve']
     const baseUrl = 'https://werewolf-player.serveo.net'
     
+    setShowDebugLinks(true)
+    
+    // Try to open tabs with user interaction context
     playerNames.forEach((name, index) => {
       const url = `${baseUrl}/join/${roomId}?playerName=${name}&autoJoin=true`
-      setTimeout(() => {
-        window.open(url, `_blank_player_${index}`)
-        console.log(`Opening tab for ${name}: ${url}`)
-      }, index * 300) // Stagger for 5 players
+      
+      // First two tabs: open immediately (usually allowed)
+      if (index < 2) {
+        setTimeout(() => {
+          const opened = window.open(url, `_blank_player_${index}`)
+          if (opened) {
+            console.log(`✓ Opened tab for ${name}`)
+          } else {
+            console.log(`✗ Failed to open tab for ${name} - check pop-up blocker`)
+          }
+        }, index * 50)
+      } else {
+        // Remaining tabs: try with longer delays (might work if browser is lenient)
+        setTimeout(() => {
+          const opened = window.open(url, `_blank_player_${index}`)
+          if (opened) {
+            console.log(`✓ Opened tab for ${name}`)
+          } else {
+            console.log(`✗ Pop-up blocked for ${name}. Use the links below.`)
+          }
+        }, 500 + (index * 200))
+      }
+    })
+    
+    console.log('=== If some tabs were blocked, use these URLs ===')
+    playerNames.forEach(name => {
+      const url = `${baseUrl}/join/${roomId}?playerName=${name}&autoJoin=true`
+      console.log(`${name}: ${url}`)
     })
   }
 
@@ -420,6 +515,26 @@ function GameLobby() {
                       <p>No accusations yet. Players are still discussing...</p>
                     </div>
                   )}
+                  
+                  {/* Show disconnected players during day phase */}
+                  {players.some(p => !p.connected) && (
+                    <div className="day-disconnections">
+                      <h4>⚠️ Disconnected Players</h4>
+                      {players.filter(p => !p.connected).map(player => (
+                        <div key={player.id} className="day-disconnected-player">
+                          <span className="player-name">{player.name}</span>
+                          <span className="disconnection-status">
+                            {player.disconnectionInfo 
+                              ? `${player.disconnectionInfo.timeLeft}s to reconnect`
+                              : 'Disconnected'}
+                          </span>
+                        </div>
+                      ))}
+                      <p className="disconnection-note">
+                        Disconnected players cannot vote or be voted for
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -478,6 +593,36 @@ function GameLobby() {
             <div className="night-progress">
               <div className="night-spinner"></div>
               <p>Mafia is selecting their target...</p>
+              
+              {/* Show game pause status or disconnected players during night phase */}
+              {players.some(p => !p.connected) && (
+                <div className="night-disconnections">
+                  <h4>⚠️ Game Paused - Players Disconnected</h4>
+                  {players.filter(p => !p.connected).map(player => (
+                    <div key={player.id} className="night-disconnected-player">
+                      <span className="player-name">{player.name}</span>
+                      <span className="disconnection-status">
+                        {player.disconnectionInfo 
+                          ? `${player.disconnectionInfo.timeLeft}s to reconnect`
+                          : 'Disconnected'}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="disconnection-explanation">
+                    <p className="disconnection-note">
+                      <strong>🛑 Night phase is PAUSED</strong>
+                    </p>
+                    <ul className="pause-explanation-list">
+                      <li>🔹 Game will wait for disconnected players to return</li>
+                      <li>🔹 No actions will be skipped automatically</li>
+                      <li>🔹 If players don't reconnect in time, the game will be invalidated</li>
+                    </ul>
+                    <p className="disconnection-note">
+                      All players must be connected for the night phase to continue
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -502,14 +647,27 @@ function GameLobby() {
             <>
               <div className="readiness-list">
                 {playerReadiness.map((player) => (
-                  <div key={player.id} className="readiness-item">
+                  <div key={player.id} className={`readiness-item ${!player.connected ? 'disconnected' : ''}`}>
                     <span className="readiness-status">
-                      {player.ready ? '✅' : '⏳'}
+                      {!player.connected ? '🔴' : player.ready ? '✅' : '⏳'}
                     </span>
-                    <span className="player-name">{player.name}</span>
-                    <span className="ready-text">
-                      {player.ready ? 'Ready' : 'Reviewing role...'}
-                    </span>
+                    <div className="player-info">
+                      <span className="player-name">{player.name}</span>
+                      <span className="ready-text">
+                        {!player.connected 
+                          ? player.disconnectionInfo 
+                            ? `Disconnected - ${player.disconnectionInfo.timeLeft}s to reconnect`
+                            : 'Disconnected'
+                          : player.ready 
+                            ? 'Ready' 
+                            : 'Reviewing role...'}
+                      </span>
+                      {!player.connected && player.disconnectionInfo && (
+                        <div className="disconnection-warning">
+                          ⚠️ Game will end if {player.name} doesn't reconnect in {player.disconnectionInfo.timeLeft}s
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -557,6 +715,13 @@ function GameLobby() {
   // Default lobby view
   return (
     <div className="lobby-container">
+      {/* Message Display */}
+      {message && (
+        <div className={`message ${message.type}`}>
+          {message.text}
+        </div>
+      )}
+      
       <div className="lobby-header">
         <h1>{selectedGameType === 'mafia' ? '🕴️ Mafia' : '🐺 Werewolf'}</h1>
         <h2>Room Code: {roomId}</h2>
@@ -583,7 +748,7 @@ function GameLobby() {
               <p className="no-players">Waiting for players to join...</p>
             ) : (
               players.map((player, index) => (
-                <div key={player.id} className="player-item">
+                <div key={player.id} className={`player-item ${!player.connected ? 'player-disconnected' : ''}`}>
                   <span className="player-number">{index + 1}.</span>
                   {player.profileImage && selectedGameType && (
                     <div className="player-avatar">
@@ -599,7 +764,12 @@ function GameLobby() {
                       />
                     </div>
                   )}
-                  <span className="player-name">{player.name}</span>
+                  <div className="player-details">
+                    <span className="player-name">{player.name}</span>
+                    {!player.connected && (
+                      <span className="player-disconnection-note">Disconnected - attempting reconnection...</span>
+                    )}
+                  </div>
                   <span className={`player-status ${player.connected ? 'connected' : 'disconnected'}`}>
                     {player.connected ? '🟢' : '🔴'}
                   </span>
@@ -620,12 +790,43 @@ function GameLobby() {
           
           {/* Debug: Auto-fill players for testing */}
           {players.length < GAME_CONFIG.MIN_PLAYERS && (
-            <button 
-              className="auto-fill-btn" 
-              onClick={autoFillPlayers}
-            >
-              🚀 Auto-fill 5 Players
-            </button>
+            <>
+              <button 
+                className="auto-fill-btn" 
+                onClick={autoFillPlayers}
+              >
+                🚀 Auto-fill 5 Players
+              </button>
+              
+              {showDebugLinks && (
+                <div className="debug-links">
+                  <h4>Debug Player Links (if pop-ups were blocked):</h4>
+                  <div className="debug-links-list">
+                    {['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'].map(name => {
+                      const url = `${PLAYER_APP_URL}/join/${roomId}?playerName=${name}&autoJoin=true`
+                      return (
+                        <div key={name} className="debug-link-item">
+                          <span className="player-debug-name">{name}:</span>
+                          <a 
+                            href={url} 
+                            target={`_blank_player_${name}`}
+                            className="debug-link"
+                          >
+                            Join as {name}
+                          </a>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button 
+                    className="hide-debug-btn" 
+                    onClick={() => setShowDebugLinks(false)}
+                  >
+                    Hide Links
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

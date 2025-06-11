@@ -1,5 +1,5 @@
 # stop-tunnels.ps1
-Write-Host "🛑 Stopping SSH tunnels..." -ForegroundColor Red
+Write-Host "STOP: Stopping SSH tunnels..." -ForegroundColor Red
 
 # Kill all SSH processes
 $sshProcesses = Get-Process | Where-Object {$_.ProcessName -eq "ssh"}
@@ -7,16 +7,23 @@ $sshProcesses = Get-Process | Where-Object {$_.ProcessName -eq "ssh"}
 if ($sshProcesses) {
     Write-Host "Found $($sshProcesses.Count) SSH process(es). Stopping..." -ForegroundColor Yellow
     $sshProcesses | Stop-Process -Force
-    Write-Host "✅ All SSH tunnels stopped!" -ForegroundColor Green
+    Write-Host "SUCCESS: All SSH tunnels stopped!" -ForegroundColor Green
 } else {
-    Write-Host "ℹ️ No SSH tunnels were running." -ForegroundColor Gray
+    Write-Host "INFO: No SSH tunnels were running." -ForegroundColor Gray
 }
 
-# Also close any PowerShell windows with tunnel titles (optional cleanup)
-$tunnelWindows = Get-Process | Where-Object {$_.MainWindowTitle -like "*Tunnel*"}
-if ($tunnelWindows) {
-    Write-Host "Closing tunnel windows..." -ForegroundColor Yellow
-    $tunnelWindows | Stop-Process -Force
+# More targeted cleanup - only kill PowerShell processes that are specifically tunnel-related
+# and NOT running inside IDEs like Cursor, VS Code, etc.
+$tunnelPowershells = Get-Process powershell -ErrorAction SilentlyContinue | Where-Object {
+    $_.MainWindowTitle -like "*SSH Tunnel*" -or 
+    $_.MainWindowTitle -like "*Port Forward*" -or
+    ($_.MainWindowTitle -like "*Tunnel*" -and $_.MainWindowTitle -notlike "*Cursor*" -and $_.MainWindowTitle -notlike "*VS Code*")
 }
 
-Write-Host "🏁 Cleanup complete!" -ForegroundColor Green 
+if ($tunnelPowershells) {
+    Write-Host "Found $($tunnelPowershells.Count) tunnel-specific PowerShell window(s). Closing..." -ForegroundColor Yellow
+    $tunnelPowershells | Stop-Process -Force
+    Write-Host "Closed tunnel-specific PowerShell windows." -ForegroundColor Green
+}
+
+Write-Host "DONE: Cleanup complete!" -ForegroundColor Green 

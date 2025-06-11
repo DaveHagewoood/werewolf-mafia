@@ -34,6 +34,15 @@ export const SOCKET_EVENTS = {
   PROFILE_IMAGE_SELECTED: 'profile-image-selected',
   GET_ROOM_INFO: 'get-room-info',
   ROOM_INFO: 'room-info',
+  // Connection management
+  PLAYER_RECONNECT: 'player-reconnect',
+  PLAYER_RECONNECTED: 'player-reconnected',
+  PLAYER_DISCONNECTED: 'player-disconnected',
+  CONNECTION_STATUS: 'connection-status',
+  HEARTBEAT: 'heartbeat',
+  HEARTBEAT_RESPONSE: 'heartbeat-response',
+  GAME_PAUSED: 'game-paused',
+  GAME_RESUMED: 'game-resumed',
   DISCONNECT: 'disconnect'
 }
 

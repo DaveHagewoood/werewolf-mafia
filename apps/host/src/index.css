@@ -304,6 +304,27 @@ body {
   font-size: 1.2rem;
 }
 
+/* Player disconnection styles for lobby */
+.player-item.player-disconnected {
+  background: #fff5f5;
+  border-left: 3px solid #e53e3e;
+  animation: pulse-warning 2s infinite;
+}
+
+.player-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.player-disconnection-note {
+  font-size: 0.75rem;
+  color: #e53e3e;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
 .game-controls {
   grid-column: 1 / -1;
   text-align: center;
@@ -358,6 +379,86 @@ body {
   background: linear-gradient(135deg, #059669, #047857);
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+}
+
+/* Debug links styling */
+.debug-links {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border: 2px dashed #6c757d;
+  border-radius: 12px;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.debug-links h4 {
+  margin: 0 0 15px 0;
+  color: #495057;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.debug-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+
+.debug-link-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.player-debug-name {
+  font-weight: 600;
+  color: #495057;
+  min-width: 50px;
+}
+
+.debug-link {
+  flex: 1;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.debug-link:hover {
+  background: linear-gradient(135deg, #0056b3, #004085);
+  transform: translateY(-1px);
+  text-decoration: none;
+  color: white;
+}
+
+.hide-debug-btn {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: block;
+  margin: 0 auto;
+  transition: all 0.2s ease;
+}
+
+.hide-debug-btn:hover {
+  background: #545b62;
+  transform: translateY(-1px);
 }
 
 /* Waiting for players to confirm roles screen */
@@ -431,17 +532,49 @@ body {
   margin-bottom: 0;
 }
 
+.readiness-item.disconnected {
+  background: #fff5f5;
+  border-left: 4px solid #e53e3e;
+  animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 .readiness-status {
   font-size: 1.5rem;
   margin-right: 15px;
   min-width: 30px;
 }
 
-.player-name {
+.player-info {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.player-name {
   font-weight: 600;
   color: #333;
-  text-align: left;
+  margin-bottom: 4px;
+}
+
+.disconnected .player-name {
+  color: #e53e3e;
+}
+
+.disconnection-warning {
+  font-size: 0.8rem;
+  color: #e53e3e;
+  font-weight: 500;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(229, 62, 62, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(229, 62, 62, 0.2);
 }
 
 .ready-text {
@@ -657,6 +790,76 @@ body {
   font-style: italic;
 }
 
+/* Night phase disconnection indicators */
+.night-disconnections {
+  margin: 30px 0;
+  padding: 20px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 2px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  color: white;
+}
+
+.night-disconnections h4 {
+  color: #ef4444;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
+}
+
+.night-disconnected-player {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  border-left: 3px solid #ef4444;
+}
+
+.night-disconnected-player:last-child {
+  margin-bottom: 0;
+}
+
+.night-disconnected-player .player-name {
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.night-disconnected-player .disconnection-status {
+  font-size: 0.9rem;
+  color: #fca5a5;
+}
+
+.night-disconnections .disconnection-note {
+  margin-top: 15px;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+  font-style: italic;
+  text-align: center;
+}
+
+.disconnection-explanation {
+  margin-top: 15px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.auto-skip-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  text-align: left;
+}
+
+.auto-skip-list li {
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+
 .night-result {
   margin: 40px 0;
 }
@@ -853,6 +1056,54 @@ body {
   color: #9ca3af;
   font-style: italic;
   font-size: 1rem;
+}
+
+/* Day phase disconnection indicators */
+.day-disconnections {
+  margin: 20px 0;
+  padding: 15px;
+  background: rgba(239, 68, 68, 0.05);
+  border: 2px solid rgba(239, 68, 68, 0.2);
+  border-radius: 10px;
+}
+
+.day-disconnections h4 {
+  color: #ef4444;
+  margin-bottom: 12px;
+  font-size: 1rem;
+}
+
+.day-disconnected-player {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: 5px;
+  border-left: 3px solid #ef4444;
+}
+
+.day-disconnected-player:last-child {
+  margin-bottom: 0;
+}
+
+.day-disconnected-player .player-name {
+  font-weight: 600;
+  color: #ef4444;
+}
+
+.day-disconnected-player .disconnection-status {
+  font-size: 0.85rem;
+  color: #dc2626;
+}
+
+.day-disconnections .disconnection-note {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+  text-align: center;
 }
 
 .countdown-display {

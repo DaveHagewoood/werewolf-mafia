@@ -49,6 +49,8 @@ function getRoom(roomId) {
       seerInvestigatedPlayerId: null, // Seer's investigation target
       accusations: new Map(), // accusedPlayerId -> Set of voterPlayerIds
       eliminationCountdown: null, // Timer for elimination countdown
+      gamePaused: false, // Whether game is paused due to disconnections
+      pauseReason: null, // Reason for game pause  
       createdAt: new Date()
     })
   }
@@ -134,15 +136,44 @@ function checkMafiaVoteConsensus(room) {
   return allSameTarget ? firstVote : null
 }
 
+// Helper function to check night phase progression when players disconnect
+function checkNightPhaseProgression(room, roomId) {
+  console.log(`Checking night phase progression in room ${roomId}`)
+  
+  // Check connected players
+  const connectedPercentage = getConnectedPlayerPercentage(roomId)
+  const shouldPause = connectedPercentage < CONNECTION_CONFIG.MIN_CONNECTED_PERCENTAGE
+  
+  console.log(`Connected percentage: ${connectedPercentage}, should pause: ${shouldPause}`)
+  
+  if (shouldPause && !room.gamePaused) {
+    // Pause the game due to disconnections
+    pauseGame(roomId, 'Key players disconnected during night phase')
+    console.log(`Game paused in room ${roomId} due to night phase disconnections`)
+  } else if (!shouldPause && room.gamePaused) {
+    // Resume the game if enough players reconnected
+    resumeGame(roomId)
+    console.log(`Game resumed in room ${roomId} - players reconnected`)
+  }
+  
+  // Don't auto-skip actions - wait for players to reconnect or game to be invalidated
+}
+
 // Helper function to check if night phase is complete
 function checkNightCompletion(room, roomId) {
+  // If game is paused due to disconnections, don't check completion
+  if (room.gamePaused) {
+    console.log(`Night completion check skipped - game is paused in room ${roomId}`)
+    return
+  }
+  
   const mafiaPlayers = getMafiaPlayers(room)
   const doctorPlayers = getDoctorPlayers(room, roomId)
   const seerPlayers = getSeerPlayers(room, roomId)
   
   // Check if Mafia action is complete (consensus reached and timer expired)
   const mafiaTarget = checkMafiaVoteConsensus(room)
-  const mafiaActionComplete = mafiaTarget && !room.voteConsensusTimer
+  const mafiaActionComplete = mafiaPlayers.length === 0 || (mafiaTarget && !room.voteConsensusTimer) || room.mafiaVotesLocked
   
   // Check if Doctor action is complete (no doctor or doctor has acted)
   const doctorActionComplete = doctorPlayers.length === 0 || room.healedPlayerId !== null
@@ -499,8 +530,32 @@ function startConsensusTimer(room, roomId) {
 // Helper function to broadcast player updates to room
 function broadcastPlayersUpdate(roomId) {
   const room = getRoom(roomId)
+  const now = Date.now()
+  
+  // Add disconnection info to players
+  const playersWithConnectionInfo = room.players.map(player => {
+    const connectionData = playerConnections.get(player.id)
+    let disconnectionInfo = null
+    
+    if (!player.connected && connectionData && connectionData.disconnectedAt) {
+      const disconnectedFor = now - connectionData.disconnectedAt
+      const timeLeft = Math.max(0, CONNECTION_CONFIG.RECONNECT_GRACE_PERIOD - disconnectedFor)
+      
+      disconnectionInfo = {
+        disconnectedFor: Math.floor(disconnectedFor / 1000),
+        timeLeft: Math.floor(timeLeft / 1000),
+        hasExpired: timeLeft <= 0
+      }
+    }
+    
+    return {
+      ...player,
+      disconnectionInfo: disconnectionInfo
+    }
+  })
+  
   const updateData = {
-    players: room.players,
+    players: playersWithConnectionInfo,
     canStart: room.players.length >= GAME_CONFIG.MIN_PLAYERS && room.gameState === GAME_STATES.LOBBY
   }
   
@@ -510,11 +565,31 @@ function broadcastPlayersUpdate(roomId) {
 // Helper function to broadcast readiness updates to host
 function broadcastReadinessUpdate(roomId) {
   const room = getRoom(roomId)
-  const readinessData = room.players.map(player => ({
-    id: player.id,
-    name: player.name,
-    ready: room.playerReadiness.get(player.id) || false
-  }))
+  const now = Date.now()
+  
+  const readinessData = room.players.map(player => {
+    const connectionData = playerConnections.get(player.id)
+    let disconnectionInfo = null
+    
+    if (!player.connected && connectionData && connectionData.disconnectedAt) {
+      const disconnectedFor = now - connectionData.disconnectedAt
+      const timeLeft = Math.max(0, CONNECTION_CONFIG.RECONNECT_GRACE_PERIOD - disconnectedFor)
+      
+      disconnectionInfo = {
+        disconnectedFor: Math.floor(disconnectedFor / 1000),
+        timeLeft: Math.floor(timeLeft / 1000),
+        hasExpired: timeLeft <= 0
+      }
+    }
+    
+    return {
+      id: player.id,
+      name: player.name,
+      ready: room.playerReadiness.get(player.id) || false,
+      connected: player.connected,
+      disconnectionInfo: disconnectionInfo
+    }
+  })
   
   // Send to host only
   const hostSocket = io.sockets.sockets.get(room.host)
@@ -522,6 +597,255 @@ function broadcastReadinessUpdate(roomId) {
     hostSocket.emit(SOCKET_EVENTS.READINESS_UPDATE, { players: readinessData })
   }
 }
+
+// ===================== CONNECTION MANAGEMENT SYSTEM =====================
+
+// Store player connection data
+const playerConnections = new Map() // playerId -> { lastHeartbeat, disconnectedAt, reconnectToken }
+const reconnectTokens = new Map() // reconnectToken -> { playerId, roomId, playerName }
+
+// Connection configuration
+const CONNECTION_CONFIG = {
+  HEARTBEAT_INTERVAL: 10000, // 10 seconds
+  HEARTBEAT_TIMEOUT: 25000,  // 25 seconds - mobile-friendly timeout
+  RECONNECT_GRACE_PERIOD: 120000, // 2 minutes to reconnect
+  MIN_CONNECTED_PERCENTAGE: 0.6 // 60% of players must be connected to continue game
+}
+
+// Generate reconnect token
+function generateReconnectToken() {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36)
+}
+
+// Initialize connection tracking for a player
+function initializePlayerConnection(playerId, roomId, playerName) {
+  const reconnectToken = generateReconnectToken()
+  
+  playerConnections.set(playerId, {
+    lastHeartbeat: Date.now(),
+    disconnectedAt: null,
+    reconnectToken: reconnectToken,
+    roomId: roomId,
+    playerName: playerName
+  })
+  
+  reconnectTokens.set(reconnectToken, {
+    playerId: playerId,
+    roomId: roomId,
+    playerName: playerName
+  })
+  
+  return reconnectToken
+}
+
+// Update connection status for a player
+function updatePlayerConnection(playerId, isConnected) {
+  const connectionData = playerConnections.get(playerId)
+  if (!connectionData) return
+  
+  const room = getRoom(connectionData.roomId)
+  const player = room.players.find(p => p.id === playerId)
+  
+  if (player) {
+    player.connected = isConnected
+    if (isConnected) {
+      connectionData.lastHeartbeat = Date.now()
+      connectionData.disconnectedAt = null
+    } else {
+      connectionData.disconnectedAt = Date.now()
+    }
+    
+    // Broadcast updated player list
+    broadcastPlayersUpdate(connectionData.roomId)
+    
+    // Check if game should be paused/resumed
+    checkGameStateAfterConnectionChange(connectionData.roomId)
+  }
+}
+
+// Check if player connection is alive
+function isPlayerConnectionAlive(playerId) {
+  const connectionData = playerConnections.get(playerId)
+  if (!connectionData) return false
+  
+  const now = Date.now()
+  const timeSinceHeartbeat = now - connectionData.lastHeartbeat
+  
+  return timeSinceHeartbeat < CONNECTION_CONFIG.HEARTBEAT_TIMEOUT
+}
+
+// Get connected player percentage for a room
+function getConnectedPlayerPercentage(roomId) {
+  const room = getRoom(roomId)
+  if (room.players.length === 0) return 1
+  
+  const connectedCount = room.players.filter(p => p.connected).length
+  return connectedCount / room.players.length
+}
+
+// Check if game should be paused or resumed based on connections
+function checkGameStateAfterConnectionChange(roomId) {
+  const room = getRoom(roomId)
+  
+  // Only check during active game phases
+  if (room.gameState === GAME_STATES.LOBBY || room.gameState === GAME_STATES.ENDED) {
+    return
+  }
+  
+  const connectedPercentage = getConnectedPlayerPercentage(roomId)
+  const shouldPause = connectedPercentage < CONNECTION_CONFIG.MIN_CONNECTED_PERCENTAGE
+  
+  if (shouldPause && !room.gamePaused) {
+    pauseGame(roomId, 'Too many players disconnected')
+  } else if (!shouldPause && room.gamePaused) {
+    resumeGame(roomId)
+  }
+}
+
+// Pause the game
+function pauseGame(roomId, reason) {
+  const room = getRoom(roomId)
+  room.gamePaused = true
+  room.pauseReason = reason
+  
+  // Clear any active timers
+  if (room.eliminationCountdown) {
+    clearTimeout(room.eliminationCountdown)
+    room.eliminationCountdown = null
+  }
+  if (room.voteConsensusTimer) {
+    clearTimeout(room.voteConsensusTimer)
+    room.voteConsensusTimer = null
+  }
+  
+  // Notify all clients
+  io.to(roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
+    reason: reason,
+    connectedPlayers: room.players.filter(p => p.connected).length,
+    totalPlayers: room.players.length
+  })
+  
+  console.log(`Game paused in room ${roomId}: ${reason}`)
+}
+
+// Resume the game
+function resumeGame(roomId) {
+  const room = getRoom(roomId)
+  room.gamePaused = false
+  room.pauseReason = null
+  
+  // Notify all clients
+  io.to(roomId).emit(SOCKET_EVENTS.GAME_RESUMED)
+  
+  console.log(`Game resumed in room ${roomId}`)
+}
+
+// Clean up expired reconnect tokens and disconnect players
+function cleanupExpiredConnections() {
+  const now = Date.now()
+  
+  for (const [playerId, connectionData] of playerConnections.entries()) {
+    if (connectionData.disconnectedAt) {
+      const disconnectedFor = now - connectionData.disconnectedAt
+      
+      if (disconnectedFor > CONNECTION_CONFIG.RECONNECT_GRACE_PERIOD) {
+        // Remove player from game after grace period
+        const room = getRoom(connectionData.roomId)
+        removePlayerFromGame(room, playerId, connectionData.roomId)
+        
+        // Clean up connection data
+        reconnectTokens.delete(connectionData.reconnectToken)
+        playerConnections.delete(playerId)
+        
+        console.log(`Removed player ${connectionData.playerName} from room ${connectionData.roomId} after grace period`)
+      }
+    }
+  }
+}
+
+// Remove player from game completely
+function removePlayerFromGame(room, playerId, roomId) {
+  const playerIndex = room.players.findIndex(p => p.id === playerId)
+  if (playerIndex !== -1) {
+    const removedPlayer = room.players.splice(playerIndex, 1)[0]
+    
+    // Clean up all player data
+    room.playerRoles.delete(playerId)
+    room.playerReadiness.delete(playerId)
+    room.alivePlayers.delete(playerId)
+    room.mafiaVotes.delete(playerId)
+    
+    // Remove from accusations
+    room.accusations.forEach((accusers, accusedId) => {
+      accusers.delete(playerId)
+      if (accusers.size === 0) {
+        room.accusations.delete(accusedId)
+      }
+    })
+    room.accusations.delete(playerId)
+    
+    console.log(`Completely removed player ${removedPlayer.name} from room ${roomId}`)
+    
+    // Broadcast updated player list
+    broadcastPlayersUpdate(roomId)
+    
+    // If game is active, end it due to player abandonment
+    if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
+      console.log(`Ending game in room ${roomId} due to player abandonment: ${removedPlayer.name}`)
+      
+      room.gameState = GAME_STATES.ENDED
+      
+      const gameEndData = {
+        winner: null,
+        winCondition: `Game ended - ${removedPlayer.name} left and could not reconnect`,
+        alivePlayers: room.players.filter(p => room.alivePlayers.has(p.id)).map(player => ({
+          id: player.id,
+          name: player.name,
+          role: room.playerRoles.get(player.id)
+        })),
+        allPlayers: room.players.map(player => ({
+          id: player.id,
+          name: player.name,
+          role: room.playerRoles.get(player.id),
+          alive: room.alivePlayers.has(player.id)
+        })),
+        roomId: roomId
+      }
+      
+      // Send game end event to all players
+      io.to(roomId).emit(SOCKET_EVENTS.GAME_END, gameEndData)
+      
+      return // Don't check other conditions
+    }
+    
+    // Check if game should be paused/resumed (only in lobby)
+    checkGameStateAfterConnectionChange(roomId)
+  }
+}
+
+// Start heartbeat system
+function startHeartbeatSystem() {
+  setInterval(() => {
+    // Check all player connections
+    for (const [playerId, connectionData] of playerConnections.entries()) {
+      if (!isPlayerConnectionAlive(playerId) && connectionData.disconnectedAt === null) {
+        // Mark as disconnected
+        updatePlayerConnection(playerId, false)
+        console.log(`Player ${connectionData.playerName} heartbeat timeout`)
+      }
+    }
+    
+    // Clean up expired connections
+    cleanupExpiredConnections()
+  }, CONNECTION_CONFIG.HEARTBEAT_INTERVAL)
+  
+  console.log('Heartbeat system started')
+}
+
+// Start the heartbeat system
+startHeartbeatSystem()
+
+// ===================== END CONNECTION MANAGEMENT =====================
 
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`)
@@ -591,8 +915,6 @@ io.on('connection', (socket) => {
     })
   })
 
-
-
   // Player joins a room
   socket.on(SOCKET_EVENTS.PLAYER_JOIN, (data) => {
     const { playerName, roomId, profileImage } = data
@@ -654,13 +976,17 @@ io.on('connection', (socket) => {
     socket.playerName = playerName.trim()
     socket.isHost = false
 
+    // Initialize connection tracking
+    const reconnectToken = initializePlayerConnection(socket.id, roomId, playerName.trim())
+
     console.log(`Player ${playerName} joined room ${roomId}`)
 
-    // Confirm join to the player
+    // Confirm join to the player with reconnect token
     socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
       success: true, 
       playerId: socket.id,
-      playerName: playerName.trim()
+      playerName: playerName.trim(),
+      reconnectToken: reconnectToken
     })
 
     // Broadcast updated player list to room
@@ -761,8 +1087,52 @@ io.on('connection', (socket) => {
     // Broadcast updated readiness to host
     broadcastReadinessUpdate(socket.roomId)
     
-    // Check if all players are ready
-    const allReady = room.players.every(player => room.playerReadiness.get(player.id))
+    // Check if all connected players are ready
+    // During role assignment, we need ALL players (including disconnected ones) to be ready
+    // Don't auto-advance for disconnected players since they haven't seen their role yet
+    const allReady = room.players.every(player => {
+      return room.playerReadiness.get(player.id) === true
+    })
+    
+    // If there are disconnected players who haven't marked ready, check if they've been gone too long
+    const hasDisconnectedUnreadyPlayers = room.players.some(player => {
+      const isReady = room.playerReadiness.get(player.id)
+      if (isReady) return false // This player is ready, not a problem
+      
+      if (!player.connected) {
+        const connectionData = playerConnections.get(player.id)
+        if (connectionData && connectionData.disconnectedAt) {
+          const disconnectedFor = Date.now() - connectionData.disconnectedAt
+          // If disconnected for more than 60 seconds during role assignment, end the game
+          return disconnectedFor > 60000 // 60 seconds grace period for role assignment
+        }
+      }
+      
+      return false
+    })
+    
+    // If someone has been disconnected too long during role assignment, end the game
+    if (hasDisconnectedUnreadyPlayers) {
+      console.log(`Ending game in room ${socket.roomId} - player disconnected too long during role assignment`)
+      
+      room.gameState = GAME_STATES.ENDED
+      
+      const gameEndData = {
+        winner: null,
+        winCondition: `Game ended - A player disconnected during role assignment and could not return`,
+        alivePlayers: [],
+        allPlayers: room.players.map(player => ({
+          id: player.id,
+          name: player.name,
+          role: room.playerRoles.get(player.id),
+          alive: false
+        })),
+        roomId: socket.roomId
+      }
+      
+      io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_END, gameEndData)
+      return
+    }
     
     if (allReady) {
       // All players are ready, start the night phase
@@ -892,6 +1262,12 @@ io.on('connection', (socket) => {
       return
     }
 
+    // Don't process actions if game is paused
+    if (room.gamePaused) {
+      socket.emit('error', { message: 'Game is paused - waiting for disconnected players' })
+      return
+    }
+
     // Verify player is Mafia (evil alignment)
     const playerRole = room.playerRoles.get(socket.id)
     if (playerRole?.alignment !== 'evil') {
@@ -994,6 +1370,12 @@ io.on('connection', (socket) => {
       return
     }
 
+    // Don't process actions if game is paused
+    if (room.gamePaused) {
+      socket.emit('error', { message: 'Game is paused - waiting for disconnected players' })
+      return
+    }
+
     // Verify player is Doctor/Healer (protector role)
     const gameType = roomGameTypes.get(socket.roomId) || GAME_TYPES.WEREWOLF
     const roleSet = ROLE_SETS[gameType]
@@ -1044,6 +1426,13 @@ io.on('connection', (socket) => {
     if (room.gameState !== GAME_STATES.NIGHT_PHASE) {
       socket.emit('error', { message: 'Not in night phase' })
       console.log(`ERROR: Not in night phase, current state: ${room.gameState}`)
+      return
+    }
+
+    // Don't process actions if game is paused
+    if (room.gamePaused) {
+      socket.emit('error', { message: 'Game is paused - waiting for disconnected players' })
+      console.log(`ERROR: Game is paused`)
       return
     }
 
@@ -1180,6 +1569,212 @@ io.on('connection', (socket) => {
     }
   })
 
+  // ===================== CONNECTION MANAGEMENT HANDLERS =====================
+  
+  // Handle heartbeat responses
+  socket.on(SOCKET_EVENTS.HEARTBEAT_RESPONSE, () => {
+    if (playerConnections.has(socket.id)) {
+      const connectionData = playerConnections.get(socket.id)
+      connectionData.lastHeartbeat = Date.now()
+      
+      // Update connection status if was disconnected
+      if (!socket.isHost) {
+        const room = getRoom(socket.roomId)
+        const player = room?.players.find(p => p.id === socket.id)
+        if (player && !player.connected) {
+          updatePlayerConnection(socket.id, true)
+          console.log(`Player ${socket.playerName} reconnected via heartbeat`)
+        }
+      }
+    }
+  })
+  
+  // Handle player reconnection attempts
+  socket.on(SOCKET_EVENTS.PLAYER_RECONNECT, (data) => {
+    const { reconnectToken, roomId } = data
+    
+    console.log(`Reconnection attempt: token=${reconnectToken?.substring(0, 8)}..., roomId=${roomId}`)
+    
+    // Validate reconnect token
+    const tokenData = reconnectTokens.get(reconnectToken)
+    if (!tokenData || tokenData.roomId !== roomId) {
+      console.log(`Invalid reconnect token: tokenData=${!!tokenData}, roomMatch=${tokenData?.roomId === roomId}`)
+      socket.emit('error', { message: 'Invalid reconnect token - please refresh and rejoin' })
+      return
+    }
+    
+    const room = getRoom(roomId)
+    const player = room.players.find(p => p.id === tokenData.playerId)
+    
+    if (!player) {
+      console.log(`Player not found: playerId=${tokenData.playerId}, players in room=${room.players.map(p => p.id)}`)
+      socket.emit('error', { message: 'Player not found in room - please refresh and rejoin' })
+      return
+    }
+    
+    console.log(`Reconnecting player ${player.name} (${tokenData.playerId} -> ${socket.id}) in room ${roomId}, current game state: ${room.gameState}`)
+    
+    // Update socket connection
+    const oldSocketId = tokenData.playerId
+    const newSocketId = socket.id
+    
+    // Update player ID to new socket ID
+    player.id = newSocketId
+    
+    // Update room data structures
+    if (room.playerRoles.has(oldSocketId)) {
+      room.playerRoles.set(newSocketId, room.playerRoles.get(oldSocketId))
+      room.playerRoles.delete(oldSocketId)
+    }
+    if (room.playerReadiness.has(oldSocketId)) {
+      room.playerReadiness.set(newSocketId, room.playerReadiness.get(oldSocketId))
+      room.playerReadiness.delete(oldSocketId)
+    }
+    if (room.alivePlayers.has(oldSocketId)) {
+      room.alivePlayers.delete(oldSocketId)
+      room.alivePlayers.add(newSocketId)
+    }
+    if (room.mafiaVotes.has(oldSocketId)) {
+      room.mafiaVotes.set(newSocketId, room.mafiaVotes.get(oldSocketId))
+      room.mafiaVotes.delete(oldSocketId)
+    }
+    
+    // Update accusations
+    room.accusations.forEach((accusers, accusedId) => {
+      if (accusers.has(oldSocketId)) {
+        accusers.delete(oldSocketId)
+        accusers.add(newSocketId)
+      }
+    })
+    if (room.accusations.has(oldSocketId)) {
+      room.accusations.set(newSocketId, room.accusations.get(oldSocketId))
+      room.accusations.delete(oldSocketId)
+    }
+    
+    // Update connection tracking
+    const connectionData = playerConnections.get(oldSocketId)
+    if (connectionData) {
+      playerConnections.delete(oldSocketId)
+      playerConnections.set(newSocketId, {
+        ...connectionData,
+        lastHeartbeat: Date.now(),
+        disconnectedAt: null
+      })
+      
+      // Update reconnect token mapping
+      reconnectTokens.set(reconnectToken, {
+        ...tokenData,
+        playerId: newSocketId
+      })
+    }
+    
+    // Update socket properties
+    socket.join(roomId)
+    socket.roomId = roomId
+    socket.playerName = player.name
+    socket.isHost = false
+    
+    // Mark as connected
+    updatePlayerConnection(newSocketId, true)
+    
+    console.log(`Player ${player.name} reconnected to room ${roomId} (${oldSocketId} -> ${newSocketId})`)
+    
+    // Send reconnection success with current game state
+    const gameState = {
+      gameState: room.gameState,
+      playerId: newSocketId,
+      playerName: player.name,
+      isEliminated: !room.alivePlayers.has(newSocketId),
+      reconnectToken: reconnectToken
+    }
+    
+    // Add role information if game is active
+    if (room.gameState !== GAME_STATES.LOBBY) {
+      gameState.role = room.playerRoles.get(newSocketId)
+    }
+    
+    console.log(`Sending reconnection data to ${player.name}:`, gameState)
+    socket.emit(SOCKET_EVENTS.PLAYER_RECONNECTED, gameState)
+    
+    // Send current game state data based on phase
+    if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+      // For role assignment, send the role information again
+      const role = room.playerRoles.get(newSocketId)
+      if (role) {
+        socket.emit(SOCKET_EVENTS.ROLE_ASSIGNED, {
+          role: role,
+          playerName: player.name
+        })
+        console.log(`Re-sent role ${role.name} to reconnected player ${player.name}`)
+      }
+      broadcastReadinessUpdate(roomId)
+    } else if (room.gameState === GAME_STATES.NIGHT_PHASE) {
+      // Send appropriate night phase data
+      const role = room.playerRoles.get(newSocketId)
+      if (role?.alignment === 'evil') {
+        const aliveNonMafiaPlayers = getAliveNonMafiaPlayers(room)
+        socket.emit(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, {
+          targets: aliveNonMafiaPlayers.map(p => ({ id: p.id, name: p.name }))
+        })
+        broadcastMafiaVotes(room)
+      } else if (role?.name === 'Doctor' || role?.name === 'Protector') {
+        const allAlivePlayers = room.players.filter(p => room.alivePlayers.has(p.id))
+        socket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
+          targets: allAlivePlayers.map(p => ({ id: p.id, name: p.name }))
+        })
+      } else if (role?.name === 'Seer' || role?.name === 'Investigator') {
+        const allAlivePlayers = room.players.filter(p => room.alivePlayers.has(p.id) && p.id !== newSocketId)
+        socket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
+          targets: allAlivePlayers.map(p => ({ id: p.id, name: p.name }))
+        })
+      }
+    } else if (room.gameState === GAME_STATES.DAY_PHASE) {
+      const alivePlayers = room.players.filter(p => room.alivePlayers.has(p.id))
+      socket.emit(SOCKET_EVENTS.START_DAY_PHASE, { alivePlayers })
+      broadcastAccusations(room, roomId)
+    }
+    
+    // Send game paused status if applicable
+    if (room.gamePaused) {
+      socket.emit(SOCKET_EVENTS.GAME_PAUSED, {
+        reason: room.pauseReason,
+        connectedPlayers: room.players.filter(p => p.connected).length,
+        totalPlayers: room.players.length
+      })
+    }
+  })
+  
+  // Host requests updated readiness data (for live timer updates)
+  socket.on('request-readiness-update', (data) => {
+    if (!socket.isHost) {
+      return // Only hosts can request this
+    }
+    
+    const { roomId } = data
+    if (roomId) {
+      broadcastReadinessUpdate(roomId)
+    }
+  })
+
+  // Host requests updated player data (for live timer updates during gameplay)
+  socket.on('request-player-update', (data) => {
+    if (!socket.isHost) {
+      return // Only hosts can request this
+    }
+    
+    const { roomId } = data
+    if (roomId) {
+      broadcastPlayersUpdate(roomId)
+    }
+  })
+
+  // Send periodic heartbeat to all connected clients
+  setInterval(() => {
+    io.emit(SOCKET_EVENTS.HEARTBEAT)
+  }, CONNECTION_CONFIG.HEARTBEAT_INTERVAL)
+  
+  // ===================== END CONNECTION MANAGEMENT HANDLERS =====================
+
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`)
@@ -1188,30 +1783,73 @@ io.on('connection', (socket) => {
       const room = getRoom(socket.roomId)
       
       if (socket.isHost) {
-        // Host disconnected - could handle room cleanup here
+        // Host disconnected - handle room cleanup
         console.log(`Host disconnected from room ${socket.roomId}`)
+        
+        // For now, end the game if host disconnects
+        // TODO: Could implement host transfer in the future
+        if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
+          room.gameState = GAME_STATES.ENDED
+          io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_END, {
+            winner: null,
+            winCondition: 'Game ended - Host disconnected',
+            roomId: socket.roomId
+          })
+        }
       } else if (socket.playerName) {
-        // Remove player from room
-        const playerIndex = room.players.findIndex(p => p.id === socket.id)
-        if (playerIndex !== -1) {
-          const removedPlayer = room.players.splice(playerIndex, 1)[0]
-          console.log(`Player ${removedPlayer.name} left room ${socket.roomId}`)
+        // Player disconnected - mark as disconnected but don't remove immediately
+        const player = room.players.find(p => p.id === socket.id)
+        if (player) {
+          console.log(`Player ${player.name} disconnected from room ${socket.roomId} - marked for reconnection`)
           
-          // Clean up player data
-          room.playerRoles.delete(socket.id)
-          room.playerReadiness.delete(socket.id)
-          room.alivePlayers.delete(socket.id)
-          room.mafiaVotes.delete(socket.id)
+          // Mark as disconnected instead of removing
+          updatePlayerConnection(socket.id, false)
           
-          // Broadcast updated player list
-          broadcastPlayersUpdate(socket.roomId)
-          
-          // If in role assignment phase, update readiness
-          if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-            broadcastReadinessUpdate(socket.roomId)
+          // Handle disconnection based on game state
+          if (room.gameState === GAME_STATES.LOBBY) {
+            // In lobby, just remove the player immediately - no need for reconnection
+            console.log(`Removing player ${player.name} from lobby immediately`)
+            
+            const playerIndex = room.players.findIndex(p => p.id === socket.id)
+            if (playerIndex !== -1) {
+              room.players.splice(playerIndex, 1)
+            }
+            
+            // Clean up connection data immediately
+            const connectionData = playerConnections.get(socket.id)
+            if (connectionData) {
+              reconnectTokens.delete(connectionData.reconnectToken)
+              playerConnections.delete(socket.id)
+            }
+            
+            // Broadcast updated player list
+            broadcastPlayersUpdate(socket.roomId)
+          } else {
+            // In active game, mark for reconnection and notify
+            io.to(socket.roomId).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
+              playerId: socket.id,
+              playerName: player.name,
+              reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_GRACE_PERIOD
+            })
+            
+            // Update game state based on phase
+            if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+              broadcastReadinessUpdate(socket.roomId)
+            } else if (room.gameState === GAME_STATES.NIGHT_PHASE) {
+              // Check if night phase can still complete
+              checkNightPhaseProgression(room, socket.roomId)
+            } else if (room.gameState === GAME_STATES.DAY_PHASE) {
+              // Update day phase voting
+              broadcastAccusations(room, socket.roomId)
+            }
           }
         }
       }
+    }
+    
+    // Clean up connection data if not tracked (host or invalid connection)
+    if (!playerConnections.has(socket.id) && socket.isHost) {
+      // Host cleanup can happen immediately
     }
   })
 })
