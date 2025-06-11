@@ -12,7 +12,11 @@
     "dev:server": "pnpm --filter @werewolf-mafia/server dev",
     "build:host": "pnpm --filter @werewolf-mafia/host build",
     "build:player": "pnpm --filter @werewolf-mafia/player build",
-    "dev:all": "concurrently \"pnpm dev:server\" \"pnpm dev:host\" \"pnpm dev:player\""
+    "dev:all": "concurrently \"pnpm dev:server\" \"pnpm dev:host\" \"pnpm dev:player\"",
+    "tunnels:start": "powershell -ExecutionPolicy Bypass -File ./start-tunnels.ps1",
+    "tunnels:stop": "powershell -ExecutionPolicy Bypass -File ./stop-tunnels.ps1",
+    "start": "pnpm tunnels:start && pnpm dev:all",
+    "stop": "pnpm tunnels:stop"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
