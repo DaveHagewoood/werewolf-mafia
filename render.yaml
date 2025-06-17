@@ -3,7 +3,7 @@ services:
   - type: web
     name: werewolf-mafia-server
     runtime: node
-    plan: free
+    plan: pro
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile
     startCommand: cd apps/server && pnpm start
     envVars:
@@ -20,7 +20,7 @@ services:
   - type: web
     name: werewolf-mafia-host
     runtime: node
-    plan: free
+    plan: pro
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/host build
     startCommand: cd apps/host && node server.js
     envVars:
@@ -33,7 +33,7 @@ services:
   - type: web
     name: werewolf-mafia-player
     runtime: node
-    plan: free
+    plan: pro
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/player build
     startCommand: cd apps/player && node server.js
     envVars:
