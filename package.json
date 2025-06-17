@@ -2,10 +2,8 @@
   "name": "werewolf-mafia",
   "private": true,
   "version": "1.0.0",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "packageManager": "pnpm@10.11.1",
+
   "scripts": {
     "dev:host": "pnpm --filter @werewolf-mafia/host dev",
     "dev:player": "pnpm --filter @werewolf-mafia/player dev",
