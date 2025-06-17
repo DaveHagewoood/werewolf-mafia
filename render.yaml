@@ -1,10 +1,8 @@
-version: "1"
-
 services:
   # Server - Web Service (Node.js)
   - type: web
     name: werewolf-mafia-server
-    env: node
+    runtime: node
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile
     startCommand: cd apps/server && pnpm start
     envVars:
@@ -12,19 +10,18 @@ services:
         value: production
       - key: HOST_URL
         fromService:
-          type: web
+          type: static
           name: werewolf-mafia-host
           property: url
       - key: PLAYER_URL
         fromService:
-          type: web
+          type: static
           name: werewolf-mafia-player
           property: url
 
   # Host App - Static Site (React/Vite)
-  - type: web
+  - type: static
     name: werewolf-mafia-host
-    env: static
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/host build
     staticPublishPath: apps/host/dist
     envVars:
@@ -35,9 +32,8 @@ services:
           property: url
 
   # Player App - Static Site (React/Vite)  
-  - type: web
+  - type: static
     name: werewolf-mafia-player
-    env: static
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/player build
     staticPublishPath: apps/player/dist
     envVars:
