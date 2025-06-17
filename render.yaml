@@ -10,15 +10,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: HOST_URL
-        fromService:
-          type: web
-          name: werewolf-mafia-host
-          property: host
+        value: ${RENDER_EXTERNAL_HOSTNAME}
       - key: PLAYER_URL
-        fromService:
-          type: web
-          name: werewolf-mafia-player
-          property: host
+        value: ${RENDER_EXTERNAL_HOSTNAME}
 
   # Host App (React/Vite Web Service)
   - type: web
