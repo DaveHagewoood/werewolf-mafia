@@ -10,15 +10,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: HOST_URL
-        fromService:
-          type: web
-          name: werewolf-mafia-host
-          property: url
+        value: https://werewolf-mafia-host.onrender.com
       - key: PLAYER_URL
-        fromService:
-          type: web
-          name: werewolf-mafia-player
-          property: url
+        value: https://werewolf-mafia-player.onrender.com
       - key: PORT
         value: 10000
 
@@ -31,7 +25,7 @@ services:
     startCommand: cd apps/host && node server.js
     envVars:
       - key: VITE_SERVER_URL
-        value: https://${RENDER_EXTERNAL_HOSTNAME}
+        value: https://werewolf-mafia-server.onrender.com
       - key: PORT
         value: 10000
 
@@ -44,6 +38,6 @@ services:
     startCommand: cd apps/player && node server.js
     envVars:
       - key: VITE_SERVER_URL
-        value: https://${RENDER_EXTERNAL_HOSTNAME}
+        value: https://werewolf-mafia-server.onrender.com
       - key: PORT
         value: 10000 
