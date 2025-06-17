@@ -2,7 +2,8 @@ services:
   # Server - Web Service (Node.js)
   - type: web
     name: werewolf-mafia-server
-    env: node
+    runtime: node
+    plan: free
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile
     startCommand: cd apps/server && pnpm start
     envVars:
@@ -17,6 +18,7 @@ services:
   - type: web
     name: werewolf-mafia-host
     runtime: node
+    plan: free
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/host build
     startCommand: cd apps/host && node server.js
     envVars:
@@ -25,11 +27,14 @@ services:
           type: web
           name: werewolf-mafia-server
           property: hostport
+    dependsOn:
+      - werewolf-mafia-server
 
   # Player App (React/Vite Web Service)
   - type: web
     name: werewolf-mafia-player
     runtime: node
+    plan: free
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/player build
     startCommand: cd apps/player && node server.js
     envVars:
@@ -37,4 +42,6 @@ services:
         fromService:
           type: web
           name: werewolf-mafia-server
-          property: hostport 
+          property: hostport
+    dependsOn:
+      - werewolf-mafia-server 
