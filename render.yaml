@@ -19,11 +19,12 @@ services:
           name: werewolf-mafia-player
           property: url
 
-  # Host App - Static Site (React/Vite)
-  - type: static
+  # Host App (React/Vite Web Service)
+  - type: web
     name: werewolf-mafia-host
+    runtime: node
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/host build
-    publishPath: apps/host/dist
+    startCommand: cd apps/host && node server.js
     envVars:
       - key: VITE_SERVER_URL
         fromService:
@@ -31,11 +32,12 @@ services:
           name: werewolf-mafia-server
           property: url
 
-  # Player App - Static Site (React/Vite)  
-  - type: static
+  # Player App (React/Vite Web Service)
+  - type: web
     name: werewolf-mafia-player
+    runtime: node
     buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/player build
-    publishPath: apps/player/dist
+    startCommand: cd apps/player && node server.js
     envVars:
       - key: VITE_SERVER_URL
         fromService:
