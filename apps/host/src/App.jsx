@@ -23,7 +23,7 @@ function GameLobby() {
   const [supportsWebP, setSupportsWebP] = useState(false)
   const [showDebugLinks, setShowDebugLinks] = useState(false)
 
-  // Player app URL - updated to use serveo tunnel
+  // Constants
   const PLAYER_APP_URL = 'https://werewolf-player.serveo.net'
 
   // Preload images

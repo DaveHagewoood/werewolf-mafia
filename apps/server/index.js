@@ -6,15 +6,12 @@ const httpServer = createServer()
 
 // Configure CORS for both development and production
 const allowedOrigins = [
-  "http://localhost:3000", 
-  "http://localhost:3001",
+  "http://localhost:3000", // Host Dev URL
+  "http://localhost:3001", // Player Dev URL
   // Add Serveo URLs (clean and free!)
   "https://werewolf-host.serveo.net", // Host Serveo URL
   "https://werewolf-player.serveo.net", // Player Serveo URL
-  // Add production URLs when you deploy the client apps
-  process.env.HOST_URL,
-  process.env.PLAYER_URL
-].filter(Boolean)
+]
 
 const io = new Server(httpServer, {
   cors: {
@@ -426,7 +423,10 @@ function startNextNightPhase(room, roomId) {
         // Filter out the Seer themselves from investigation targets
         const investigationTargets = allAlivePlayers.filter(player => player.id !== seerPlayer.id)
         seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
-          targets: investigationTargets.map(player => ({ id: player.id, name: player.name }))
+          targets: investigationTargets.map(player => ({
+            id: player.id,
+            name: player.name
+          }))
         })
       }
     })
@@ -855,13 +855,26 @@ io.on('connection', (socket) => {
     const { roomId } = data
     const room = getRoom(roomId)
     
+    // Clear any existing host disconnect timeout (host reconnected in time)
+    if (room.hostDisconnectTimeout) {
+      console.log(`Host reconnected to room ${roomId} within grace period - clearing timeout`)
+      clearTimeout(room.hostDisconnectTimeout)
+      room.hostDisconnectTimeout = null
+      
+      // Resume game if it was paused for host disconnect
+      if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
+        io.to(roomId).emit(SOCKET_EVENTS.GAME_RESUMED)
+        console.log(`Game resumed after host reconnection in room ${roomId}`)
+      }
+    }
+    
     // Set this socket as the host
     room.host = socket.id
     socket.join(roomId)
     socket.roomId = roomId
     socket.isHost = true
     
-    console.log(`Host ${socket.id} created room ${roomId}`)
+    console.log(`Host ${socket.id} created/joined room ${roomId}`)
     
     // Send initial room state to host
     broadcastPlayersUpdate(roomId)
@@ -1707,6 +1720,12 @@ io.on('connection', (socket) => {
         })
         console.log(`Re-sent role ${role.name} to reconnected player ${player.name}`)
       }
+      
+      // Send current readiness state to the reconnecting player
+      const isReady = room.playerReadiness.get(newSocketId) || false
+      socket.emit('readiness-state', { isReady })
+      console.log(`Restored readiness state for ${player.name}: ${isReady}`)
+      
       broadcastReadinessUpdate(roomId)
     } else if (room.gameState === GAME_STATES.NIGHT_PHASE) {
       // Send appropriate night phase data
@@ -1783,27 +1802,34 @@ io.on('connection', (socket) => {
       const room = getRoom(socket.roomId)
       
       if (socket.isHost) {
-        // Host disconnected - handle room cleanup
-        console.log(`Host disconnected from room ${socket.roomId}`)
+        // Host disconnected - give short grace period before ending game
+        console.log(`Host disconnected from room ${socket.roomId} - starting 5s grace period`)
         
-        // For now, end the game if host disconnects
-        // TODO: Could implement host transfer in the future
         if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
-          room.gameState = GAME_STATES.ENDED
-          io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_END, {
-            winner: null,
-            winCondition: 'Game ended - Host disconnected',
-            roomId: socket.roomId
+          // Set a short timeout to end the game if host doesn't reconnect
+          room.hostDisconnectTimeout = setTimeout(() => {
+            console.log(`Host grace period expired - ending game in room ${socket.roomId}`)
+            room.gameState = GAME_STATES.ENDED
+            io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_END, {
+              winner: null,
+              winCondition: 'Game ended - Host disconnected',
+              roomId: socket.roomId
+            })
+            room.hostDisconnectTimeout = null
+          }, 5000) // 5 second grace period
+          
+          // Notify players that host disconnected
+          io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
+            reason: 'Host disconnected',
+            connectedPlayers: room.players.filter(p => p.connected).length,
+            totalPlayers: room.players.length
           })
         }
       } else if (socket.playerName) {
         // Player disconnected - mark as disconnected but don't remove immediately
         const player = room.players.find(p => p.id === socket.id)
         if (player) {
-          console.log(`Player ${player.name} disconnected from room ${socket.roomId} - marked for reconnection`)
-          
-          // Mark as disconnected instead of removing
-          updatePlayerConnection(socket.id, false)
+          console.log(`Player ${player.name} disconnected from room ${socket.roomId}`)
           
           // Handle disconnection based on game state
           if (room.gameState === GAME_STATES.LOBBY) {
@@ -1825,31 +1851,11 @@ io.on('connection', (socket) => {
             // Broadcast updated player list
             broadcastPlayersUpdate(socket.roomId)
           } else {
-            // In active game, mark for reconnection and notify
-            io.to(socket.roomId).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
-              playerId: socket.id,
-              playerName: player.name,
-              reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_GRACE_PERIOD
-            })
-            
-            // Update game state based on phase
-            if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-              broadcastReadinessUpdate(socket.roomId)
-            } else if (room.gameState === GAME_STATES.NIGHT_PHASE) {
-              // Check if night phase can still complete
-              checkNightPhaseProgression(room, socket.roomId)
-            } else if (room.gameState === GAME_STATES.DAY_PHASE) {
-              // Update day phase voting
-              broadcastAccusations(room, socket.roomId)
-            }
+            // For now, just log - Phase 2 will handle game reconnection
+            console.log(`Game-phase disconnect - Phase 2 will handle this`)
           }
         }
       }
-    }
-    
-    // Clean up connection data if not tracked (host or invalid connection)
-    if (!playerConnections.has(socket.id) && socket.isHost) {
-      // Host cleanup can happen immediately
     }
   })
 })

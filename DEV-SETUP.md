@@ -74,3 +74,28 @@ Check what's running on ports 3000-3002 and stop those processes.
 
 ### If you need different subdomains:
 Edit `start-tunnels.ps1` and change the subdomain names. 
+
+## 📡 Tunneling (SSH Required)
+
+To make your local development accessible from anywhere, we use **serveo.net** for SSH tunneling.
+
+### Quick Start
+```bash
+# Windows PowerShell
+./start-tunnels.ps1
+
+# Manual setup (run each in separate terminal)
+ssh -R werewolf-host:80:localhost:3000 serveo.net    # Host App
+ssh -R werewolf-player:80:localhost:3001 serveo.net  # Player App  
+ssh -R werewolf-server:80:localhost:3002 serveo.net  # Server
+```
+
+### Tunnel Mapping
+- **Host Tunnel**: `https://werewolf-host.serveo.net` → `localhost:3000`
+- **Player Tunnel**: `https://werewolf-player.serveo.net` → `localhost:3001`
+- **Server Tunnel**: `https://werewolf-server.serveo.net` → `localhost:3002`
+
+### Access Your Apps
+- 🎮 **Host Game**: https://werewolf-host.serveo.net
+- 📱 **Join Game**: https://werewolf-player.serveo.net  
+- 🔌 **Server API**: https://werewolf-server.serveo.net 
