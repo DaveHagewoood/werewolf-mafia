@@ -1,3 +1,4 @@
+# Render.com configuration for Werewolf Mafia
 services:
   # Server - Web Service (Node.js)
   - type: web
