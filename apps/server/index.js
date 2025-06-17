@@ -3,6 +3,7 @@ import { createServer } from 'http'
 import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles } from '@werewolf-mafia/shared'
 
 const httpServer = createServer()
+const port = process.env.PORT || 3002
 
 // Configure CORS for both development and production
 const allowedOrigins = [
@@ -34,6 +35,11 @@ const gameRooms = new Map()
 
 // Store game types for each room
 const roomGameTypes = new Map()
+
+// Start listening on the configured port
+httpServer.listen(port, () => {
+  console.log(`Server running on port ${port}`)
+})
 
 // Helper function to get or create room
 function getRoom(roomId) {
