@@ -22,7 +22,7 @@ If you prefer to set up each service manually:
 **Environment:** Node  
 **Build Command:**
 ```bash
-corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --filter=@werewolf-mafia/server... --frozen-lockfile
+corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile
 ```
 
 **Start Command:**
@@ -40,7 +40,7 @@ cd apps/server && pnpm start
 **Service Type:** Static Site  
 **Build Command:**
 ```bash
-corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --filter=@werewolf-mafia/host... --frozen-lockfile && pnpm build --filter=@werewolf-mafia/host
+corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/host build
 ```
 
 **Publish Directory:** `apps/host/dist`
@@ -54,7 +54,7 @@ corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --fi
 **Service Type:** Static Site  
 **Build Command:**
 ```bash
-corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --filter=@werewolf-mafia/player... --frozen-lockfile && pnpm build --filter=@werewolf-mafia/player
+corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/player build
 ```
 
 **Publish Directory:** `apps/player/dist`
@@ -66,7 +66,7 @@ corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --fi
 
 ### ✅ Proper pnpm Workspace Handling
 - Uses `corepack` to ensure consistent pnpm version (10.11.1)
-- Uses filtered installs (`--filter=appname...`) for optimized builds
+- Uses full workspace install with filtered builds (`pnpm --filter appname build`)
 - Preserves workspace dependencies instead of copying shared code
 
 ### ✅ Environment-Based Configuration
