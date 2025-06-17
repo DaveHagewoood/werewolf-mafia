@@ -23,8 +23,9 @@ function GameLobby() {
   const [supportsWebP, setSupportsWebP] = useState(false)
   const [showDebugLinks, setShowDebugLinks] = useState(false)
 
-  // Constants
-  const PLAYER_APP_URL = 'https://werewolf-player.serveo.net'
+  // Environment-based URLs
+  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-server.serveo.net'
+  const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-player.serveo.net'
 
   // Preload images
   useEffect(() => {
@@ -81,7 +82,7 @@ function GameLobby() {
     setRoomId(newRoomId)
     
     // Connect to Socket.IO server
-    const hostSocket = io('https://werewolf-server.serveo.net')
+    const hostSocket = io(SERVER_URL)
     setSocket(hostSocket)
 
     // Socket connection events
@@ -289,7 +290,7 @@ function GameLobby() {
 
   const autoFillPlayers = () => {
     const playerNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve']
-    const baseUrl = 'https://werewolf-player.serveo.net'
+    const baseUrl = PLAYER_APP_URL
     
     setShowDebugLinks(true)
     

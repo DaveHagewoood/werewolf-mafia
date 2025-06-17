@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
-import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles } from './shared.js'
+import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles } from '@werewolf-mafia/shared'
 
 const httpServer = createServer()
 
@@ -12,6 +12,14 @@ const allowedOrigins = [
   "https://werewolf-host.serveo.net", // Host Serveo URL
   "https://werewolf-player.serveo.net", // Player Serveo URL
 ]
+
+// Add production URLs from environment variables
+if (process.env.HOST_URL) {
+  allowedOrigins.push(process.env.HOST_URL)
+}
+if (process.env.PLAYER_URL) {
+  allowedOrigins.push(process.env.PLAYER_URL)
+}
 
 const io = new Server(httpServer, {
   cors: {

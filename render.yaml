@@ -1,0 +1,48 @@
+version: "1"
+
+services:
+  # Server - Web Service (Node.js)
+  - type: web
+    name: werewolf-mafia-server
+    env: node
+    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --filter=@werewolf-mafia/server... --frozen-lockfile
+    startCommand: cd apps/server && pnpm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST_URL
+        fromService:
+          type: web
+          name: werewolf-mafia-host
+          property: url
+      - key: PLAYER_URL
+        fromService:
+          type: web
+          name: werewolf-mafia-player
+          property: url
+
+  # Host App - Static Site (React/Vite)
+  - type: web
+    name: werewolf-mafia-host
+    env: static
+    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --filter=@werewolf-mafia/host... --frozen-lockfile && pnpm build --filter=@werewolf-mafia/host
+    staticPublishPath: apps/host/dist
+    envVars:
+      - key: VITE_SERVER_URL
+        fromService:
+          type: web
+          name: werewolf-mafia-server
+          property: url
+
+  # Player App - Static Site (React/Vite)  
+  - type: web
+    name: werewolf-mafia-player
+    env: static
+    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --filter=@werewolf-mafia/player... --frozen-lockfile && pnpm build --filter=@werewolf-mafia/player
+    staticPublishPath: apps/player/dist
+    envVars:
+      - key: VITE_SERVER_URL
+        fromService:
+          type: web
+          name: werewolf-mafia-server
+          property: url 

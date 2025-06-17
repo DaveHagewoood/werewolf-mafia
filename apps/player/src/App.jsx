@@ -75,8 +75,11 @@ function JoinRoom() {
     // Check WebP support
     checkWebPSupport().then(setSupportsWebP)
     
+    // Environment-based server URL
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-server.serveo.net'
+    
     // Connect to Socket.IO server
-    const newSocket = io('https://werewolf-server.serveo.net')
+    const newSocket = io(SERVER_URL)
     setSocket(newSocket)
 
     // Get room info when component loads
