@@ -10,9 +10,11 @@ services:
       - key: NODE_ENV
         value: production
       - key: HOST_URL
-        value: ${RENDER_EXTERNAL_HOSTNAME}
+        value: https://${RENDER_EXTERNAL_HOSTNAME}
       - key: PLAYER_URL
-        value: ${RENDER_EXTERNAL_HOSTNAME}
+        value: https://${RENDER_EXTERNAL_HOSTNAME}
+      - key: PORT
+        value: 10000
 
   # Host App (React/Vite Web Service)
   - type: web
@@ -27,6 +29,8 @@ services:
           type: web
           name: werewolf-mafia-server
           property: hostport
+      - key: PORT
+        value: 10000
     dependsOn:
       - werewolf-mafia-server
 
@@ -43,5 +47,7 @@ services:
           type: web
           name: werewolf-mafia-server
           property: hostport
+      - key: PORT
+        value: 10000
     dependsOn:
       - werewolf-mafia-server 
