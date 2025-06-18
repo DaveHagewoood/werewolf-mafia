@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
-import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles, CONNECTION_CONFIG } from '@werewolf-mafia/shared'
 
 const httpServer = createServer()
 const port = process.env.PORT || 3002
@@ -637,254 +637,186 @@ function broadcastReadinessUpdate(roomId) {
 // ===================== CONNECTION MANAGEMENT SYSTEM =====================
 
 // Store player connection data
-const playerConnections = new Map() // playerId -> { lastHeartbeat, disconnectedAt, reconnectToken }
-const reconnectTokens = new Map() // reconnectToken -> { playerId, roomId, playerName }
+const playerConnections = new Map() // playerId -> { lastHeartbeat, reconnectTimer }
 
 // Connection configuration
 const CONNECTION_CONFIG = {
   HEARTBEAT_INTERVAL: 10000, // 10 seconds
   HEARTBEAT_TIMEOUT: 25000,  // 25 seconds - mobile-friendly timeout
   RECONNECT_GRACE_PERIOD: 120000, // 2 minutes to reconnect
-  MIN_CONNECTED_PERCENTAGE: 0.6 // 60% of players must be connected to continue game
+  MIN_CONNECTED_PERCENTAGE: 0.6, // 60% of players must be connected to continue game
+  RECONNECT_TIMEOUT: 120000, // 2 minutes to reconnect
+  CLEANUP_INTERVAL: 10000 // 10 seconds
 }
 
-// Generate reconnect token
-function generateReconnectToken() {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36)
-}
-
-// Initialize connection tracking for a player
 function initializePlayerConnection(playerId, roomId, playerName) {
-  const reconnectToken = generateReconnectToken()
-  
   playerConnections.set(playerId, {
     lastHeartbeat: Date.now(),
-    disconnectedAt: null,
-    reconnectToken: reconnectToken,
-    roomId: roomId,
-    playerName: playerName
+    reconnectTimer: null,
+    roomId,
+    playerName
   })
-  
-  reconnectTokens.set(reconnectToken, {
-    playerId: playerId,
-    roomId: roomId,
-    playerName: playerName
-  })
-  
-  return reconnectToken
 }
 
-// Update connection status for a player
 function updatePlayerConnection(playerId, isConnected) {
-  const connectionData = playerConnections.get(playerId)
-  if (!connectionData) return
-  
-  const room = getRoom(connectionData.roomId)
+  const room = getRoom(playerConnections.get(playerId)?.roomId)
+  if (!room) return
+
   const player = room.players.find(p => p.id === playerId)
-  
-  if (player) {
-    player.connected = isConnected
-    if (isConnected) {
-      connectionData.lastHeartbeat = Date.now()
-      connectionData.disconnectedAt = null
-    } else {
-      connectionData.disconnectedAt = Date.now()
+  if (!player) return
+
+  const wasConnected = player.connected
+  player.connected = isConnected
+
+  if (isConnected) {
+    // Clear any existing reconnect timer
+    const connection = playerConnections.get(playerId)
+    if (connection?.reconnectTimer) {
+      clearTimeout(connection.reconnectTimer)
+      connection.reconnectTimer = null
     }
+    connection.lastHeartbeat = Date.now()
+  } else if (!isConnected && wasConnected) {
+    // Start reconnect timer
+    const connection = playerConnections.get(playerId)
+    if (connection) {
+      connection.reconnectTimer = setTimeout(() => {
+        handlePlayerTimeout(playerId)
+      }, CONNECTION_CONFIG.RECONNECT_TIMEOUT)
+    }
+  }
+
+  // Update game state based on connection changes
+  checkGameStateAfterConnectionChange(room.id)
+}
+
+function handlePlayerTimeout(playerId) {
+  const connection = playerConnections.get(playerId)
+  if (!connection) return
+
+  const room = getRoom(connection.roomId)
+  if (!room) return
+
+  const player = room.players.find(p => p.id === playerId)
+  if (!player) return
+
+  console.log(`Player ${player.name} (${playerId}) timed out after ${CONNECTION_CONFIG.RECONNECT_TIMEOUT}ms`)
+  
+  // Remove player from game if in lobby
+  if (room.gameState === GAME_STATES.LOBBY) {
+    removePlayerFromGame(room, playerId, room.id)
+  } else {
+    // In active game, mark as permanently disconnected
+    player.connected = false
+    player.timedOut = true
     
-    // Broadcast updated player list
-    broadcastPlayersUpdate(connectionData.roomId)
+    // Notify other players
+    io.to(room.id).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
+      playerId,
+      playerName: player.name,
+      permanent: true
+    })
     
-    // Check if game should be paused/resumed
-    checkGameStateAfterConnectionChange(connectionData.roomId)
+    // Check if game should end due to disconnections
+    checkGameStateAfterConnectionChange(room.id)
   }
 }
 
-// Check if player connection is alive
 function isPlayerConnectionAlive(playerId) {
-  const connectionData = playerConnections.get(playerId)
-  if (!connectionData) return false
-  
-  const now = Date.now()
-  const timeSinceHeartbeat = now - connectionData.lastHeartbeat
-  
-  return timeSinceHeartbeat < CONNECTION_CONFIG.HEARTBEAT_TIMEOUT
+  const connection = playerConnections.get(playerId)
+  if (!connection) return false
+
+  const timeSinceLastHeartbeat = Date.now() - connection.lastHeartbeat
+  return timeSinceLastHeartbeat < CONNECTION_CONFIG.HEARTBEAT_TIMEOUT
 }
 
-// Get connected player percentage for a room
 function getConnectedPlayerPercentage(roomId) {
   const room = getRoom(roomId)
-  if (room.players.length === 0) return 1
-  
-  const connectedCount = room.players.filter(p => p.connected).length
-  return connectedCount / room.players.length
+  if (!room) return 0
+
+  const totalPlayers = room.players.length
+  if (totalPlayers === 0) return 0
+
+  const connectedPlayers = room.players.filter(p => p.connected).length
+  return connectedPlayers / totalPlayers
 }
 
-// Check if game should be paused or resumed based on connections
 function checkGameStateAfterConnectionChange(roomId) {
   const room = getRoom(roomId)
-  
-  // Only check during active game phases
+  if (!room) return
+
+  const connectedPercentage = getConnectedPlayerPercentage(roomId)
+  const shouldPause = connectedPercentage < CONNECTION_CONFIG.MIN_CONNECTED_PERCENTAGE
+
+  // Don't pause if game hasn't started or has ended
   if (room.gameState === GAME_STATES.LOBBY || room.gameState === GAME_STATES.ENDED) {
     return
   }
-  
-  const connectedPercentage = getConnectedPlayerPercentage(roomId)
-  const shouldPause = connectedPercentage < CONNECTION_CONFIG.MIN_CONNECTED_PERCENTAGE
-  
+
   if (shouldPause && !room.gamePaused) {
-    pauseGame(roomId, 'Too many players disconnected')
+    pauseGame(roomId, `Game paused: ${Math.round(connectedPercentage * 100)}% of players connected`)
   } else if (!shouldPause && room.gamePaused) {
     resumeGame(roomId)
   }
 }
 
-// Pause the game
 function pauseGame(roomId, reason) {
   const room = getRoom(roomId)
+  if (!room || room.gamePaused) return
+
   room.gamePaused = true
   room.pauseReason = reason
-  
-  // Clear any active timers
-  if (room.eliminationCountdown) {
-    clearTimeout(room.eliminationCountdown)
-    room.eliminationCountdown = null
-  }
-  if (room.voteConsensusTimer) {
-    clearTimeout(room.voteConsensusTimer)
-    room.voteConsensusTimer = null
-  }
-  
-  // Notify all clients
+
+  const connectedPlayers = room.players.filter(p => p.connected).length
+  const totalPlayers = room.players.length
+
   io.to(roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
-    reason: reason,
-    connectedPlayers: room.players.filter(p => p.connected).length,
-    totalPlayers: room.players.length
+    reason,
+    connectedPlayers,
+    totalPlayers
   })
-  
+
   console.log(`Game paused in room ${roomId}: ${reason}`)
 }
 
-// Resume the game
 function resumeGame(roomId) {
   const room = getRoom(roomId)
+  if (!room || !room.gamePaused) return
+
   room.gamePaused = false
   room.pauseReason = null
-  
-  // Notify all clients
+
   io.to(roomId).emit(SOCKET_EVENTS.GAME_RESUMED)
-  
   console.log(`Game resumed in room ${roomId}`)
 }
 
-// Clean up expired reconnect tokens and disconnect players
+function startHeartbeatSystem() {
+  // Send heartbeats to all connected clients
+  setInterval(() => {
+    io.emit(SOCKET_EVENTS.HEARTBEAT)
+  }, CONNECTION_CONFIG.HEARTBEAT_INTERVAL)
+
+  // Check for expired connections
+  setInterval(cleanupExpiredConnections, CONNECTION_CONFIG.CLEANUP_INTERVAL)
+}
+
 function cleanupExpiredConnections() {
   const now = Date.now()
   
-  for (const [playerId, connectionData] of playerConnections.entries()) {
-    if (connectionData.disconnectedAt) {
-      const disconnectedFor = now - connectionData.disconnectedAt
-      
-      if (disconnectedFor > CONNECTION_CONFIG.RECONNECT_GRACE_PERIOD) {
-        // Remove player from game after grace period
-        const room = getRoom(connectionData.roomId)
-        removePlayerFromGame(room, playerId, connectionData.roomId)
-        
-        // Clean up connection data
-        reconnectTokens.delete(connectionData.reconnectToken)
-        playerConnections.delete(playerId)
-        
-        console.log(`Removed player ${connectionData.playerName} from room ${connectionData.roomId} after grace period`)
-      }
+  for (const [playerId, connection] of playerConnections.entries()) {
+    const timeSinceLastHeartbeat = now - connection.lastHeartbeat
+    
+    if (timeSinceLastHeartbeat >= CONNECTION_CONFIG.HEARTBEAT_TIMEOUT) {
+      console.log(`No heartbeat from player ${playerId} for ${timeSinceLastHeartbeat}ms`)
+      updatePlayerConnection(playerId, false)
     }
   }
 }
-
-// Remove player from game completely
-function removePlayerFromGame(room, playerId, roomId) {
-  const playerIndex = room.players.findIndex(p => p.id === playerId)
-  if (playerIndex !== -1) {
-    const removedPlayer = room.players.splice(playerIndex, 1)[0]
-    
-    // Clean up all player data
-    room.playerRoles.delete(playerId)
-    room.playerReadiness.delete(playerId)
-    room.alivePlayers.delete(playerId)
-    room.mafiaVotes.delete(playerId)
-    
-    // Remove from accusations
-    room.accusations.forEach((accusers, accusedId) => {
-      accusers.delete(playerId)
-      if (accusers.size === 0) {
-        room.accusations.delete(accusedId)
-      }
-    })
-    room.accusations.delete(playerId)
-    
-    console.log(`Completely removed player ${removedPlayer.name} from room ${roomId}`)
-    
-    // Broadcast updated player list
-    broadcastPlayersUpdate(roomId)
-    
-    // If game is active, end it due to player abandonment
-    if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
-      console.log(`Ending game in room ${roomId} due to player abandonment: ${removedPlayer.name}`)
-      
-      room.gameState = GAME_STATES.ENDED
-      
-      const gameEndData = {
-        winner: null,
-        winCondition: `Game ended - ${removedPlayer.name} left and could not reconnect`,
-        alivePlayers: room.players.filter(p => room.alivePlayers.has(p.id)).map(player => ({
-          id: player.id,
-          name: player.name,
-          role: room.playerRoles.get(player.id)
-        })),
-        allPlayers: room.players.map(player => ({
-          id: player.id,
-          name: player.name,
-          role: room.playerRoles.get(player.id),
-          alive: room.alivePlayers.has(player.id)
-        })),
-        roomId: roomId
-      }
-      
-      // Send game end event to all players
-      io.to(roomId).emit(SOCKET_EVENTS.GAME_END, gameEndData)
-      
-      return // Don't check other conditions
-    }
-    
-    // Check if game should be paused/resumed (only in lobby)
-    checkGameStateAfterConnectionChange(roomId)
-  }
-}
-
-// Start heartbeat system
-function startHeartbeatSystem() {
-  setInterval(() => {
-    // Check all player connections
-    for (const [playerId, connectionData] of playerConnections.entries()) {
-      if (!isPlayerConnectionAlive(playerId) && connectionData.disconnectedAt === null) {
-        // Mark as disconnected
-        updatePlayerConnection(playerId, false)
-        console.log(`Player ${connectionData.playerName} heartbeat timeout`)
-      }
-    }
-    
-    // Clean up expired connections
-    cleanupExpiredConnections()
-  }, CONNECTION_CONFIG.HEARTBEAT_INTERVAL)
-  
-  console.log('Heartbeat system started')
-}
-
-// Start the heartbeat system
-startHeartbeatSystem()
 
 // ===================== END CONNECTION MANAGEMENT =====================
 
 io.on('connection', (socket) => {
-  console.log(`Client connected: ${socket.id}`)
+  console.log('New connection:', socket.id)
 
   // Host creates/joins a room
   socket.on('host-room', (data) => {
@@ -1622,19 +1554,10 @@ io.on('connection', (socket) => {
   
   // Handle heartbeat responses
   socket.on(SOCKET_EVENTS.HEARTBEAT_RESPONSE, () => {
-    if (playerConnections.has(socket.id)) {
-      const connectionData = playerConnections.get(socket.id)
-      connectionData.lastHeartbeat = Date.now()
-      
-      // Update connection status if was disconnected
-      if (!socket.isHost) {
-        const room = getRoom(socket.roomId)
-        const player = room?.players.find(p => p.id === socket.id)
-        if (player && !player.connected) {
-          updatePlayerConnection(socket.id, true)
-          console.log(`Player ${socket.playerName} reconnected via heartbeat`)
-        }
-      }
+    const playerId = socket.id
+    const connection = playerConnections.get(playerId)
+    if (connection) {
+      connection.lastHeartbeat = Date.now()
     }
   })
   
@@ -1823,11 +1746,6 @@ io.on('connection', (socket) => {
     }
   })
 
-  // Send periodic heartbeat to all connected clients
-  setInterval(() => {
-    io.emit(SOCKET_EVENTS.HEARTBEAT)
-  }, CONNECTION_CONFIG.HEARTBEAT_INTERVAL)
-  
   // ===================== END CONNECTION MANAGEMENT HANDLERS =====================
 
   // Handle disconnection

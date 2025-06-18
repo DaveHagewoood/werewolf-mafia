@@ -479,7 +479,7 @@ function GameLobby() {
           <p>{pauseReason}</p>
           {pauseReason === 'Host disconnected' && (
             <div className="host-disconnect-warning">
-              <p>Game will end in 5 seconds if host doesn't reconnect</p>
+              <p>Game will end in 15 seconds if host doesn't reconnect</p>
               <div className="reconnect-spinner"></div>
             </div>
           )}

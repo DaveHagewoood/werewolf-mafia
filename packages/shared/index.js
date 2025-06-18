@@ -54,6 +54,15 @@ export const GAME_CONFIG = {
   ELIMINATION_COUNTDOWN_TIME: 10000 // 10 seconds in milliseconds
 }
 
+// Connection Configuration
+export const CONNECTION_CONFIG = {
+  RECONNECT_TIMEOUT: 15000, // 15 seconds in milliseconds
+  MIN_CONNECTED_PERCENTAGE: 0.75, // 75% of players must be connected
+  HEARTBEAT_INTERVAL: 5000, // 5 seconds in milliseconds
+  HEARTBEAT_TIMEOUT: 10000, // 10 seconds in milliseconds
+  CLEANUP_INTERVAL: 30000 // 30 seconds in milliseconds
+}
+
 // Game Types
 export const GAME_TYPES = {
   WEREWOLF: 'werewolf',
