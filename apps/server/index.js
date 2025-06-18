@@ -22,6 +22,8 @@ if (process.env.PLAYER_URL) {
   allowedOrigins.push(process.env.PLAYER_URL)
 }
 
+console.log('Starting server with allowed origins:', allowedOrigins)
+
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
@@ -37,8 +39,27 @@ const gameRooms = new Map()
 const roomGameTypes = new Map()
 
 // Start listening on the configured port
-httpServer.listen(port, () => {
+httpServer.listen(port, '0.0.0.0', (err) => {
+  if (err) {
+    console.error('Failed to start server:', err)
+    process.exit(1)
+  }
   console.log(`Server running on port ${port}`)
+  console.log('Environment:', {
+    NODE_ENV: process.env.NODE_ENV,
+    HOST_URL: process.env.HOST_URL,
+    PLAYER_URL: process.env.PLAYER_URL,
+    PORT: process.env.PORT
+  })
+})
+
+// Handle server shutdown gracefully
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully')
+  httpServer.close(() => {
+    console.log('Server closed')
+    process.exit(0)
+  })
 })
 
 // Helper function to get or create room
@@ -1872,13 +1893,4 @@ io.on('connection', (socket) => {
       }
     }
   })
-})
-
-const PORT = process.env.PORT || 3002
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Werewolf Mafia Server running on port ${PORT}`)
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`)
-  console.log(`🎮 Host URL: ${process.env.HOST_URL || 'http://localhost:3000'}`)
-  console.log(`📱 Player URL: ${process.env.PLAYER_URL || 'http://localhost:3001'}`)
-  console.log(`🔌 CORS origins:`, allowedOrigins)
 }) 
