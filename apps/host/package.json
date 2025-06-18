@@ -17,10 +17,8 @@
     "qrcode.react": "^3.1.0",
     "express": "^4.18.3",
     "compression": "^1.7.4",
-    "@werewolf-mafia/shared": "file:../../packages/shared"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.1.4"
+    "@werewolf-mafia/shared": "file:../../packages/shared",
+    "vite": "^5.1.4",
+    "@vitejs/plugin-react": "^4.2.1"
   }
 } 
