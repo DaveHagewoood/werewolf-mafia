@@ -25,16 +25,10 @@ function GameLobby() {
   const [gamePaused, setGamePaused] = useState(false)
   const [pauseReason, setPauseReason] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('connecting')
-  const [reconnectAttempts, setReconnectAttempts] = useState(0)
 
   // Environment-based URLs
   const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
   const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafia-player.onrender.com'
-
-  // Function to handle reconnection
-  const handleReconnect = () => {
-    setReconnectAttempts(prev => prev + 1)
-  }
 
   // Preload images
   useEffect(() => {
@@ -88,7 +82,10 @@ function GameLobby() {
   useEffect(() => {
     // Connect to Socket.IO server
     const hostSocket = io(SERVER_URL, {
-      reconnection: false // Disable auto-reconnection to handle it manually
+      reconnection: true, // Enable auto-reconnection
+      reconnectionAttempts: Infinity, // Keep trying to reconnect indefinitely
+      reconnectionDelay: 1000, // Start with 1 second delay
+      reconnectionDelayMax: 5000, // Maximum delay between reconnection attempts
     })
     setSocket(hostSocket)
 
@@ -119,9 +116,6 @@ function GameLobby() {
       // Clean up the old socket
       hostSocket.removeAllListeners()
       hostSocket.close()
-
-      // Attempt to reconnect after a short delay
-      setTimeout(handleReconnect, 1000)
     })
 
     // Listen for game state updates during reconnection
@@ -265,7 +259,7 @@ function GameLobby() {
         hostSocket.close()
       }
     }
-  }, [reconnectAttempts, roomId])
+  }, [roomId])
 
   // Elimination countdown effect
   useEffect(() => {
@@ -390,17 +384,7 @@ function GameLobby() {
     return (
       <div className={`connection-status ${connectionStatus}`}>
         {connectionStatus === 'connecting' && '🔄 Connecting...'}
-        {connectionStatus === 'disconnected' && (
-          <>
-            🔴 Disconnected
-            <button 
-              onClick={handleReconnect}
-              className="reconnect-button"
-            >
-              Reconnect
-            </button>
-          </>
-        )}
+        {connectionStatus === 'disconnected' && '🔴 Attempting to reconnect...'}
       </div>
     );
   };
