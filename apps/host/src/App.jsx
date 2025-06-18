@@ -24,8 +24,8 @@ function GameLobby() {
   const [showDebugLinks, setShowDebugLinks] = useState(false)
 
   // Environment-based URLs
-  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-server.serveo.net'
-  const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-player.serveo.net'
+  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
+  const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafia-player.onrender.com'
 
   // Preload images
   useEffect(() => {
