@@ -5,8 +5,8 @@ services:
     name: werewolf-mafia-server
     runtime: node
     plan: pro
-    buildCommand: cd apps/server && npm install
-    startCommand: cd apps/server && npm start
+    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/server build
+    startCommand: cd apps/server && node server.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -22,7 +22,7 @@ services:
     name: werewolf-mafia-host
     runtime: node
     plan: pro
-    buildCommand: cd apps/host && npm install && npm run build
+    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/host build
     startCommand: cd apps/host && node server.js
     envVars:
       - key: VITE_SERVER_URL
@@ -35,7 +35,7 @@ services:
     name: werewolf-mafia-player
     runtime: node
     plan: pro
-    buildCommand: cd apps/player && npm install && npm run build
+    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @werewolf-mafia/player build
     startCommand: cd apps/player && node server.js
     envVars:
       - key: VITE_SERVER_URL
