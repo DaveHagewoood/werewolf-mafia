@@ -22,6 +22,8 @@ function GameLobby() {
   const [imagesLoaded, setImagesLoaded] = useState(false)
   const [supportsWebP, setSupportsWebP] = useState(false)
   const [showDebugLinks, setShowDebugLinks] = useState(false)
+  const [gamePaused, setGamePaused] = useState(false)
+  const [pauseReason, setPauseReason] = useState('')
 
   // Environment-based URLs
   const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
@@ -198,6 +200,8 @@ function GameLobby() {
     // Listen for game pause/resume events
     hostSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
       console.log('Game paused:', data.reason)
+      setGamePaused(true)
+      setPauseReason(data.reason)
       setMessage({ 
         type: 'warning', 
         text: `Game paused: ${data.reason}. ${data.connectedPlayers}/${data.totalPlayers} players connected.` 
@@ -206,6 +210,8 @@ function GameLobby() {
 
     hostSocket.on(SOCKET_EVENTS.GAME_RESUMED, () => {
       console.log('Game resumed')
+      setGamePaused(false)
+      setPauseReason('')
       setMessage({ type: 'success', text: 'Game resumed! All players reconnected.' })
       setTimeout(() => setMessage(null), 3000)
     })
@@ -462,6 +468,26 @@ function GameLobby() {
     )
   }
 
+  // Add pause overlay to all game phase screens
+  const renderPauseOverlay = () => {
+    if (!gamePaused) return null;
+
+    return (
+      <div className="pause-overlay">
+        <div className="pause-content">
+          <h2>⚠️ Game Paused</h2>
+          <p>{pauseReason}</p>
+          {pauseReason === 'Host disconnected' && (
+            <div className="host-disconnect-warning">
+              <p>Game will end in 5 seconds if host doesn't reconnect</p>
+              <div className="reconnect-spinner"></div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Show day phase screen
   if (gameState === GAME_STATES.DAY_PHASE) {
     return (
@@ -545,6 +571,7 @@ function GameLobby() {
               )}
             </div>
           )}
+          {renderPauseOverlay()}
         </div>
       </div>
     )
@@ -631,6 +658,7 @@ function GameLobby() {
               )}
             </div>
           )}
+          {renderPauseOverlay()}
         </div>
       </div>
     )
@@ -695,6 +723,7 @@ function GameLobby() {
               <p>Assigning roles to players...</p>
             </div>
           )}
+          {renderPauseOverlay()}
         </div>
       </div>
     )
