@@ -505,81 +505,91 @@ function JoinRoom() {
     }
   }
 
-  // Show game end screen if game has ended
-  if (gameState === GAME_STATES.ENDED && gameEndData) {
-    const thisPlayer = gameEndData.allPlayers.find(p => p.id === playerId)
-    const playerWon = thisPlayer && 
-      ((gameEndData.winner === 'mafia' && thisPlayer.role.alignment === 'evil') ||
-       (gameEndData.winner === 'villagers' && thisPlayer.role.alignment === 'good'))
+  // Add pause overlay to all game phase screens
+  const renderPauseOverlay = () => {
+    if (!gamePaused) return null;
 
     return (
-      <div className="game-end-container">
-        <div className="game-end-content">
-          <div className={`victory-announcement ${gameEndData.winner}`}>
-            <div className="victory-icon">
-              {gameEndData.winner === 'mafia' ? '🔥' : '🏆'}
+      <div className="pause-overlay">
+        <div className="pause-content">
+          <h2>⚠️ Game Paused</h2>
+          <p>{pauseReason}</p>
+          {pauseReason === 'Host disconnected' && (
+            <div className="host-disconnect-warning">
+              <p>Game will end in 5 seconds if host doesn't reconnect</p>
+              <div className="reconnect-spinner"></div>
             </div>
-            <h1>
-              {gameEndData.winner === 'mafia' ? 'Mafia Victory!' : 'Villagers Victory!'}
-            </h1>
-            <p className="win-condition">{gameEndData.winCondition}</p>
-          </div>
-
-          <div className={`personal-result ${playerWon ? 'won' : 'lost'}`}>
-            <h2>{playerWon ? '🎉 You Won!' : '💔 You Lost'}</h2>
-            <div className="player-summary">
-              <p>You played as: <strong style={{ color: thisPlayer?.role.color }}>
-                {thisPlayer?.role.name}
-              </strong></p>
-              <p>Your alignment: <span className={`alignment-${thisPlayer?.role.alignment}`}>
-                {thisPlayer?.role.alignment === 'good' ? '😇 Good' : '😈 Evil'}
-              </span></p>
-              <p>Status: <span className={thisPlayer?.alive ? 'alive-status' : 'dead-status'}>
-                {thisPlayer?.alive ? '👑 Survived' : '💀 Eliminated'}
-              </span></p>
-            </div>
-          </div>
-
-          <div className="final-results">
-            <h3>Final Results</h3>
-            <div className="results-sections">
-              <div className="survivors-section">
-                <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
-                <div className="players-list">
-                  {gameEndData.alivePlayers.map(player => (
-                    <div key={player.id} className="result-player alive">
-                      <span className="player-name">{player.name}</span>
-                      <span className="player-role" style={{ color: player.role.color }}>
-                        {player.role.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="eliminated-section">
-                <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
-                <div className="players-list">
-                  {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
-                    <div key={player.id} className="result-player eliminated">
-                      <span className="player-name">{player.name}</span>
-                      <span className="player-role" style={{ color: player.role.color }}>
-                        {player.role.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="room-info">
-            <p>Room Code: <strong>{roomId}</strong></p>
-            <p>Thanks for playing Werewolf Mafia!</p>
-          </div>
+          )}
         </div>
       </div>
-    )
+    );
+  };
+
+  // Show game end screen
+  if (gameState === GAME_STATES.ENDED && gameEndData) {
+    return (
+      <div className="game-end-container">
+        <div className="game-end-header">
+          <h1>Game Over</h1>
+          {gameEndData.winner ? (
+            <>
+              <div className={`victory-announcement ${gameEndData.winner}`}>
+                <div className="victory-icon">
+                  {gameEndData.winner === 'mafia' ? '🔥' : '🏆'}
+                </div>
+                <h2>
+                  {gameEndData.winner === 'mafia' ? 'Mafia Victory!' : 'Villagers Victory!'}
+                </h2>
+              </div>
+              <p className="win-condition">{gameEndData.winCondition}</p>
+            </>
+          ) : (
+            <>
+              <div className="game-cancelled">
+                <div className="cancelled-icon">⚠️</div>
+                <h2>Game Cancelled</h2>
+              </div>
+              <p className="cancel-reason">{gameEndData.winCondition}</p>
+            </>
+          )}
+        </div>
+
+        <div className="game-end-content">
+          <div className="final-results">
+            <h3>Final Results</h3>
+            <div className="results-grid">
+              <div className="alive-players">
+                <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
+                {gameEndData.alivePlayers.map(player => (
+                  <div key={player.id} className="result-player alive">
+                    <span className="player-name">{player.name}</span>
+                    <span className="player-role" style={{ color: player.role.color }}>
+                      {player.role.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="eliminated-players">
+                <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
+                {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
+                  <div key={player.id} className="result-player eliminated">
+                    <span className="player-name">{player.name}</span>
+                    <span className="player-role" style={{ color: player.role.color }}>
+                      {player.role.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <button className="return-to-lobby" onClick={() => window.location.reload()}>
+            Return to Lobby
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Show eliminated player screen if this player is dead
@@ -653,77 +663,80 @@ function JoinRoom() {
     })
     
     return (
-      <div className="day-phase-container">
-        <div className="day-phase-content">
-          <div className="day-header">
-            <div className="day-icon">☀️</div>
-            <h1>Day Phase</h1>
-            <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
-          </div>
+      <div className="day-container">
+        <div className="day-phase-container">
+          <div className="day-phase-content">
+            <div className="day-header">
+              <div className="day-icon">☀️</div>
+              <h1>Day Phase</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
 
-          <div className="voting-section">
-            <h2>Discuss and Vote</h2>
-            <p>Select a player to accuse and vote for elimination:</p>
-            
-                        <div className="player-list">
-              {playersToShow.length > 0 ? (
-                playersToShow.map((player) => (
-                  <button
-                    key={player.id}
-                    className={`player-btn ${accusationTarget === player.id ? 'selected' : ''}`}
-                    onClick={() => handleAccusation(player.id)}
-                  >
-                    <span className="player-name">{player.name}</span>
-                    <div className="vote-info">
-                      {accusationTarget === player.id && <span className="vote-indicator">✓ Accused</span>}
-                      {accusations[player.id] && (
-                        <span className="vote-count">({accusations[player.id].voteCount} votes)</span>
-                      )}
+            <div className="voting-section">
+              <h2>Discuss and Vote</h2>
+              <p>Select a player to accuse and vote for elimination:</p>
+              
+              <div className="player-list">
+                {playersToShow.length > 0 ? (
+                  playersToShow.map((player) => (
+                    <button
+                      key={player.id}
+                      className={`player-btn ${accusationTarget === player.id ? 'selected' : ''}`}
+                      onClick={() => handleAccusation(player.id)}
+                    >
+                      <span className="player-name">{player.name}</span>
+                      <div className="vote-info">
+                        {accusationTarget === player.id && <span className="vote-indicator">✓ Accused</span>}
+                        {accusations[player.id] && (
+                          <span className="vote-count">({accusations[player.id].voteCount} votes)</span>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="no-players">
+                    <p>No players available to vote for</p>
+                    <small>Debug: Total targets: {dayPhaseTargets.length}, Player ID: {playerId}</small>
+                  </div>
+                )}
+              </div>
+
+              {accusationTarget && (
+                <div className="accusation-confirmation">
+                  <p>You are accusing <strong>{playersToShow.find(p => p.id === accusationTarget)?.name}</strong></p>
+                  <div className="accusation-info">
+                    <small>Click the same player again to clear your accusation</small>
+                  </div>
+                </div>
+              )}
+
+              {eliminationCountdown && (
+                <div className="elimination-timer">
+                  <h3>⚖️ Majority Reached!</h3>
+                  <p>Eliminating: <strong>{eliminationCountdown.targetName}</strong></p>
+                  <div className="countdown">
+                    <span className="timer">{eliminationCountdown.timeLeft}</span>
+                    <small>seconds to cancel</small>
+                  </div>
+                </div>
+              )}
+
+              {Object.keys(accusations).length > 0 && !eliminationCountdown && (
+                <div className="vote-summary">
+                  <h3>Current Accusations</h3>
+                  {Object.entries(accusations).map(([accusedId, accusationData]) => (
+                    <div key={accusedId} className="accusation-item">
+                      <span className="accused-name">{accusationData.name}:</span>
+                      <span className="accusers">{accusationData.accusers.join(', ')}</span>
+                      <span className="vote-count">({accusationData.voteCount} votes)</span>
                     </div>
-                  </button>
-                ))
-              ) : (
-                <div className="no-players">
-                  <p>No players available to vote for</p>
-                  <small>Debug: Total targets: {dayPhaseTargets.length}, Player ID: {playerId}</small>
+                  ))}
                 </div>
               )}
             </div>
-
-            {accusationTarget && (
-              <div className="accusation-confirmation">
-                <p>You are accusing <strong>{playersToShow.find(p => p.id === accusationTarget)?.name}</strong></p>
-                <div className="accusation-info">
-                  <small>Click the same player again to clear your accusation</small>
-                </div>
-              </div>
-            )}
-
-            {eliminationCountdown && (
-              <div className="elimination-timer">
-                <h3>⚖️ Majority Reached!</h3>
-                <p>Eliminating: <strong>{eliminationCountdown.targetName}</strong></p>
-                <div className="countdown">
-                  <span className="timer">{eliminationCountdown.timeLeft}</span>
-                  <small>seconds to cancel</small>
-                </div>
-              </div>
-            )}
-
-            {Object.keys(accusations).length > 0 && !eliminationCountdown && (
-              <div className="vote-summary">
-                <h3>Current Accusations</h3>
-                {Object.entries(accusations).map(([accusedId, accusationData]) => (
-                  <div key={accusedId} className="accusation-item">
-                    <span className="accused-name">{accusationData.name}:</span>
-                    <span className="accusers">{accusationData.accusers.join(', ')}</span>
-                    <span className="vote-count">({accusationData.voteCount} votes)</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
+        {renderPauseOverlay()}
       </div>
     )
   }
@@ -735,6 +748,29 @@ function JoinRoom() {
       // If we haven't received vote targets yet, show loading
       if (voteTargets.length === 0) {
         return (
+          <div className="night-container">
+            <div className="mafia-vote-container">
+              <div className="mafia-vote-content">
+                <div className="night-header">
+                  <div className="night-icon">🌙</div>
+                  <h1>Night Phase</h1>
+                  <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+                </div>
+
+                <div className="vote-section">
+                  <h2>Preparing...</h2>
+                  <div className="night-progress">
+                    <div className="night-spinner"></div>
+                    <p>Gathering intelligence on targets...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+      return (
+        <div className="night-container">
           <div className="mafia-vote-container">
             <div className="mafia-vote-content">
               <div className="night-header">
@@ -744,93 +780,74 @@ function JoinRoom() {
               </div>
 
               <div className="vote-section">
-                <h2>Preparing...</h2>
-                <div className="night-progress">
-                  <div className="night-spinner"></div>
-                  <p>Gathering intelligence on targets...</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      }
-      return (
-        <div className="mafia-vote-container">
-          <div className="mafia-vote-content">
-            <div className="night-header">
-              <div className="night-icon">🌙</div>
-              <h1>Night Phase</h1>
-              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
-            </div>
-
-            <div className="vote-section">
-              <h2>Choose Your Target</h2>
-              <p>Select a player to eliminate tonight:</p>
-              
-              <div className="target-list">
-                {voteTargets.map((target) => (
-                  <button
-                    key={target.id}
-                    className={`target-btn ${selectedTarget === target.id ? 'selected' : ''} ${mafiaVotesLocked ? 'locked' : ''}`}
-                    onClick={() => handleMafiaVote(target.id)}
-                    disabled={mafiaVotesLocked}
-                  >
-                    <span className="target-name">{target.name}</span>
-                    {selectedTarget === target.id && <span className="vote-indicator">✓ Voted</span>}
-                  </button>
-                ))}
-              </div>
-
-              {Object.keys(mafiaVotes).length > 1 && (
-                <div className="other-votes-section">
-                  <h3>Team Votes</h3>
-                  {Object.entries(mafiaVotes).map(([playerId, voteData]) => (
-                    <div key={playerId} className="vote-status">
-                      <span className="voter-name">{voteData.name}:</span>
-                      <span className="vote-target">
-                        {voteData.target ? voteData.targetName : 'No vote'}
-                      </span>
-                    </div>
+                <h2>Choose Your Target</h2>
+                <p>Select a player to eliminate tonight:</p>
+                
+                <div className="target-list">
+                  {voteTargets.map((target) => (
+                    <button
+                      key={target.id}
+                      className={`target-btn ${selectedTarget === target.id ? 'selected' : ''} ${mafiaVotesLocked ? 'locked' : ''}`}
+                      onClick={() => handleMafiaVote(target.id)}
+                      disabled={mafiaVotesLocked}
+                    >
+                      <span className="target-name">{target.name}</span>
+                      {selectedTarget === target.id && <span className="vote-indicator">✓ Voted</span>}
+                    </button>
                   ))}
                 </div>
-              )}
 
-              {consensusTimer && (
-                <div className="consensus-timer">
-                  <h3>🎯 Consensus Reached!</h3>
-                  <p>Targeting: <strong>{consensusTimer.targetName}</strong></p>
-                  <div className="countdown">
-                    <span className="timer">{consensusTimer.timeLeft}</span>
-                    <small>seconds to lock in</small>
+                {Object.keys(mafiaVotes).length > 1 && (
+                  <div className="other-votes-section">
+                    <h3>Team Votes</h3>
+                    {Object.entries(mafiaVotes).map(([playerId, voteData]) => (
+                      <div key={playerId} className="vote-status">
+                        <span className="voter-name">{voteData.name}:</span>
+                        <span className="vote-target">
+                          {voteData.target ? voteData.targetName : 'No vote'}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              )}
+                )}
 
-              {hasVoted && !consensusTimer && !mafiaVotesLocked && (
-                <div className="vote-confirmation">
-                  <p>Vote cast! Click the same target again to remove your vote.</p>
-                  <div className="consensus-info">
-                    <small>All Mafia must agree for 5 seconds to lock in the target</small>
+                {consensusTimer && (
+                  <div className="consensus-timer">
+                    <h3>🎯 Consensus Reached!</h3>
+                    <p>Targeting: <strong>{consensusTimer.targetName}</strong></p>
+                    <div className="countdown">
+                      <span className="timer">{consensusTimer.timeLeft}</span>
+                      <small>seconds to lock in</small>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {mafiaVotesLocked && (
-                <div className="vote-locked">
-                  <p>🔒 Votes are locked! Waiting for other night actions to complete...</p>
-                  <div className="locked-info">
-                    <small>Your vote has been finalized and cannot be changed</small>
+                {hasVoted && !consensusTimer && !mafiaVotesLocked && (
+                  <div className="vote-confirmation">
+                    <p>Vote cast! Click the same target again to remove your vote.</p>
+                    <div className="consensus-info">
+                      <small>All Mafia must agree for 5 seconds to lock in the target</small>
+                    </div>
                   </div>
+                )}
+
+                {mafiaVotesLocked && (
+                  <div className="vote-locked">
+                    <p>🔒 Votes are locked! Waiting for other night actions to complete...</p>
+                    <div className="locked-info">
+                      <small>Your vote has been finalized and cannot be changed</small>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {eliminatedPlayer && (
+                <div className="elimination-result">
+                  <h3>Target Eliminated</h3>
+                  <p><strong>{eliminatedPlayer.name}</strong> has been eliminated.</p>
                 </div>
               )}
             </div>
-
-            {eliminatedPlayer && (
-              <div className="elimination-result">
-                <h3>Target Eliminated</h3>
-                <p><strong>{eliminatedPlayer.name}</strong> has been eliminated.</p>
-              </div>
-            )}
           </div>
         </div>
       )
@@ -842,6 +859,30 @@ function JoinRoom() {
       // If we haven't received heal targets yet, show loading
       if (healTargets.length === 0) {
         return (
+          <div className="night-container">
+            <div className="doctor-heal-container">
+              <div className="doctor-heal-content">
+                <div className="night-header">
+                  <div className="night-icon">🌙</div>
+                  <h1>Night Phase</h1>
+                  <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+                </div>
+
+                <div className="heal-section">
+                  <h2>Preparing...</h2>
+                  <div className="night-progress">
+                    <div className="night-spinner"></div>
+                    <p>Gathering medical supplies...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="night-container">
           <div className="doctor-heal-container">
             <div className="doctor-heal-content">
               <div className="night-header">
@@ -851,60 +892,40 @@ function JoinRoom() {
               </div>
 
               <div className="heal-section">
-                <h2>Preparing...</h2>
-                <div className="night-progress">
-                  <div className="night-spinner"></div>
-                  <p>Gathering medical supplies...</p>
+                <h2>Choose Who to Protect</h2>
+                <p>Select one player to save from a potential Mafia attack:</p>
+                
+                <div className="heal-list">
+                  {healTargets.map((target) => (
+                    <button
+                      key={target.id}
+                      className={`heal-btn ${selectedHeal === target.id ? 'selected' : ''}`}
+                      onClick={() => handleDoctorHeal(target.id)}
+                      disabled={hasHealed}
+                    >
+                      <span className="heal-name">{target.name}</span>
+                      {selectedHeal === target.id && <span className="heal-indicator">✅ Protected</span>}
+                    </button>
+                  ))}
                 </div>
-              </div>
-            </div>
-          </div>
-        )
-      }
 
-      return (
-        <div className="doctor-heal-container">
-          <div className="doctor-heal-content">
-            <div className="night-header">
-              <div className="night-icon">🌙</div>
-              <h1>Night Phase</h1>
-              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
-            </div>
-
-            <div className="heal-section">
-              <h2>Choose Who to Protect</h2>
-              <p>Select one player to save from a potential Mafia attack:</p>
-              
-              <div className="heal-list">
-                {healTargets.map((target) => (
-                  <button
-                    key={target.id}
-                    className={`heal-btn ${selectedHeal === target.id ? 'selected' : ''}`}
-                    onClick={() => handleDoctorHeal(target.id)}
-                    disabled={hasHealed}
-                  >
-                    <span className="heal-name">{target.name}</span>
-                    {selectedHeal === target.id && <span className="heal-indicator">✅ Protected</span>}
-                  </button>
-                ))}
-              </div>
-
-              {hasHealed && (
-                <div className="heal-confirmation">
-                  <p>Protection cast! Waiting for other night actions...</p>
-                  <div className="heal-info">
-                    <small>Your choice is final and cannot be changed</small>
+                {hasHealed && (
+                  <div className="heal-confirmation">
+                    <p>Protection cast! Waiting for other night actions...</p>
+                    <div className="heal-info">
+                      <small>Your choice is final and cannot be changed</small>
+                    </div>
                   </div>
+                )}
+              </div>
+
+              {eliminatedPlayer && (
+                <div className="elimination-result">
+                  <h3>Dawn Breaks</h3>
+                  <p><strong>{eliminatedPlayer.name}</strong> was found eliminated.</p>
                 </div>
               )}
             </div>
-
-            {eliminatedPlayer && (
-              <div className="elimination-result">
-                <h3>Dawn Breaks</h3>
-                <p><strong>{eliminatedPlayer.name}</strong> was found eliminated.</p>
-              </div>
-            )}
           </div>
         </div>
       )
@@ -915,19 +936,21 @@ function JoinRoom() {
       // If we haven't received investigation targets yet, show loading
       if (investigateTargets.length === 0) {
         return (
-          <div className="seer-investigate-container">
-            <div className="seer-investigate-content">
-              <div className="night-header">
-                <div className="night-icon">🌙</div>
-                <h1>Night Phase</h1>
-                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
-              </div>
+          <div className="night-container">
+            <div className="seer-investigate-container">
+              <div className="seer-investigate-content">
+                <div className="night-header">
+                  <div className="night-icon">🌙</div>
+                  <h1>Night Phase</h1>
+                  <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+                </div>
 
-              <div className="investigate-section">
-                <h2>Preparing...</h2>
-                <div className="night-progress">
-                  <div className="night-spinner"></div>
-                  <p>Gathering clues...</p>
+                <div className="investigate-section">
+                  <h2>Preparing...</h2>
+                  <div className="night-progress">
+                    <div className="night-spinner"></div>
+                    <p>Gathering clues...</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -936,61 +959,63 @@ function JoinRoom() {
       }
 
       return (
-        <div className="seer-investigate-container">
-          <div className="seer-investigate-content">
-            <div className="night-header">
-              <div className="night-icon">🌙</div>
-              <h1>Night Phase</h1>
-              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
-            </div>
-
-            {!hasInvestigated ? (
-              <div className="investigate-section">
-                <h2>Choose Who to Investigate</h2>
-                <p>Select one player to learn their true alignment:</p>
-                
-                <div className="investigate-list">
-                  {investigateTargets.map((target) => (
-                    <button
-                      key={target.id}
-                      className={`investigate-btn ${selectedInvestigation === target.id ? 'selected' : ''}`}
-                      onClick={() => handleSeerInvestigate(target.id)}
-                      disabled={hasInvestigated}
-                    >
-                      <span className="investigate-name">{target.name}</span>
-                      {selectedInvestigation === target.id && <span className="investigate-indicator">🔍 Investigating</span>}
-                    </button>
-                  ))}
-                </div>
+        <div className="night-container">
+          <div className="seer-investigate-container">
+            <div className="seer-investigate-content">
+              <div className="night-header">
+                <div className="night-icon">🌙</div>
+                <h1>Night Phase</h1>
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
               </div>
-            ) : (
-              <div className="investigate-section">
-                <h2>Investigation Complete</h2>
-                
-                {investigationResult && (
-                  <div className="investigation-result">
-                    <div className="result-content">
-                      <div className="result-icon">🔍</div>
-                      <p className="result-text">{investigationResult}</p>
+
+              {!hasInvestigated ? (
+                <div className="investigate-section">
+                  <h2>Choose Who to Investigate</h2>
+                  <p>Select one player to learn their true alignment:</p>
+                  
+                  <div className="investigate-list">
+                    {investigateTargets.map((target) => (
+                      <button
+                        key={target.id}
+                        className={`investigate-btn ${selectedInvestigation === target.id ? 'selected' : ''}`}
+                        onClick={() => handleSeerInvestigate(target.id)}
+                        disabled={hasInvestigated}
+                      >
+                        <span className="investigate-name">{target.name}</span>
+                        {selectedInvestigation === target.id && <span className="investigate-indicator">🔍 Investigating</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="investigate-section">
+                  <h2>Investigation Complete</h2>
+                  
+                  {investigationResult && (
+                    <div className="investigation-result">
+                      <div className="result-content">
+                        <div className="result-icon">🔍</div>
+                        <p className="result-text">{investigationResult}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="investigate-confirmation">
+                    <p>Waiting for other night actions to complete...</p>
+                    <div className="investigate-info">
+                      <small>Your investigation is complete and private to you</small>
                     </div>
                   </div>
-                )}
-
-                <div className="investigate-confirmation">
-                  <p>Waiting for other night actions to complete...</p>
-                  <div className="investigate-info">
-                    <small>Your investigation is complete and private to you</small>
-                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {eliminatedPlayer && (
-              <div className="elimination-result">
-                <h3>Dawn Breaks</h3>
-                <p><strong>{eliminatedPlayer.name}</strong> was found eliminated.</p>
-              </div>
-            )}
+              {eliminatedPlayer && (
+                <div className="elimination-result">
+                  <h3>Dawn Breaks</h3>
+                  <p><strong>{eliminatedPlayer.name}</strong> was found eliminated.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )
@@ -998,31 +1023,33 @@ function JoinRoom() {
 
     // Regular citizens (Villager/Townsperson) night phase (waiting screen)
     return (
-      <div className="night-wait-container">
-        <div className="night-wait-content">
-          <div className="night-header">
-            <div className="night-icon">🌙</div>
-            <h1>Night Phase</h1>
-            <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
-          </div>
-
-          <div className="sleep-section">
-            <div className="sleep-icon">😴</div>
-            <h2>Sleep Tight</h2>
-            <p>The town sleeps while dark forces move in the shadows...</p>
-            
-            <div className="night-progress">
-              <div className="night-spinner"></div>
-              <p>Waiting for night actions to complete...</p>
+      <div className="night-container">
+        <div className="night-wait-container">
+          <div className="night-wait-content">
+            <div className="night-header">
+              <div className="night-icon">🌙</div>
+              <h1>Night Phase</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
             </div>
-          </div>
 
-          {eliminatedPlayer && (
-            <div className="elimination-result">
-              <h3>Dawn Breaks</h3>
-              <p>The town wakes to discover that <strong>{eliminatedPlayer.name}</strong> has been eliminated.</p>
+            <div className="sleep-section">
+              <div className="sleep-icon">😴</div>
+              <h2>Sleep Tight</h2>
+              <p>The town sleeps while dark forces move in the shadows...</p>
+              
+              <div className="night-progress">
+                <div className="night-spinner"></div>
+                <p>Waiting for night actions to complete...</p>
+              </div>
             </div>
-          )}
+
+            {eliminatedPlayer && (
+              <div className="elimination-result">
+                <h3>Dawn Breaks</h3>
+                <p>The town wakes to discover that <strong>{eliminatedPlayer.name}</strong> has been eliminated.</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -1100,6 +1127,7 @@ function JoinRoom() {
             </button>
           </div>
         </div>
+        {renderPauseOverlay()}
       </div>
     )
   }
@@ -1123,31 +1151,31 @@ function JoinRoom() {
   if (isWaiting) {
     return (
       <div className="waiting-container">
-                  <div className="waiting-content">
-            <div className="spinner"></div>
-            {error ? (
-              <>
-                <h2>Connection Error</h2>
-                <p>{error}</p>
-                <button 
-                  onClick={() => {
-                    setError('')
-                    setIsWaiting(false)
-                  }}
-                >
-                  Try Again
-                </button>
-              </>
-            ) : (
-              <>
-                <h2>You're in the game!</h2>
-                <p>Room: <strong>{roomId}</strong></p>
-                <p>Waiting for the host to start the game...</p>
-                <div className="player-info">
-                  <span className="player-name">Playing as: {playerName}</span>
-                </div>
-              </>
-            )}
+        <div className="waiting-content">
+          <div className="spinner"></div>
+          {error ? (
+            <>
+              <h2>Connection Error</h2>
+              <p>{error}</p>
+              <button 
+                onClick={() => {
+                  setError('')
+                  setIsWaiting(false)
+                }}
+              >
+                Try Again
+              </button>
+            </>
+          ) : (
+            <>
+              <h2>You're in the game!</h2>
+              <p>Room: <strong>{roomId}</strong></p>
+              <p>Waiting for the host to start the game...</p>
+              <div className="player-info">
+                <span className="player-name">Playing as: {playerName}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
@@ -1192,15 +1220,7 @@ function JoinRoom() {
       )}
       
       {/* Game Pause Overlay */}
-      {gamePaused && (
-        <div className="game-pause-overlay">
-          <div className="pause-content">
-            <h2>⏸️ Game Paused</h2>
-            <p>{pauseReason}</p>
-            <p>Waiting for players to reconnect...</p>
-          </div>
-        </div>
-      )}
+      {renderPauseOverlay()}
       
       {/* Message Display */}
       {message && (
@@ -1212,87 +1232,87 @@ function JoinRoom() {
       <div className="join-container">
         <div className="join-content">
           <h1>Join Game</h1>
-        <p className="room-info">Room: <strong>{roomId}</strong></p>
-        {gameType && (
-          <p className="game-type-info">Game Type: <strong>{gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'}</strong></p>
-        )}
-        
-        <form onSubmit={handleJoinRoom} className="join-form">
-          <div className="form-group">
-            <label htmlFor="playerName">Your Name</label>
-            <input
-              type="text"
-              id="playerName"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Enter your display name"
-              maxLength={20}
-              disabled={isJoining}
-              required
-            />
-          </div>
-
-          {gameType && availableImages.length > 0 && (
-            <div className="form-group character-selection">
-              <label>Choose Your Character</label>
-              
-              {/* Current Selection Preview */}
-              {currentProfileImage && (
-                <div className="current-selection">
-                  <div className="current-avatar">
-                    <img 
-                      src={getProfileImageUrl(gameType, currentProfileImage, supportsWebP)} 
-                      alt="Current selection"
-                      className="selected-profile-image"
-                      onError={(e) => {
-                        if (supportsWebP && e.target.src.includes('.webp')) {
-                          e.target.src = getProfileImageUrl(gameType, currentProfileImage, false)
-                        }
-                      }}
-                    />
-                  </div>
-                  <p className="selection-name">
-                    {currentProfileImage?.replace(/\.(jpg|jpeg|png|gif)$/i, '').replace(/_/g, ' ')}
-                  </p>
-                </div>
-              )}
-
-              {/* Character Grid */}
-              <div className="profile-grid">
-                {availableImages.map(imageName => (
-                  <div 
-                    key={imageName}
-                    className={`profile-option ${currentProfileImage === imageName ? 'selected' : ''}`}
-                    onClick={() => setCurrentProfileImage(imageName)}
-                  >
-                    <img 
-                      src={getProfileImageUrl(gameType, imageName, supportsWebP)} 
-                      alt={`Character ${imageName}`}
-                      className="profile-option-image"
-                      onError={(e) => {
-                        if (supportsWebP && e.target.src.includes('.webp')) {
-                          e.target.src = getProfileImageUrl(gameType, imageName, false)
-                        }
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+          <p className="room-info">Room: <strong>{roomId}</strong></p>
+          {gameType && (
+            <p className="game-type-info">Game Type: <strong>{gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'}</strong></p>
           )}
           
-          {error && <div className="error-message">{error}</div>}
-          
-          <button 
-            type="submit" 
-            className="join-btn"
-            disabled={isJoining || !playerName.trim() || (gameType && !currentProfileImage)}
-          >
-            {isJoining ? 'Joining...' : 'Join Game'}
-          </button>
-        </form>
+          <form onSubmit={handleJoinRoom} className="join-form">
+            <div className="form-group">
+              <label htmlFor="playerName">Your Name</label>
+              <input
+                type="text"
+                id="playerName"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                placeholder="Enter your display name"
+                maxLength={20}
+                disabled={isJoining}
+                required
+              />
+            </div>
+
+            {gameType && availableImages.length > 0 && (
+              <div className="form-group character-selection">
+                <label>Choose Your Character</label>
+                
+                {/* Current Selection Preview */}
+                {currentProfileImage && (
+                  <div className="current-selection">
+                    <div className="current-avatar">
+                      <img 
+                        src={getProfileImageUrl(gameType, currentProfileImage, supportsWebP)} 
+                        alt="Current selection"
+                        className="selected-profile-image"
+                        onError={(e) => {
+                          if (supportsWebP && e.target.src.includes('.webp')) {
+                            e.target.src = getProfileImageUrl(gameType, currentProfileImage, false)
+                          }
+                        }}
+                      />
+                    </div>
+                    <p className="selection-name">
+                      {currentProfileImage?.replace(/\.(jpg|jpeg|png|gif)$/i, '').replace(/_/g, ' ')}
+                    </p>
+                  </div>
+                )}
+
+                {/* Character Grid */}
+                <div className="profile-grid">
+                  {availableImages.map(imageName => (
+                    <div 
+                      key={imageName}
+                      className={`profile-option ${currentProfileImage === imageName ? 'selected' : ''}`}
+                      onClick={() => setCurrentProfileImage(imageName)}
+                    >
+                      <img 
+                        src={getProfileImageUrl(gameType, imageName, supportsWebP)} 
+                        alt={`Character ${imageName}`}
+                        className="profile-option-image"
+                        onError={(e) => {
+                          if (supportsWebP && e.target.src.includes('.webp')) {
+                            e.target.src = getProfileImageUrl(gameType, imageName, false)
+                          }
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {error && <div className="error-message">{error}</div>}
+            
+            <button 
+              type="submit" 
+              className="join-btn"
+              disabled={isJoining || !playerName.trim() || (gameType && !currentProfileImage)}
+            >
+              {isJoining ? 'Joining...' : 'Join Game'}
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
     </div>
   )
 }
