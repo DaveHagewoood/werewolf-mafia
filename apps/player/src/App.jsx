@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport } from '@werewolf-mafia/shared'
+import './App.css'
 
 function HomePage() {
   return (
@@ -1193,37 +1194,53 @@ function JoinRoom() {
     <div className="app-wrapper">
       {/* Connection Status Indicator */}
       {connectionStatus !== 'connected' && (
-        <div className={`connection-status ${connectionStatus}`}>
-          {connectionStatus === 'connecting' && '🔄 Connecting...'}
-          {connectionStatus === 'disconnected' && !error && (
-            <div>
-              🔴 Disconnected 
+        <>
+          <div className={`connection-status ${connectionStatus}`}>
+            {connectionStatus === 'connecting' && '🔄 Connecting...'}
+            {connectionStatus === 'disconnected' && '🔴 Disconnected'}
+          </div>
+          
+          {connectionStatus === 'disconnected' && (
+            <div className="disconnect-container">
+              <div className="disconnect-content">
+                <div className="disconnect-icon">🔌</div>
+                <h1>Connection Lost</h1>
+                <p>We've lost connection to the game server.</p>
+                
+                {error ? (
+                  <>
+                    <div className="error-details">
+                      <p>{error}</p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setError('')
+                        setIsWaiting(false)
+                        window.location.reload()
+                      }}
+                      className="reconnect-button"
+                    >
+                      Try Again
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="reconnect-message">
+                      <p>Attempting to reconnect automatically...</p>
+                      <div className="reconnect-spinner"></div>
+                    </div>
+                    <button 
+                      onClick={() => window.location.reload()}
+                      className="reconnect-button"
+                    >
+                      Refresh Page
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
-          {error && (
-            <div>
-              🔴 Disconnected 
-              <button 
-                onClick={() => {
-                  setError('')
-                  setIsWaiting(false)
-                }}
-                style={{
-                  marginLeft: '10px',
-                  padding: '4px 8px',
-                  fontSize: '12px',
-                  backgroundColor: '#007bff',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                Reconnect
-              </button>
-            </div>
-          )}
-        </div>
+        </>
       )}
       
       {/* Message Display */}
@@ -1233,90 +1250,93 @@ function JoinRoom() {
         </div>
       )}
       
-      <div className="join-container">
-        <div className="join-content">
-          <h1>Join Game</h1>
-          <p className="room-info">Room: <strong>{roomId}</strong></p>
-          {gameType && (
-            <p className="game-type-info">Game Type: <strong>{gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'}</strong></p>
-          )}
-          
-          <form onSubmit={handleJoinRoom} className="join-form">
-            <div className="form-group">
-              <label htmlFor="playerName">Your Name</label>
-              <input
-                type="text"
-                id="playerName"
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="Enter your display name"
-                maxLength={20}
-                disabled={isJoining}
-                required
-              />
-            </div>
-
-            {gameType && availableImages.length > 0 && (
-              <div className="form-group character-selection">
-                <label>Choose Your Character</label>
-                
-                {/* Current Selection Preview */}
-                {currentProfileImage && (
-                  <div className="current-selection">
-                    <div className="current-avatar">
-                      <img 
-                        src={getProfileImageUrl(gameType, currentProfileImage, supportsWebP)} 
-                        alt="Current selection"
-                        className="selected-profile-image"
-                        onError={(e) => {
-                          if (supportsWebP && e.target.src.includes('.webp')) {
-                            e.target.src = getProfileImageUrl(gameType, currentProfileImage, false)
-                          }
-                        }}
-                      />
-                    </div>
-                    <p className="selection-name">
-                      {currentProfileImage?.replace(/\.(jpg|jpeg|png|gif)$/i, '').replace(/_/g, ' ')}
-                    </p>
-                  </div>
-                )}
-
-                {/* Character Grid */}
-                <div className="profile-grid">
-                  {availableImages.map(imageName => (
-                    <div 
-                      key={imageName}
-                      className={`profile-option ${currentProfileImage === imageName ? 'selected' : ''}`}
-                      onClick={() => setCurrentProfileImage(imageName)}
-                    >
-                      <img 
-                        src={getProfileImageUrl(gameType, imageName, supportsWebP)} 
-                        alt={`Character ${imageName}`}
-                        className="profile-option-image"
-                        onError={(e) => {
-                          if (supportsWebP && e.target.src.includes('.webp')) {
-                            e.target.src = getProfileImageUrl(gameType, imageName, false)
-                          }
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
+      {/* Only show join form if connected */}
+      {connectionStatus === 'connected' && (
+        <div className="join-container">
+          <div className="join-content">
+            <h1>Join Game</h1>
+            <p className="room-info">Room: <strong>{roomId}</strong></p>
+            {gameType && (
+              <p className="game-type-info">Game Type: <strong>{gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'}</strong></p>
             )}
             
-            {error && <div className="error-message">{error}</div>}
-            
-            <button 
-              type="submit" 
-              className="join-btn"
-              disabled={isJoining || !playerName.trim() || (gameType && !currentProfileImage)}
-            >
-              {isJoining ? 'Joining...' : 'Join Game'}
-            </button>
-          </form>
+            <form onSubmit={handleJoinRoom} className="join-form">
+              <div className="form-group">
+                <label htmlFor="playerName">Your Name</label>
+                <input
+                  type="text"
+                  id="playerName"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Enter your display name"
+                  maxLength={20}
+                  disabled={isJoining}
+                  required
+                />
+              </div>
+
+              {gameType && availableImages.length > 0 && (
+                <div className="form-group character-selection">
+                  <label>Choose Your Character</label>
+                  
+                  {/* Current Selection Preview */}
+                  {currentProfileImage && (
+                    <div className="current-selection">
+                      <div className="current-avatar">
+                        <img 
+                          src={getProfileImageUrl(gameType, currentProfileImage, supportsWebP)} 
+                          alt="Current selection"
+                          className="selected-profile-image"
+                          onError={(e) => {
+                            if (supportsWebP && e.target.src.includes('.webp')) {
+                              e.target.src = getProfileImageUrl(gameType, currentProfileImage, false)
+                            }
+                          }}
+                        />
+                      </div>
+                      <p className="selection-name">
+                        {currentProfileImage?.replace(/\.(jpg|jpeg|png|gif)$/i, '').replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Character Grid */}
+                  <div className="profile-grid">
+                    {availableImages.map(imageName => (
+                      <div 
+                        key={imageName}
+                        className={`profile-option ${currentProfileImage === imageName ? 'selected' : ''}`}
+                        onClick={() => setCurrentProfileImage(imageName)}
+                      >
+                        <img 
+                          src={getProfileImageUrl(gameType, imageName, supportsWebP)} 
+                          alt={`Character ${imageName}`}
+                          className="profile-option-image"
+                          onError={(e) => {
+                            if (supportsWebP && e.target.src.includes('.webp')) {
+                              e.target.src = getProfileImageUrl(gameType, imageName, false)
+                            }
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {error && <div className="error-message">{error}</div>}
+              
+              <button 
+                type="submit" 
+                className="join-btn"
+                disabled={isJoining || !playerName.trim() || (gameType && !currentProfileImage)}
+              >
+                {isJoining ? 'Joining...' : 'Join Game'}
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

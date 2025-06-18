@@ -135,62 +135,8 @@
 
 /* ===== End Connection Management Styles ===== */
 
-/* Disconnect Screen */
-.disconnect-container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 2rem;
-}
-
-.disconnect-content {
-  background: white;
-  padding: 3rem;
-  border-radius: 1.5rem;
-  text-align: center;
-  max-width: 90%;
-  width: 500px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  animation: fadeIn 0.5s ease;
-}
-
-.disconnect-icon {
-  font-size: 4rem;
-  margin-bottom: 1.5rem;
-  animation: bounce 1s ease infinite;
-}
-
-.disconnect-content h1 {
-  font-size: 2.5rem;
-  color: #e53e3e;
-  margin-bottom: 1.5rem;
-}
-
-.disconnect-content p {
-  font-size: 1.2rem;
-  color: #4a5568;
-  margin-bottom: 1rem;
-  line-height: 1.6;
-}
-
-.reconnect-message {
-  margin-top: 2rem;
-  padding: 1rem;
-  background: #f7fafc;
-  border-radius: 0.75rem;
-  color: #2d3748 !important;
-  font-weight: 500;
-}
-
-@keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-/* Pause Overlay */
-.pause-overlay {
+/* Pause and Disconnect Overlays - High Priority */
+body .pause-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -205,7 +151,7 @@
   backdrop-filter: blur(8px);
 }
 
-.pause-content {
+body .pause-content {
   background: white;
   padding: 3rem;
   border-radius: 1.5rem;
@@ -217,21 +163,24 @@
   animation: scaleIn 0.3s ease forwards;
 }
 
-.pause-content h2 {
+body .pause-content h2 {
   font-size: 2.5rem;
   margin-bottom: 1.5rem;
   color: #e53e3e;
   text-shadow: 0 2px 4px rgba(229, 62, 62, 0.2);
+  font-weight: bold;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-.pause-content p {
+body .pause-content p {
   color: #4a5568;
   font-size: 1.4rem;
   margin-bottom: 1.5rem;
   line-height: 1.6;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-.host-disconnect-warning {
+body .host-disconnect-warning {
   margin-top: 2rem;
   padding: 2rem;
   background: #fff5f5;
@@ -240,15 +189,16 @@
   animation: pulse 2s infinite;
 }
 
-.host-disconnect-warning p {
+body .host-disconnect-warning p {
   color: #e53e3e;
   font-weight: 600;
   margin-bottom: 1.5rem;
   font-size: 1.3rem;
   line-height: 1.4;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-.reconnect-spinner {
+body .reconnect-spinner {
   width: 60px;
   height: 60px;
   border: 6px solid #fed7d7;
@@ -256,6 +206,121 @@
   border-radius: 50%;
   margin: 0 auto;
   animation: spin 1s linear infinite;
+}
+
+body .disconnect-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+}
+
+body .disconnect-content {
+  background: white;
+  padding: 3rem;
+  border-radius: 1.5rem;
+  text-align: center;
+  max-width: 90%;
+  width: 500px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.5s ease;
+}
+
+body .disconnect-icon {
+  font-size: 4rem;
+  margin-bottom: 1.5rem;
+  animation: bounce 1s ease infinite;
+}
+
+body .disconnect-content h1 {
+  font-size: 2.5rem;
+  color: #e53e3e;
+  margin-bottom: 1.5rem;
+  font-weight: bold;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body .disconnect-content p {
+  font-size: 1.2rem;
+  color: #4a5568;
+  margin-bottom: 1rem;
+  line-height: 1.6;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body .reconnect-message {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: #f7fafc;
+  border-radius: 0.75rem;
+  color: #2d3748 !important;
+  font-weight: 500;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1.1); opacity: 1; }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* Media Queries */
+@media (max-width: 768px) {
+  body .pause-content,
+  body .disconnect-content {
+    padding: 2rem;
+    width: 90%;
+  }
+
+  body .pause-content h2,
+  body .disconnect-content h1 {
+    font-size: 2rem;
+  }
+
+  body .pause-content p {
+    font-size: 1.2rem;
+  }
+
+  body .host-disconnect-warning {
+    padding: 1.5rem;
+  }
+
+  body .host-disconnect-warning p {
+    font-size: 1.1rem;
+  }
+
+  body .reconnect-spinner {
+    width: 50px;
+    height: 50px;
+    border-width: 5px;
+  }
 }
 
 /* Game End Screen */
@@ -387,26 +452,6 @@
   box-shadow: 0 4px 12px rgba(108, 92, 231, 0.2);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-
-@keyframes scaleIn {
-  from { transform: scale(0.9); opacity: 0; }
-  to { transform: scale(1.1); opacity: 1; }
-}
-
 @media (max-width: 768px) {
   .results-grid {
     grid-template-columns: 1fr;
@@ -420,5 +465,258 @@
   .victory-icon,
   .cancelled-icon {
     font-size: 3rem;
+  }
+}
+
+/* Eliminated Player Screen */
+.eliminated-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2d3436 0%, #000000 100%);
+  padding: 2rem;
+  color: white;
+}
+
+.eliminated-content {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 3rem;
+  border-radius: 1.5rem;
+  text-align: center;
+  max-width: 90%;
+  width: 600px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  animation: fadeIn 0.5s ease;
+}
+
+.eliminated-header {
+  margin-bottom: 2.5rem;
+}
+
+.death-icon {
+  font-size: 5rem;
+  margin-bottom: 1.5rem;
+  animation: floatAnimation 3s ease-in-out infinite;
+}
+
+.eliminated-header h1 {
+  font-size: 2.8rem;
+  color: #ff4d4d;
+  margin-bottom: 1rem;
+  text-shadow: 0 2px 10px rgba(255, 77, 77, 0.3);
+}
+
+.elimination-subtitle {
+  font-size: 1.4rem;
+  color: #cccccc;
+  font-style: italic;
+}
+
+.elimination-details {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 1rem;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.player-info {
+  margin-bottom: 2.5rem;
+}
+
+.player-info h2 {
+  font-size: 1.8rem;
+  color: #ffffff;
+  margin-bottom: 1.5rem;
+}
+
+.info-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.8rem;
+  padding: 1.5rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row .label {
+  color: #999999;
+  font-size: 1.1rem;
+}
+
+.info-row .value {
+  font-weight: 600;
+  font-size: 1.2rem;
+}
+
+.alignment-good {
+  color: #48bb78;
+}
+
+.alignment-evil {
+  color: #f56565;
+}
+
+.spectator-info {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.8rem;
+  padding: 1.5rem;
+  margin: 2rem 0;
+}
+
+.spectator-info h3 {
+  font-size: 1.6rem;
+  color: #ffffff;
+  margin-bottom: 1rem;
+}
+
+.spectator-info p {
+  color: #cccccc;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.spectator-info ul {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.spectator-info li {
+  color: #cccccc;
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.encouragement {
+  color: #9f7aea !important;
+  font-weight: 600;
+  font-size: 1.2rem !important;
+  margin-top: 1.5rem;
+}
+
+.room-info {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 0.5rem;
+}
+
+.room-info p {
+  color: #cccccc;
+  font-size: 1rem;
+  margin: 0.5rem 0;
+}
+
+.room-info strong {
+  color: #ffffff;
+}
+
+@keyframes floatAnimation {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-15px); }
+}
+
+@media (max-width: 768px) {
+  .eliminated-content {
+    padding: 2rem;
+  }
+
+  .eliminated-header h1 {
+    font-size: 2.2rem;
+  }
+
+  .elimination-subtitle {
+    font-size: 1.2rem;
+  }
+
+  .death-icon {
+    font-size: 4rem;
+  }
+
+  .player-info h2 {
+    font-size: 1.6rem;
+  }
+
+  .spectator-info h3 {
+    font-size: 1.4rem;
+  }
+
+  .info-row .label,
+  .info-row .value,
+  .spectator-info p,
+  .spectator-info li {
+    font-size: 1rem;
+  }
+
+  .encouragement {
+    font-size: 1.1rem !important;
+  }
+}
+
+/* Additional Disconnect Screen Styles */
+.error-details {
+  background: rgba(229, 62, 62, 0.1);
+  border: 1px solid rgba(229, 62, 62, 0.2);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin: 1.5rem 0;
+}
+
+.error-details p {
+  color: #e53e3e !important;
+  font-weight: 500;
+  margin: 0 !important;
+}
+
+.reconnect-button {
+  background: linear-gradient(135deg, #6c5ce7, #5f3dc4);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 1.5rem;
+  width: 100%;
+  max-width: 200px;
+}
+
+.reconnect-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(108, 92, 231, 0.2);
+}
+
+.reconnect-button:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .reconnect-button {
+    padding: 0.8rem 1.5rem;
+    font-size: 1rem;
+  }
+  
+  .error-details {
+    padding: 0.8rem;
+    margin: 1rem 0;
   }
 } 
