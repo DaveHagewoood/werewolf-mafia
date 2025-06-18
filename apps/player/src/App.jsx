@@ -505,6 +505,72 @@ function JoinRoom() {
     }
   }
 
+  // Show game end screen
+  if (gameState === GAME_STATES.ENDED && gameEndData) {
+    // For host disconnects, show a simple message
+    if (!gameEndData.winner) {
+      return (
+        <div className="disconnect-container">
+          <div className="disconnect-content">
+            <div className="disconnect-icon">⚠️</div>
+            <h1>Game Ended</h1>
+            <p>{gameEndData.winCondition}</p>
+            <p className="reconnect-message">Please scan a new QR code to join another game.</p>
+          </div>
+        </div>
+      );
+    }
+
+    // For normal game endings, show the full results
+    return (
+      <div className="game-end-container">
+        <div className="game-end-header">
+          <h1>Game Over</h1>
+          <div className={`victory-announcement ${gameEndData.winner}`}>
+            <div className="victory-icon">
+              {gameEndData.winner === 'mafia' ? '🔥' : '🏆'}
+            </div>
+            <h2>
+              {gameEndData.winner === 'mafia' ? 'Mafia Victory!' : 'Villagers Victory!'}
+            </h2>
+          </div>
+          <p className="win-condition">{gameEndData.winCondition}</p>
+        </div>
+
+        <div className="game-end-content">
+          <div className="final-results">
+            <h3>Final Results</h3>
+            <div className="results-grid">
+              <div className="alive-players">
+                <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
+                {gameEndData.alivePlayers.map(player => (
+                  <div key={player.id} className="result-player alive">
+                    <span className="player-name">{player.name}</span>
+                    <span className="player-role" style={{ color: player.role.color }}>
+                      {player.role.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="eliminated-players">
+                <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
+                {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
+                  <div key={player.id} className="result-player eliminated">
+                    <span className="player-name">{player.name}</span>
+                    <span className="player-role" style={{ color: player.role.color }}>
+                      {player.role.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Add pause overlay to all game phase screens
   const renderPauseOverlay = () => {
     if (!gamePaused) return null;
@@ -525,75 +591,15 @@ function JoinRoom() {
     );
   };
 
-  // Show game end screen
-  if (gameState === GAME_STATES.ENDED && gameEndData) {
+  // Add pause overlay to all game phase views
+  const wrapWithPauseOverlay = (content) => {
     return (
-      <div className="game-end-container">
-        <div className="game-end-header">
-          <h1>Game Over</h1>
-          {gameEndData.winner ? (
-            <>
-              <div className={`victory-announcement ${gameEndData.winner}`}>
-                <div className="victory-icon">
-                  {gameEndData.winner === 'mafia' ? '🔥' : '🏆'}
-                </div>
-                <h2>
-                  {gameEndData.winner === 'mafia' ? 'Mafia Victory!' : 'Villagers Victory!'}
-                </h2>
-              </div>
-              <p className="win-condition">{gameEndData.winCondition}</p>
-            </>
-          ) : (
-            <>
-              <div className="game-cancelled">
-                <div className="cancelled-icon">⚠️</div>
-                <h2>Game Cancelled</h2>
-              </div>
-              <p className="cancel-reason">{gameEndData.winCondition}</p>
-            </>
-          )}
-        </div>
-
-        <div className="game-end-content">
-          {/* Only show results if we have player data */}
-          {gameEndData.alivePlayers && gameEndData.allPlayers && (
-            <div className="final-results">
-              <h3>Final Results</h3>
-              <div className="results-grid">
-                <div className="alive-players">
-                  <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
-                  {gameEndData.alivePlayers.map(player => (
-                    <div key={player.id} className="result-player alive">
-                      <span className="player-name">{player.name}</span>
-                      <span className="player-role" style={{ color: player.role.color }}>
-                        {player.role.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="eliminated-players">
-                  <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
-                  {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
-                    <div key={player.id} className="result-player eliminated">
-                      <span className="player-name">{player.name}</span>
-                      <span className="player-role" style={{ color: player.role.color }}>
-                        {player.role.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <button className="return-to-lobby" onClick={() => window.location.reload()}>
-            Return to Lobby
-          </button>
-        </div>
-      </div>
+      <>
+        {content}
+        {renderPauseOverlay()}
+      </>
     );
-  }
+  };
 
   // Show eliminated player screen if this player is dead
   if (isEliminated && eliminationInfo) {
@@ -665,7 +671,7 @@ function JoinRoom() {
       playersToShow: playersToShow.length
     })
     
-    return (
+    return wrapWithPauseOverlay(
       <div className="day-container">
         <div className="day-phase-container">
           <div className="day-phase-content">
@@ -739,7 +745,6 @@ function JoinRoom() {
             </div>
           </div>
         </div>
-        {renderPauseOverlay()}
       </div>
     )
   }
@@ -750,7 +755,7 @@ function JoinRoom() {
     if (playerRole.alignment === 'evil') {
       // If we haven't received vote targets yet, show loading
       if (voteTargets.length === 0) {
-        return (
+        return wrapWithPauseOverlay(
           <div className="night-container">
             <div className="mafia-vote-container">
               <div className="mafia-vote-content">
@@ -772,7 +777,7 @@ function JoinRoom() {
           </div>
         )
       }
-      return (
+      return wrapWithPauseOverlay(
         <div className="night-container">
           <div className="mafia-vote-container">
             <div className="mafia-vote-content">
@@ -861,7 +866,7 @@ function JoinRoom() {
     if (roleSet && playerRole.name === roleSet.PROTECTOR.name) {
       // If we haven't received heal targets yet, show loading
       if (healTargets.length === 0) {
-        return (
+        return wrapWithPauseOverlay(
           <div className="night-container">
             <div className="doctor-heal-container">
               <div className="doctor-heal-content">
@@ -884,7 +889,7 @@ function JoinRoom() {
         )
       }
 
-      return (
+      return wrapWithPauseOverlay(
         <div className="night-container">
           <div className="doctor-heal-container">
             <div className="doctor-heal-content">
@@ -938,7 +943,7 @@ function JoinRoom() {
     if (roleSet && playerRole.name === roleSet.INVESTIGATOR.name) {
       // If we haven't received investigation targets yet, show loading
       if (investigateTargets.length === 0) {
-        return (
+        return wrapWithPauseOverlay(
           <div className="night-container">
             <div className="seer-investigate-container">
               <div className="seer-investigate-content">
@@ -961,7 +966,7 @@ function JoinRoom() {
         )
       }
 
-      return (
+      return wrapWithPauseOverlay(
         <div className="night-container">
           <div className="seer-investigate-container">
             <div className="seer-investigate-content">
@@ -1025,7 +1030,7 @@ function JoinRoom() {
     }
 
     // Regular citizens (Villager/Townsperson) night phase (waiting screen)
-    return (
+    return wrapWithPauseOverlay(
       <div className="night-container">
         <div className="night-wait-container">
           <div className="night-wait-content">
@@ -1063,7 +1068,7 @@ function JoinRoom() {
     // If we don't have role data yet, show loading screen
     if (!playerRole) {
       console.log('Role assignment phase detected but no player role yet - showing loading')
-      return (
+      return wrapWithPauseOverlay(
         <div className="role-container">
           <div className="role-content">
             <div className="role-header">
@@ -1082,7 +1087,7 @@ function JoinRoom() {
         </div>
       )
     }
-    return (
+    return wrapWithPauseOverlay(
       <div className="role-container">
         <div className="role-content">
           <div className="role-header">
@@ -1130,14 +1135,13 @@ function JoinRoom() {
             </button>
           </div>
         </div>
-        {renderPauseOverlay()}
       </div>
     )
   }
 
   // Show game in progress screen
   if (gameState === GAME_STATES.IN_PROGRESS) {
-    return (
+    return wrapWithPauseOverlay(
       <div className="game-container">
         <div className="game-content">
           <h1>Night Phase</h1>
@@ -1152,7 +1156,7 @@ function JoinRoom() {
 
   // Show waiting in lobby screen
   if (isWaiting) {
-    return (
+    return wrapWithPauseOverlay(
       <div className="waiting-container">
         <div className="waiting-content">
           <div className="spinner"></div>
@@ -1185,7 +1189,7 @@ function JoinRoom() {
   }
 
   // Show join form
-  return (
+  return wrapWithPauseOverlay(
     <div className="app-wrapper">
       {/* Connection Status Indicator */}
       {connectionStatus !== 'connected' && (
@@ -1221,9 +1225,6 @@ function JoinRoom() {
           )}
         </div>
       )}
-      
-      {/* Game Pause Overlay */}
-      {renderPauseOverlay()}
       
       {/* Message Display */}
       {message && (
