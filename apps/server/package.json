@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "node index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "echo 'No build step needed'"
   },
   "dependencies": {
     "socket.io": "^4.7.4",
     "cors": "^2.8.5",
-    "shared": "file:../../packages/shared"
+    "@werewolf-mafia/shared": "file:../../packages/shared"
   }
 } 
