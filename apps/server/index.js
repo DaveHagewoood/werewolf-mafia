@@ -810,7 +810,7 @@ io.on('connection', (socket) => {
 
   // Host creates/joins a room
   socket.on('host-room', (data) => {
-    const { roomId } = data
+    const { roomId, requestGameState } = data
     const room = getRoom(roomId)
     
     // Clear any existing host disconnect timeout (host reconnected in time)
@@ -836,20 +836,49 @@ io.on('connection', (socket) => {
     
     console.log(`Host ${socket.id} created/joined room ${roomId}`)
     
-    // Send current game state to reconnecting host
-    const gameType = roomGameTypes.get(roomId)
-    if (gameType) {
-      socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, gameType)
+    // Send full game state to reconnecting host
+    if (requestGameState) {
+      console.log('Sending full game state to reconnecting host')
+      const gameState = {
+        gameState: room.gameState,
+        players: room.players,
+        gameType: roomGameTypes.get(roomId),
+        playerReadiness: room.gameState === GAME_STATES.ROLE_ASSIGNMENT ? 
+          Array.from(room.players).map(player => ({
+            id: player.id,
+            name: player.name,
+            ready: room.playerReadiness.get(player.id) || false,
+            connected: player.connected
+          })) : null,
+        eliminatedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.eliminatedPlayer : null,
+        savedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.savedPlayer : null,
+        accusations: room.gameState === GAME_STATES.DAY_PHASE ? 
+          Object.fromEntries(room.accusations) : null,
+        eliminationCountdown: room.gameState === GAME_STATES.DAY_PHASE ? room.eliminationCountdown : null,
+        dayEliminatedPlayer: room.gameState === GAME_STATES.DAY_PHASE ? room.dayEliminatedPlayer : null,
+        gameEndData: room.gameState === GAME_STATES.ENDED ? {
+          winner: room.winner,
+          winCondition: room.winCondition,
+          alivePlayers: room.alivePlayers,
+          allPlayers: room.players.map(player => ({
+            id: player.id,
+            name: player.name,
+            role: room.playerRoles.get(player.id),
+            alive: room.alivePlayers.has(player.id)
+          }))
+        } : null
+      }
+      socket.emit(SOCKET_EVENTS.RESTORE_GAME_STATE, gameState)
+    } else {
+      // Send current game type
+      const gameType = roomGameTypes.get(roomId)
+      if (gameType) {
+        socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, gameType)
+      }
     }
 
     // Send current player list
     broadcastPlayersUpdate(roomId)
-
-    // If in role assignment phase, send readiness state
-    if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-      socket.emit('game-state-update', { gameState: GAME_STATES.ROLE_ASSIGNMENT })
-      broadcastReadinessUpdate(roomId)
-    }
 
     // If game is paused, send pause state
     if (room.gamePaused) {

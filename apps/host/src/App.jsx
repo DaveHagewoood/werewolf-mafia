@@ -140,6 +140,8 @@ function GameLobby() {
     // Listen for game state restoration after reconnect
     hostSocket.on('restore-game-state', (data) => {
       console.log('Restoring game state:', data)
+      
+      // Restore basic game state
       setGameState(data.gameState)
       setPlayers(data.players || [])
       setSelectedGameType(data.gameType)
@@ -149,14 +151,29 @@ function GameLobby() {
         setEliminatedPlayer(data.eliminatedPlayer)
         setSavedPlayer(data.savedPlayer)
       } else if (data.gameState === GAME_STATES.DAY_PHASE) {
-        setAccusations(data.accusations || {})
+        // Convert accusations back to Map if needed
+        const accusationsMap = new Map()
+        if (data.accusations) {
+          Object.entries(data.accusations).forEach(([key, value]) => {
+            accusationsMap.set(key, new Set(value))
+          })
+        }
+        setAccusations(accusationsMap)
         setEliminationCountdown(data.eliminationCountdown)
         setDayEliminatedPlayer(data.dayEliminatedPlayer)
       } else if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
         setPlayerReadiness(data.playerReadiness || [])
-      } else if (data.gameState === GAME_STATES.ENDED) {
+      } else if (data.gameState === GAME_STATES.ENDED && data.gameEndData) {
         setGameEndData(data.gameEndData)
       }
+
+      // Update connection status
+      setConnectionStatus('connected')
+      setMessage({ 
+        type: 'success', 
+        text: 'Reconnected to server' 
+      })
+      setTimeout(() => setMessage(null), 3000)
     })
 
     // Listen for reconnect errors
