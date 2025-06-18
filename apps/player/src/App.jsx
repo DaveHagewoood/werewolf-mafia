@@ -76,7 +76,7 @@ function JoinRoom() {
     checkWebPSupport().then(setSupportsWebP)
     
     // Environment-based server URL
-    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-server.serveo.net'
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
     
     // Connect to Socket.IO server
     const newSocket = io(SERVER_URL)
@@ -88,6 +88,11 @@ function JoinRoom() {
         newSocket.emit(SOCKET_EVENTS.GET_ROOM_INFO, { roomId })
       })
     }
+
+    // Handle heartbeat
+    newSocket.on(SOCKET_EVENTS.HEARTBEAT, () => {
+      newSocket.emit(SOCKET_EVENTS.HEARTBEAT_RESPONSE)
+    })
 
     // Check for auto-join URL parameters
     const urlParams = new URLSearchParams(window.location.search)

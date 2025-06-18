@@ -90,6 +90,11 @@ function GameLobby() {
       console.log('Connected to game server')
     })
 
+    // Handle heartbeat
+    hostSocket.on(SOCKET_EVENTS.HEARTBEAT, () => {
+      hostSocket.emit(SOCKET_EVENTS.HEARTBEAT_RESPONSE)
+    })
+
     hostSocket.on('disconnect', (reason) => {
       console.log('Disconnected from server:', reason)
     })
