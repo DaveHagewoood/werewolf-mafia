@@ -82,10 +82,13 @@ function GameLobby() {
   useEffect(() => {
     // Connect to Socket.IO server
     const hostSocket = io(SERVER_URL, {
-      reconnection: true, // Enable auto-reconnection
-      reconnectionAttempts: Infinity, // Keep trying to reconnect indefinitely
-      reconnectionDelay: 1000, // Start with 1 second delay
-      reconnectionDelayMax: 5000, // Maximum delay between reconnection attempts
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      autoConnect: true,
+      transports: ['websocket', 'polling']
     })
     setSocket(hostSocket)
 
@@ -112,10 +115,35 @@ function GameLobby() {
         type: 'error', 
         text: 'Disconnected from server. Attempting to reconnect...' 
       })
+    })
 
-      // Clean up the old socket
-      hostSocket.removeAllListeners()
-      hostSocket.close()
+    // Listen for reconnect attempts
+    hostSocket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('Attempting to reconnect:', attemptNumber)
+      setConnectionStatus('connecting')
+    })
+
+    // Listen for successful reconnection
+    hostSocket.on('reconnect', () => {
+      console.log('Successfully reconnected')
+      setConnectionStatus('connected')
+      setMessage({ 
+        type: 'success', 
+        text: 'Reconnected to server' 
+      })
+      setTimeout(() => setMessage(null), 3000)
+
+      // Re-join room after reconnection
+      hostSocket.emit('host-room', { roomId })
+    })
+
+    // Listen for reconnect errors
+    hostSocket.on('reconnect_error', (error) => {
+      console.error('Reconnection error:', error)
+      setMessage({ 
+        type: 'error', 
+        text: 'Failed to reconnect. Still trying...' 
+      })
     })
 
     // Listen for game state updates during reconnection
