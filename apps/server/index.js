@@ -7,18 +7,19 @@ const port = process.env.PORT || 3002
 
 // Configure CORS for both development and production
 const allowedOrigins = [
+  // Development URLs
   "http://localhost:3000", // Host Dev URL
   "http://localhost:3001", // Player Dev URL
-  // Add Serveo URLs (clean and free!)
-  "https://werewolf-host.serveo.net", // Host Serveo URL
-  "https://werewolf-player.serveo.net", // Player Serveo URL
+  // Production URLs (Render.com)
+  "https://werewolf-mafia-host.onrender.com",
+  "https://werewolf-mafia-player.onrender.com"
 ]
 
-// Add production URLs from environment variables
-if (process.env.HOST_URL) {
+// Add production URLs from environment variables (if different from default Render URLs)
+if (process.env.HOST_URL && !allowedOrigins.includes(process.env.HOST_URL)) {
   allowedOrigins.push(process.env.HOST_URL)
 }
-if (process.env.PLAYER_URL) {
+if (process.env.PLAYER_URL && !allowedOrigins.includes(process.env.PLAYER_URL)) {
   allowedOrigins.push(process.env.PLAYER_URL)
 }
 
