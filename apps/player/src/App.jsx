@@ -555,34 +555,37 @@ function JoinRoom() {
         </div>
 
         <div className="game-end-content">
-          <div className="final-results">
-            <h3>Final Results</h3>
-            <div className="results-grid">
-              <div className="alive-players">
-                <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
-                {gameEndData.alivePlayers.map(player => (
-                  <div key={player.id} className="result-player alive">
-                    <span className="player-name">{player.name}</span>
-                    <span className="player-role" style={{ color: player.role.color }}>
-                      {player.role.name}
-                    </span>
-                  </div>
-                ))}
-              </div>
+          {/* Only show results if we have player data */}
+          {gameEndData.alivePlayers && gameEndData.allPlayers && (
+            <div className="final-results">
+              <h3>Final Results</h3>
+              <div className="results-grid">
+                <div className="alive-players">
+                  <h4>👑 Survivors ({gameEndData.alivePlayers.length})</h4>
+                  {gameEndData.alivePlayers.map(player => (
+                    <div key={player.id} className="result-player alive">
+                      <span className="player-name">{player.name}</span>
+                      <span className="player-role" style={{ color: player.role.color }}>
+                        {player.role.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
 
-              <div className="eliminated-players">
-                <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
-                {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
-                  <div key={player.id} className="result-player eliminated">
-                    <span className="player-name">{player.name}</span>
-                    <span className="player-role" style={{ color: player.role.color }}>
-                      {player.role.name}
-                    </span>
-                  </div>
-                ))}
+                <div className="eliminated-players">
+                  <h4>💀 Eliminated ({gameEndData.allPlayers.filter(p => !p.alive).length})</h4>
+                  {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
+                    <div key={player.id} className="result-player eliminated">
+                      <span className="player-name">{player.name}</span>
+                      <span className="player-role" style={{ color: player.role.color }}>
+                        {player.role.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <button className="return-to-lobby" onClick={() => window.location.reload()}>
             Return to Lobby
