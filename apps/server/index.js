@@ -847,12 +847,25 @@ io.on('connection', (socket) => {
     // Send full game state to reconnecting host
     if (requestGameState) {
       console.log('Preparing full game state for reconnecting host')
+      
+      // Helper function to convert Map to array of entries
+      const mapToArray = (map) => {
+        if (!map) return null;
+        return Array.from(map.entries());
+      };
+
+      // Helper function to convert Set to array
+      const setToArray = (set) => {
+        if (!set) return null;
+        return Array.from(set);
+      };
+
       const gameState = {
         gameState: room.gameState,
         players: room.players,
         gameType: roomGameTypes.get(roomId),
         playerReadiness: room.gameState === GAME_STATES.ROLE_ASSIGNMENT ? 
-          Array.from(room.players).map(player => ({
+          room.players.map(player => ({
             id: player.id,
             name: player.name,
             ready: room.playerReadiness.get(player.id) || false,
@@ -861,13 +874,13 @@ io.on('connection', (socket) => {
         eliminatedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.eliminatedPlayer : null,
         savedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.savedPlayer : null,
         accusations: room.gameState === GAME_STATES.DAY_PHASE ? 
-          Object.fromEntries(room.accusations) : null,
+          mapToArray(room.accusations).map(([key, value]) => [key, setToArray(value)]) : null,
         eliminationCountdown: room.gameState === GAME_STATES.DAY_PHASE ? room.eliminationCountdown : null,
         dayEliminatedPlayer: room.gameState === GAME_STATES.DAY_PHASE ? room.dayEliminatedPlayer : null,
         gameEndData: room.gameState === GAME_STATES.ENDED ? {
           winner: room.winner,
           winCondition: room.winCondition,
-          alivePlayers: room.alivePlayers,
+          alivePlayers: setToArray(room.alivePlayers),
           allPlayers: room.players.map(player => ({
             id: player.id,
             name: player.name,
@@ -876,7 +889,7 @@ io.on('connection', (socket) => {
           }))
         } : null
       }
-      console.log('Sending game state to host:', gameState)
+      console.log('Sending game state to host:', JSON.stringify(gameState))
       socket.emit(SOCKET_EVENTS.RESTORE_GAME_STATE, gameState)
     } else {
       // Send current game type

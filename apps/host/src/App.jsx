@@ -138,6 +138,18 @@ function GameLobby() {
       console.log('Current game state:', gameState)
       console.log('Received state data:', data)
       
+      // Helper function to convert array back to Map
+      const arrayToMap = (arr, valueToSet = false) => {
+        if (!arr) return new Map();
+        return new Map(arr.map(([key, value]) => [key, valueToSet ? new Set(value) : value]));
+      };
+
+      // Helper function to convert array back to Set
+      const arrayToSet = (arr) => {
+        if (!arr) return new Set();
+        return new Set(arr);
+      };
+      
       // Restore basic game state
       setGameState(data.gameState)
       setPlayers(data.players || [])
@@ -157,14 +169,8 @@ function GameLobby() {
           eliminationCountdown: data.eliminationCountdown,
           dayEliminatedPlayer: data.dayEliminatedPlayer
         })
-        // Convert accusations back to Map if needed
-        const accusationsMap = new Map()
-        if (data.accusations) {
-          Object.entries(data.accusations).forEach(([key, value]) => {
-            accusationsMap.set(key, new Set(value))
-          })
-        }
-        setAccusations(accusationsMap)
+        // Convert accusations array back to Map of Sets
+        setAccusations(arrayToMap(data.accusations, true))
         setEliminationCountdown(data.eliminationCountdown)
         setDayEliminatedPlayer(data.dayEliminatedPlayer)
       } else if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
@@ -174,7 +180,11 @@ function GameLobby() {
         setPlayerReadiness(data.playerReadiness || [])
       } else if (data.gameState === GAME_STATES.ENDED && data.gameEndData) {
         console.log('Restoring game end state:', data.gameEndData)
-        setGameEndData(data.gameEndData)
+        const gameEndData = {
+          ...data.gameEndData,
+          alivePlayers: arrayToSet(data.gameEndData.alivePlayers)
+        }
+        setGameEndData(gameEndData)
       }
 
       // Update connection status
