@@ -39,6 +39,9 @@ const gameRooms = new Map()
 // Store game types for each room
 const roomGameTypes = new Map()
 
+// Store player connection data
+const playerConnections = new Map() // playerId -> { lastHeartbeat, reconnectTimer }
+
 // Start listening on the configured port
 httpServer.listen(port, '0.0.0.0', (err) => {
   if (err) {
@@ -635,9 +638,6 @@ function broadcastReadinessUpdate(roomId) {
 }
 
 // ===================== CONNECTION MANAGEMENT SYSTEM =====================
-
-// Store player connection data
-const playerConnections = new Map() // playerId -> { lastHeartbeat, reconnectTimer }
 
 // Connection configuration
 const CONNECTION_CONFIG = {
