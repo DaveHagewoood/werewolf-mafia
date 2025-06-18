@@ -56,6 +56,7 @@ function JoinRoom() {
   const [connectionStatus, setConnectionStatus] = useState('connecting')
   const [gamePaused, setGamePaused] = useState(false)
   const [pauseReason, setPauseReason] = useState('')
+  const [reconnectAttempts, setReconnectAttempts] = useState(0)
 
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
@@ -80,7 +81,9 @@ function JoinRoom() {
     const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
     
     // Connect to Socket.IO server
-    const newSocket = io(SERVER_URL)
+    const newSocket = io(SERVER_URL, {
+      reconnection: false // Disable auto-reconnection to handle it manually
+    })
     setSocket(newSocket)
 
     // Get room info when component loads
@@ -115,14 +118,23 @@ function JoinRoom() {
       console.log('Disconnected from server:', reason)
       setConnectionStatus('disconnected')
       
+      // Clean up the old socket
+      newSocket.removeAllListeners()
+      newSocket.close()
+      
       // Simple handling: if in lobby, player will be removed by server
       if (gameState === GAME_STATES.LOBBY) {
         console.log('Disconnected from lobby - will be removed by server')
         setIsWaiting(false)
         setError('Connection lost. Please rejoin the game.')
       } else if (gameState !== GAME_STATES.LOBBY && gameState !== GAME_STATES.ENDED) {
-        console.log('Disconnected during game - Phase 2 will handle reconnection')
-        setError('Connection lost during game. Please refresh to attempt rejoin.')
+        console.log('Disconnected during game - attempting to reconnect')
+        setError('Connection lost during game. Please wait for reconnection.')
+        
+        // Attempt to reconnect after a short delay
+        setTimeout(() => {
+          setReconnectAttempts(prev => prev + 1)
+        }, 1000)
       }
     })
 
@@ -360,13 +372,14 @@ function JoinRoom() {
       setMessage(null) // Clear any old messages
     })
 
-    // Cleanup on unmount
+    // Cleanup on unmount or before reconnection
     return () => {
       if (newSocket) {
-        newSocket.disconnect()
+        newSocket.removeAllListeners()
+        newSocket.close()
       }
     }
-  }, [])
+  }, [reconnectAttempts]) // Add reconnectAttempts as dependency
 
   // Separate effect to handle elimination events when playerId is available
   useEffect(() => {

@@ -33,13 +33,6 @@ function GameLobby() {
 
   // Function to handle reconnection
   const handleReconnect = () => {
-    if (socket) {
-      socket.disconnect()
-    }
-    
-    const newSocket = io(SERVER_URL)
-    setSocket(newSocket)
-    setConnectionStatus('connecting')
     setReconnectAttempts(prev => prev + 1)
   }
 
@@ -94,7 +87,9 @@ function GameLobby() {
 
   useEffect(() => {
     // Connect to Socket.IO server
-    const hostSocket = io(SERVER_URL)
+    const hostSocket = io(SERVER_URL, {
+      reconnection: false // Disable auto-reconnection to handle it manually
+    })
     setSocket(hostSocket)
 
     // Socket connection events
@@ -120,6 +115,10 @@ function GameLobby() {
         type: 'error', 
         text: 'Disconnected from server. Attempting to reconnect...' 
       })
+
+      // Clean up the old socket
+      hostSocket.removeAllListeners()
+      hostSocket.close()
 
       // Attempt to reconnect after a short delay
       setTimeout(handleReconnect, 1000)
@@ -259,10 +258,11 @@ function GameLobby() {
       console.error('Socket error:', error.message)
     })
 
-    // Cleanup on unmount
+    // Cleanup on unmount or before reconnection
     return () => {
       if (hostSocket) {
-        hostSocket.disconnect()
+        hostSocket.removeAllListeners()
+        hostSocket.close()
       }
     }
   }, [reconnectAttempts, roomId])

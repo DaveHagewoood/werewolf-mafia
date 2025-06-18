@@ -1762,8 +1762,8 @@ io.on('connection', (socket) => {
   // ===================== END CONNECTION MANAGEMENT HANDLERS =====================
 
   // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log(`Client disconnected: ${socket.id}`)
+  socket.on('disconnect', (reason) => {
+    console.log(`Client disconnected: ${socket.id}, reason: ${reason}`)
     
     if (socket.roomId) {
       const room = getRoom(socket.roomId)
@@ -1783,13 +1783,14 @@ io.on('connection', (socket) => {
               roomId: socket.roomId
             })
             room.hostDisconnectTimeout = null
-          }, CONNECTION_CONFIG.RECONNECT_TIMEOUT) // Use the shared reconnect timeout
+          }, CONNECTION_CONFIG.RECONNECT_TIMEOUT)
           
           // Notify players that host disconnected
           io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
             reason: 'Host disconnected',
             connectedPlayers: room.players.filter(p => p.connected).length,
-            totalPlayers: room.players.length
+            totalPlayers: room.players.length,
+            reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_TIMEOUT
           })
         }
       } else if (socket.playerName) {
@@ -1797,30 +1798,14 @@ io.on('connection', (socket) => {
         const player = room.players.find(p => p.id === socket.id)
         if (player) {
           console.log(`Player ${player.name} disconnected from room ${socket.roomId}`)
+          updatePlayerConnection(socket.id, false)
           
-          // Handle disconnection based on game state
-          if (room.gameState === GAME_STATES.LOBBY) {
-            // In lobby, just remove the player immediately - no need for reconnection
-            console.log(`Removing player ${player.name} from lobby immediately`)
-            
-            const playerIndex = room.players.findIndex(p => p.id === socket.id)
-            if (playerIndex !== -1) {
-              room.players.splice(playerIndex, 1)
-            }
-            
-            // Clean up connection data immediately
-            const connectionData = playerConnections.get(socket.id)
-            if (connectionData) {
-              reconnectTokens.delete(connectionData.reconnectToken)
-              playerConnections.delete(socket.id)
-            }
-            
-            // Broadcast updated player list
-            broadcastPlayersUpdate(socket.roomId)
-          } else {
-            // For now, just log - Phase 2 will handle game reconnection
-            console.log(`Game-phase disconnect - Phase 2 will handle this`)
-          }
+          // Notify other players about the disconnection
+          io.to(socket.roomId).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
+            playerId: socket.id,
+            playerName: player.name,
+            reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_TIMEOUT
+          })
         }
       }
     }
