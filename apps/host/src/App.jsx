@@ -125,6 +125,12 @@ function GameLobby() {
       setTimeout(handleReconnect, 1000)
     })
 
+    // Listen for game state updates during reconnection
+    hostSocket.on('game-state-update', (data) => {
+      console.log('Game state update received:', data)
+      setGameState(data.gameState)
+    })
+
     // Listen for player updates
     hostSocket.on(SOCKET_EVENTS.PLAYERS_UPDATE, (data) => {
       setPlayers(data.players)

@@ -845,6 +845,12 @@ io.on('connection', (socket) => {
     // Send current player list
     broadcastPlayersUpdate(roomId)
 
+    // If in role assignment phase, send readiness state
+    if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+      socket.emit('game-state-update', { gameState: GAME_STATES.ROLE_ASSIGNMENT })
+      broadcastReadinessUpdate(roomId)
+    }
+
     // If game is paused, send pause state
     if (room.gamePaused) {
       socket.emit(SOCKET_EVENTS.GAME_PAUSED, {
