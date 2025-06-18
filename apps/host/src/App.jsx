@@ -5,7 +5,7 @@ import { io } from 'socket.io-client'
 import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport } from '@werewolf-mafia/shared'
 
 function GameLobby() {
-  const [roomId, setRoomId] = useState('')
+  const [roomId, setRoomId] = useState(generateRoomId())
   const [players, setPlayers] = useState([])
   const [canStartGame, setCanStartGame] = useState(false)
   const [socket, setSocket] = useState(null)
@@ -93,10 +93,6 @@ function GameLobby() {
   }, [])
 
   useEffect(() => {
-    // Generate room ID
-    const newRoomId = generateRoomId()
-    setRoomId(newRoomId)
-    
     // Connect to Socket.IO server
     const hostSocket = io(SERVER_URL)
     setSocket(hostSocket)
@@ -108,8 +104,8 @@ function GameLobby() {
       setMessage({ type: 'success', text: 'Connected to server' })
       setTimeout(() => setMessage(null), 3000)
 
-      // Always join as host - this will either create a new room or restore host status
-      hostSocket.emit('host-room', { roomId: newRoomId })
+      // Always join as host with existing room ID
+      hostSocket.emit('host-room', { roomId })
     })
 
     // Handle heartbeat
@@ -263,7 +259,7 @@ function GameLobby() {
         hostSocket.disconnect()
       }
     }
-  }, [reconnectAttempts])
+  }, [reconnectAttempts, roomId])
 
   // Elimination countdown effect
   useEffect(() => {

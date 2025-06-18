@@ -821,6 +821,8 @@ io.on('connection', (socket) => {
       
       // Resume game if it was paused for host disconnect
       if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
+        room.gamePaused = false
+        room.pauseReason = null
         io.to(roomId).emit(SOCKET_EVENTS.GAME_RESUMED)
         console.log(`Game resumed after host reconnection in room ${roomId}`)
       }
@@ -834,9 +836,23 @@ io.on('connection', (socket) => {
     
     console.log(`Host ${socket.id} created/joined room ${roomId}`)
     
-    // Send initial room state to host
-    socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, roomGameTypes.get(roomId))
+    // Send current game state to reconnecting host
+    const gameType = roomGameTypes.get(roomId)
+    if (gameType) {
+      socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, gameType)
+    }
+
+    // Send current player list
     broadcastPlayersUpdate(roomId)
+
+    // If game is paused, send pause state
+    if (room.gamePaused) {
+      socket.emit(SOCKET_EVENTS.GAME_PAUSED, {
+        reason: room.pauseReason,
+        connectedPlayers: room.players.filter(p => p.connected).length,
+        totalPlayers: room.players.length
+      })
+    }
   })
 
   // Host selects game type
