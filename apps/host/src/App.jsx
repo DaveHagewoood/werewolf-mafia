@@ -24,10 +24,24 @@ function GameLobby() {
   const [showDebugLinks, setShowDebugLinks] = useState(false)
   const [gamePaused, setGamePaused] = useState(false)
   const [pauseReason, setPauseReason] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState('connecting')
+  const [reconnectAttempts, setReconnectAttempts] = useState(0)
 
   // Environment-based URLs
   const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
   const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafia-player.onrender.com'
+
+  // Function to handle reconnection
+  const handleReconnect = () => {
+    if (socket) {
+      socket.disconnect()
+    }
+    
+    const newSocket = io(SERVER_URL)
+    setSocket(newSocket)
+    setConnectionStatus('connecting')
+    setReconnectAttempts(prev => prev + 1)
+  }
 
   // Preload images
   useEffect(() => {
@@ -90,6 +104,14 @@ function GameLobby() {
     // Socket connection events
     hostSocket.on('connect', () => {
       console.log('Connected to game server')
+      setConnectionStatus('connected')
+      setMessage({ type: 'success', text: 'Connected to server' })
+      setTimeout(() => setMessage(null), 3000)
+
+      // Rejoin room if we were previously connected
+      if (reconnectAttempts > 0) {
+        hostSocket.emit('host-room', { roomId: newRoomId })
+      }
     })
 
     // Handle heartbeat
@@ -99,10 +121,15 @@ function GameLobby() {
 
     hostSocket.on('disconnect', (reason) => {
       console.log('Disconnected from server:', reason)
-    })
+      setConnectionStatus('disconnected')
+      setMessage({ 
+        type: 'error', 
+        text: 'Disconnected from server. Attempting to reconnect...' 
+      })
 
-    // Join the room as host
-    hostSocket.emit('host-room', { roomId: newRoomId })
+      // Attempt to reconnect after a short delay
+      setTimeout(handleReconnect, 1000)
+    })
 
     // Listen for player updates
     hostSocket.on(SOCKET_EVENTS.PLAYERS_UPDATE, (data) => {
@@ -237,7 +264,7 @@ function GameLobby() {
         hostSocket.disconnect()
       }
     }
-  }, [])
+  }, [reconnectAttempts])
 
   // Elimination countdown effect
   useEffect(() => {
@@ -351,9 +378,46 @@ function GameLobby() {
 
   const qrCodeUrl = `${PLAYER_APP_URL}/join/${roomId}`
 
+  // Add connection status indicator to all screens
+  const renderConnectionStatus = () => {
+    if (connectionStatus === 'connected') return null;
+
+    return (
+      <div className={`connection-status ${connectionStatus}`}>
+        {connectionStatus === 'connecting' && '🔄 Connecting...'}
+        {connectionStatus === 'disconnected' && (
+          <>
+            🔴 Disconnected
+            <button 
+              onClick={handleReconnect}
+              className="reconnect-button"
+            >
+              Reconnect
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // Wrap all screen returns with connection status
+  const wrapWithConnectionStatus = (content) => {
+    return (
+      <>
+        {renderConnectionStatus()}
+        {content}
+        {message && (
+          <div className={`message ${message.type}`}>
+            {message.text}
+          </div>
+        )}
+      </>
+    );
+  };
+
   // Show main menu screen (before game type is selected)
   if (!selectedGameType) {
-    return (
+    return wrapWithConnectionStatus(
       <div className="main-menu-container">
         <div className="main-menu-header">
           <h1>🎭 Werewolf Mafia</h1>
@@ -395,7 +459,7 @@ function GameLobby() {
 
   // Show game end screen
   if (gameState === GAME_STATES.ENDED && gameEndData) {
-    return (
+    return wrapWithConnectionStatus(
       <div className="game-end-container">
         <div className="game-end-header">
           <h1>Werewolf Mafia</h1>
@@ -490,7 +554,7 @@ function GameLobby() {
 
   // Show day phase screen
   if (gameState === GAME_STATES.DAY_PHASE) {
-    return (
+    return wrapWithConnectionStatus(
       <div className="day-container">
         <div className="day-header">
           <h1>Werewolf Mafia</h1>
@@ -579,7 +643,7 @@ function GameLobby() {
 
   // Show night phase screen
   if (gameState === GAME_STATES.NIGHT_PHASE) {
-    return (
+    return wrapWithConnectionStatus(
       <div className="night-container">
         <div className="night-header">
           <h1>Werewolf Mafia</h1>
@@ -666,7 +730,7 @@ function GameLobby() {
 
   // Show waiting for players to confirm roles screen
   if (gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-    return (
+    return wrapWithConnectionStatus(
       <div className="waiting-container">
         <div className="waiting-header">
           <h1>Werewolf Mafia</h1>
@@ -731,7 +795,7 @@ function GameLobby() {
 
   // Show in-progress screen placeholder
   if (gameState === GAME_STATES.IN_PROGRESS) {
-    return (
+    return wrapWithConnectionStatus(
       <div className="game-container">
         <div className="game-header">
           <h1>Werewolf Mafia</h1>
@@ -748,15 +812,8 @@ function GameLobby() {
   }
 
   // Default lobby view
-  return (
+  return wrapWithConnectionStatus(
     <div className="lobby-container">
-      {/* Message Display */}
-      {message && (
-        <div className={`message ${message.type}`}>
-          {message.text}
-        </div>
-      )}
-      
       <div className="lobby-header">
         <h1>{selectedGameType === 'mafia' ? '🕴️ Mafia' : '🐺 Werewolf'}</h1>
         <h2>Room Code: {roomId}</h2>

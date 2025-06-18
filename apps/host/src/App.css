@@ -116,4 +116,68 @@
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* ===== Connection Status Styles ===== */
+.connection-status {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  padding: 12px 16px;
+  border-radius: 25px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideIn 0.3s ease;
+}
+
+.connection-status.connecting {
+  background: rgba(255, 193, 7, 0.9);
+  color: #856404;
+  border: 1px solid #ffc107;
+}
+
+.connection-status.disconnected {
+  background: rgba(220, 53, 69, 0.9);
+  color: white;
+  border: 1px solid #dc3545;
+  animation: pulse 2s infinite;
+}
+
+.connection-status .reconnect-button {
+  background: white;
+  color: #dc3545;
+  border: none;
+  border-radius: 15px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.connection-status .reconnect-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 } 
