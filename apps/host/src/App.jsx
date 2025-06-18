@@ -108,10 +108,8 @@ function GameLobby() {
       setMessage({ type: 'success', text: 'Connected to server' })
       setTimeout(() => setMessage(null), 3000)
 
-      // Rejoin room if we were previously connected
-      if (reconnectAttempts > 0) {
-        hostSocket.emit('host-room', { roomId: newRoomId })
-      }
+      // Always join as host - this will either create a new room or restore host status
+      hostSocket.emit('host-room', { roomId: newRoomId })
     })
 
     // Handle heartbeat
@@ -217,11 +215,12 @@ function GameLobby() {
       setGameState(GAME_STATES.ENDED)
     })
 
-    // Listen for game type selected
+    // Listen for game type selected - update state and clear any error messages
     hostSocket.on(SOCKET_EVENTS.GAME_TYPE_SELECTED, (gameType) => {
       console.log('Game type selected:', gameType)
       setSelectedGameType(gameType)
       setGameState(GAME_STATES.LOBBY)
+      setMessage(null) // Clear any error messages
     })
 
     // Listen for game pause/resume events
@@ -369,10 +368,14 @@ function GameLobby() {
   const handleGameTypeSelect = (gameType) => {
     console.log('Game type selected:', gameType)
     
-    if (socket) {
+    if (socket && socket.connected) {
       socket.emit(SOCKET_EVENTS.SELECT_GAME_TYPE, { roomId, gameType })
     } else {
-      console.log('Socket not available - cannot select game type')
+      console.log('Socket not available or not connected - cannot select game type')
+      setMessage({ 
+        type: 'error', 
+        text: 'Not connected to server. Please wait for reconnection.' 
+      })
     }
   }
 

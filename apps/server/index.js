@@ -835,6 +835,7 @@ io.on('connection', (socket) => {
     console.log(`Host ${socket.id} created/joined room ${roomId}`)
     
     // Send initial room state to host
+    socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, roomGameTypes.get(roomId))
     broadcastPlayersUpdate(roomId)
   })
 
