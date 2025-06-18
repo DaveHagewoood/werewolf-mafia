@@ -5,7 +5,7 @@ services:
     name: werewolf-mafia-server
     runtime: node
     plan: pro
-    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install
+    buildCommand: corepack enable && corepack prepare pnpm@10.11.1 --activate && pnpm install && cd apps/server && pnpm install
     startCommand: cd apps/server && node index.js
     envVars:
       - key: NODE_ENV
