@@ -639,16 +639,6 @@ function broadcastReadinessUpdate(roomId) {
 
 // ===================== CONNECTION MANAGEMENT SYSTEM =====================
 
-// Connection configuration
-const CONNECTION_CONFIG = {
-  HEARTBEAT_INTERVAL: 10000, // 10 seconds
-  HEARTBEAT_TIMEOUT: 25000,  // 25 seconds - mobile-friendly timeout
-  RECONNECT_GRACE_PERIOD: 120000, // 2 minutes to reconnect
-  MIN_CONNECTED_PERCENTAGE: 0.6, // 60% of players must be connected to continue game
-  RECONNECT_TIMEOUT: 120000, // 2 minutes to reconnect
-  CLEANUP_INTERVAL: 10000 // 10 seconds
-}
-
 function initializePlayerConnection(playerId, roomId, playerName) {
   playerConnections.set(playerId, {
     lastHeartbeat: Date.now(),
