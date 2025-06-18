@@ -99,8 +99,8 @@ function GameLobby() {
       setMessage({ type: 'success', text: 'Connected to server' })
       setTimeout(() => setMessage(null), 3000)
 
-      // Always join as host with existing room ID
-      hostSocket.emit('host-room', { roomId })
+      // Always join as host with existing room ID and request game state
+      hostSocket.emit('host-room', { roomId, requestGameState: true })
     })
 
     // Handle heartbeat
@@ -126,20 +126,17 @@ function GameLobby() {
     // Listen for successful reconnection
     hostSocket.on('reconnect', () => {
       console.log('Successfully reconnected')
-      setConnectionStatus('connected')
-      setMessage({ 
-        type: 'success', 
-        text: 'Reconnected to server' 
-      })
-      setTimeout(() => setMessage(null), 3000)
-
+      setConnectionStatus('connecting') // Keep as connecting until we restore state
+      
       // Re-join room and request current game state
       hostSocket.emit('host-room', { roomId, requestGameState: true })
     })
 
     // Listen for game state restoration after reconnect
     hostSocket.on('restore-game-state', (data) => {
-      console.log('Restoring game state:', data)
+      console.log('=== GAME STATE RESTORATION ===')
+      console.log('Current game state:', gameState)
+      console.log('Received state data:', data)
       
       // Restore basic game state
       setGameState(data.gameState)
@@ -148,9 +145,18 @@ function GameLobby() {
       
       // Restore phase-specific state
       if (data.gameState === GAME_STATES.NIGHT_PHASE) {
+        console.log('Restoring night phase state:', {
+          eliminatedPlayer: data.eliminatedPlayer,
+          savedPlayer: data.savedPlayer
+        })
         setEliminatedPlayer(data.eliminatedPlayer)
         setSavedPlayer(data.savedPlayer)
       } else if (data.gameState === GAME_STATES.DAY_PHASE) {
+        console.log('Restoring day phase state:', {
+          accusations: data.accusations,
+          eliminationCountdown: data.eliminationCountdown,
+          dayEliminatedPlayer: data.dayEliminatedPlayer
+        })
         // Convert accusations back to Map if needed
         const accusationsMap = new Map()
         if (data.accusations) {
@@ -162,8 +168,12 @@ function GameLobby() {
         setEliminationCountdown(data.eliminationCountdown)
         setDayEliminatedPlayer(data.dayEliminatedPlayer)
       } else if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+        console.log('Restoring role assignment state:', {
+          playerReadiness: data.playerReadiness
+        })
         setPlayerReadiness(data.playerReadiness || [])
       } else if (data.gameState === GAME_STATES.ENDED && data.gameEndData) {
+        console.log('Restoring game end state:', data.gameEndData)
         setGameEndData(data.gameEndData)
       }
 
@@ -171,9 +181,11 @@ function GameLobby() {
       setConnectionStatus('connected')
       setMessage({ 
         type: 'success', 
-        text: 'Reconnected to server' 
+        text: 'Reconnected to server and restored game state' 
       })
       setTimeout(() => setMessage(null), 3000)
+      
+      console.log('=== STATE RESTORATION COMPLETE ===')
     })
 
     // Listen for reconnect errors

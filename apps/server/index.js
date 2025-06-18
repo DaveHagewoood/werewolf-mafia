@@ -813,6 +813,14 @@ io.on('connection', (socket) => {
     const { roomId, requestGameState } = data
     const room = getRoom(roomId)
     
+    console.log(`=== HOST ROOM EVENT ===`)
+    console.log('Data received:', { roomId, requestGameState })
+    console.log('Current room state:', {
+      gameState: room.gameState,
+      playerCount: room.players.length,
+      hasGameType: roomGameTypes.has(roomId)
+    })
+    
     // Clear any existing host disconnect timeout (host reconnected in time)
     if (room.hostDisconnectTimeout) {
       console.log(`Host reconnected to room ${roomId} within grace period - clearing timeout`)
@@ -838,7 +846,7 @@ io.on('connection', (socket) => {
     
     // Send full game state to reconnecting host
     if (requestGameState) {
-      console.log('Sending full game state to reconnecting host')
+      console.log('Preparing full game state for reconnecting host')
       const gameState = {
         gameState: room.gameState,
         players: room.players,
@@ -868,6 +876,7 @@ io.on('connection', (socket) => {
           }))
         } : null
       }
+      console.log('Sending game state to host:', gameState)
       socket.emit(SOCKET_EVENTS.RESTORE_GAME_STATE, gameState)
     } else {
       // Send current game type
@@ -888,6 +897,8 @@ io.on('connection', (socket) => {
         totalPlayers: room.players.length
       })
     }
+    
+    console.log('=== HOST ROOM EVENT COMPLETE ===')
   })
 
   // Host selects game type
