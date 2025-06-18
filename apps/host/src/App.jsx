@@ -133,8 +133,30 @@ function GameLobby() {
       })
       setTimeout(() => setMessage(null), 3000)
 
-      // Re-join room after reconnection
-      hostSocket.emit('host-room', { roomId })
+      // Re-join room and request current game state
+      hostSocket.emit('host-room', { roomId, requestGameState: true })
+    })
+
+    // Listen for game state restoration after reconnect
+    hostSocket.on('restore-game-state', (data) => {
+      console.log('Restoring game state:', data)
+      setGameState(data.gameState)
+      setPlayers(data.players || [])
+      setSelectedGameType(data.gameType)
+      
+      // Restore phase-specific state
+      if (data.gameState === GAME_STATES.NIGHT_PHASE) {
+        setEliminatedPlayer(data.eliminatedPlayer)
+        setSavedPlayer(data.savedPlayer)
+      } else if (data.gameState === GAME_STATES.DAY_PHASE) {
+        setAccusations(data.accusations || {})
+        setEliminationCountdown(data.eliminationCountdown)
+        setDayEliminatedPlayer(data.dayEliminatedPlayer)
+      } else if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+        setPlayerReadiness(data.playerReadiness || [])
+      } else if (data.gameState === GAME_STATES.ENDED) {
+        setGameEndData(data.gameEndData)
+      }
     })
 
     // Listen for reconnect errors
@@ -144,12 +166,6 @@ function GameLobby() {
         type: 'error', 
         text: 'Failed to reconnect. Still trying...' 
       })
-    })
-
-    // Listen for game state updates during reconnection
-    hostSocket.on('game-state-update', (data) => {
-      console.log('Game state update received:', data)
-      setGameState(data.gameState)
     })
 
     // Listen for player updates
