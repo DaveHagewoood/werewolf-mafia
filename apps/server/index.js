@@ -30,7 +30,11 @@ const io = new Server(httpServer, {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  transports: ['websocket'],
+  allowUpgrades: false,
+  pingTimeout: 30000,
+  pingInterval: 10000
 })
 
 // Store game rooms in memory
