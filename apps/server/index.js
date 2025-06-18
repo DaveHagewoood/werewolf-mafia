@@ -1746,11 +1746,11 @@ io.on('connection', (socket) => {
       const room = getRoom(socket.roomId)
       
       if (socket.isHost) {
-        // Host disconnected - give short grace period before ending game
-        console.log(`Host disconnected from room ${socket.roomId} - starting 5s grace period`)
+        // Host disconnected - give grace period before ending game
+        console.log(`Host disconnected from room ${socket.roomId} - starting ${CONNECTION_CONFIG.RECONNECT_TIMEOUT/1000}s grace period`)
         
         if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
-          // Set a short timeout to end the game if host doesn't reconnect
+          // Set a timeout to end the game if host doesn't reconnect
           room.hostDisconnectTimeout = setTimeout(() => {
             console.log(`Host grace period expired - ending game in room ${socket.roomId}`)
             room.gameState = GAME_STATES.ENDED
@@ -1760,7 +1760,7 @@ io.on('connection', (socket) => {
               roomId: socket.roomId
             })
             room.hostDisconnectTimeout = null
-          }, 5000) // 5 second grace period
+          }, CONNECTION_CONFIG.RECONNECT_TIMEOUT) // Use the shared reconnect timeout
           
           // Notify players that host disconnected
           io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
