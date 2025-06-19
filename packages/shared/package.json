@@ -2,10 +2,16 @@
   "name": "@werewolf-mafia/shared",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "main": "./index.js",
   "exports": {
-    ".": "./index.js",
-    "./connectionStates": "./connectionStates.js"
+    ".": {
+      "import": "./index.js",
+      "require": "./index.js"
+    },
+    "./connectionStates.js": {
+      "import": "./connectionStates.js",
+      "require": "./connectionStates.js"
+    }
   },
   "dependencies": {}
 } 
