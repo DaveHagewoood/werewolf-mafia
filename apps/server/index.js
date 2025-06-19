@@ -832,6 +832,32 @@ function cleanupExpiredConnections() {
 
 // ===================== END CONNECTION MANAGEMENT =====================
 
+// Helper function to remove a player from the game
+function removePlayerFromGame(room, playerId, roomId) {
+  // Remove from players array
+  room.players = room.players.filter(p => p.id !== playerId);
+  
+  // Clean up any player data
+  room.playerReadiness.delete(playerId);
+  room.playerRoles.delete(playerId);
+  room.alivePlayers.delete(playerId);
+  room.mafiaVotes.delete(playerId);
+  
+  // Clean up accusations
+  room.accusations.delete(playerId);
+  room.accusations.forEach(accusers => {
+    accusers.delete(playerId);
+  });
+  
+  // Clean up connection tracking
+  playerConnections.delete(playerId);
+  
+  // Broadcast updated player list
+  broadcastPlayersUpdate(roomId);
+  
+  console.log(`Player ${playerId} removed from room ${roomId}`);
+}
+
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id)
 
