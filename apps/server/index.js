@@ -1,7 +1,20 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
-import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles, CONNECTION_CONFIG } from '@werewolf-mafia/shared'
-import { GameConnectionState } from '@werewolf-mafia/shared/connectionStates.js'
+import { 
+  SOCKET_EVENTS, 
+  validatePlayerName, 
+  GAME_CONFIG, 
+  GAME_STATES, 
+  PHASES, 
+  ROLES, 
+  ROLE_SETS, 
+  GAME_TYPES, 
+  PROFILE_IMAGES, 
+  getProfileImageUrl, 
+  assignRoles, 
+  CONNECTION_CONFIG,
+  GameConnectionState 
+} from '@werewolf-mafia/shared'
 import { GameStateManager } from './gameStateManager.js'
 
 const httpServer = createServer()

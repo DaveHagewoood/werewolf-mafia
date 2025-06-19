@@ -7,10 +7,6 @@
     ".": {
       "import": "./index.js",
       "require": "./index.js"
-    },
-    "./connectionStates.js": {
-      "import": "./connectionStates.js",
-      "require": "./connectionStates.js"
     }
   },
   "dependencies": {}

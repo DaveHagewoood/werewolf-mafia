@@ -1,5 +1,4 @@
-import { SOCKET_EVENTS } from '@werewolf-mafia/shared';
-import { GameConnectionState } from '@werewolf-mafia/shared/connectionStates.js';
+import { SOCKET_EVENTS, GameConnectionState } from '@werewolf-mafia/shared';
 
 export class GameStateManager {
   constructor(io) {

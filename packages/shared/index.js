@@ -52,6 +52,29 @@ export const SOCKET_EVENTS = {
   VERSION_MISMATCH: 'version-mismatch'
 }
 
+// Connection state enums
+export const PlayerConnectionState = {
+  CONNECTED: 'CONNECTED',
+  ATTEMPTING_RECONNECTION: 'ATTEMPTING_RECONNECTION',
+  PAUSED: 'PAUSED',
+  DISCONNECTED: 'DISCONNECTED'
+};
+
+export const GameConnectionState = {
+  ACTIVE: 'ACTIVE',
+  PAUSED_RECONNECTING: 'PAUSED_RECONNECTING',
+  ENDED: 'ENDED'
+};
+
+// Reconnection protocol configuration
+export const RECONNECTION_CONFIG = {
+  maxAttempts: 5,
+  attemptDelay: 1000,
+  escalationFactor: 1.5,
+  maxDelay: 5000,
+  totalTimeout: 30000
+};
+
 export const GAME_CONFIG = {
   MIN_PLAYERS: 5,
   MAX_PLAYERS: 15,
