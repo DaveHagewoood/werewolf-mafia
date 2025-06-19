@@ -1211,111 +1211,8 @@ io.on('connection', (socket) => {
     }
     
     if (allReady) {
-      // All players are ready, start the night phase
-      room.gameState = GAME_STATES.NIGHT_PHASE
-      room.currentPhase = PHASES.NIGHT
-      
-      // Notify all players that night phase is starting
-      io.to(socket.roomId).emit(SOCKET_EVENTS.START_NIGHT_PHASE, { roomId: socket.roomId })
-      console.log(`All players ready, starting night phase in room ${socket.roomId}`)
-      
-      try {
-        // Begin Mafia voting
-        console.log(`=== NIGHT PHASE DEBUG START ===`)
-        
-        const mafiaPlayers = getMafiaPlayers(room)
-        const aliveNonMafiaPlayers = getAliveNonMafiaPlayers(room)
-        
-        console.log(`Room ${socket.roomId} players:`, room.players.map(p => `${p.name}(${p.id})`))
-        console.log(`Alive players:`, Array.from(room.alivePlayers))
-        console.log(`Found ${mafiaPlayers.length} Mafia players`)
-        console.log(`Found ${aliveNonMafiaPlayers.length} targets`)
-        
-        // Send voting options to each Mafia player
-        mafiaPlayers.forEach(mafiaPlayer => {
-          const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id)
-          if (mafiaSocket) {
-            mafiaSocket.emit(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, {
-              targets: aliveNonMafiaPlayers.map(player => ({
-                id: player.id,
-                name: player.name
-              }))
-            })
-            console.log(`Sent voting options to Mafia ${mafiaPlayer.name}`)
-          } else {
-            console.log(`ERROR: Could not find socket for Mafia player ${mafiaPlayer.name} (${mafiaPlayer.id})`)
-          }
-        })
-        
-        // Broadcast initial empty vote state to all Mafia
-        broadcastMafiaVotes(room)
-        
-        if (mafiaPlayers.length === 0) {
-          console.log(`ERROR: No Mafia players found in room ${socket.roomId}!`)
-        }
-        
-        // Begin Doctor action
-        const doctorPlayers = getDoctorPlayers(room, socket.roomId)
-        const allAlivePlayers = room.players.filter(player => room.alivePlayers.has(player.id))
-        
-        const gameType = roomGameTypes.get(socket.roomId) || GAME_TYPES.WEREWOLF
-        const roleSet = ROLE_SETS[gameType]
-        
-        console.log(`Found ${doctorPlayers.length} ${roleSet.PROTECTOR.name} players`)
-        
-        doctorPlayers.forEach(doctorPlayer => {
-          const doctorSocket = io.sockets.sockets.get(doctorPlayer.id)
-          if (doctorSocket) {
-            doctorSocket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
-              targets: allAlivePlayers.map(player => ({
-                id: player.id,
-                name: player.name
-              }))
-            })
-            console.log(`Sent healing options to ${roleSet.PROTECTOR.name} ${doctorPlayer.name}`)
-          } else {
-            console.log(`ERROR: Could not find socket for ${roleSet.PROTECTOR.name} player ${doctorPlayer.name} (${doctorPlayer.id})`)
-          }
-        })
-        
-        // Begin Seer/Detective action
-        const seerPlayers = getSeerPlayers(room, socket.roomId)
-        
-        console.log(`=== DETECTIVE/SEER DEBUG ===`)
-        console.log(`Game type: ${gameType}`)
-        console.log(`Expected investigator name: ${roleSet.INVESTIGATOR.name}`)
-        console.log(`Found ${seerPlayers.length} ${roleSet.INVESTIGATOR.name} players`)
-        
-        // Debug: List all players and their roles for comparison
-        console.log(`All players and their roles:`)
-        room.players.forEach(player => {
-          const role = room.playerRoles.get(player.id)
-          console.log(`  - ${player.name}: ${role?.name} (${role?.alignment})`)
-        })
-        
-        seerPlayers.forEach(seerPlayer => {
-          const seerSocket = io.sockets.sockets.get(seerPlayer.id)
-          if (seerSocket) {
-            // Filter out the investigator themselves from investigation targets
-            const investigationTargets = allAlivePlayers.filter(player => player.id !== seerPlayer.id)
-            console.log(`Sending investigation targets to ${seerPlayer.name}:`, investigationTargets.map(p => p.name))
-            seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
-              targets: investigationTargets.map(player => ({
-                id: player.id,
-                name: player.name
-              }))
-            })
-            console.log(`✓ Sent investigation options to ${roleSet.INVESTIGATOR.name} ${seerPlayer.name}`)
-          } else {
-            console.log(`ERROR: Could not find socket for ${roleSet.INVESTIGATOR.name} player ${seerPlayer.name} (${seerPlayer.id})`)
-          }
-        })
-        console.log(`=== END DETECTIVE/SEER DEBUG ===`)
-        
-        console.log(`=== NIGHT PHASE DEBUG END ===`)
-      } catch (error) {
-        console.error(`ERROR in night phase setup for room ${socket.roomId}:`, error)
-      }
+      console.log(`All players ready in room ${socket.roomId}, starting night phase`);
+      startNightPhase(room, socket.roomId);
     }
   })
 
@@ -1903,3 +1800,74 @@ io.on('connection', (socket) => {
     }
   });
 }) 
+
+// Helper function to start night phase
+function startNightPhase(room, roomId) {
+  // Change game state to night phase
+  room.gameState = GAME_STATES.NIGHT_PHASE;
+  room.currentPhase = PHASES.NIGHT;
+  
+  // Reset night phase data
+  room.mafiaVotes.clear();
+  room.healedPlayerId = null;
+  room.seerInvestigatedPlayerId = null;
+  room.mafiaVotesLocked = false;
+  
+  // First, notify ALL players that night phase is starting
+  io.to(roomId).emit(SOCKET_EVENTS.START_NIGHT_PHASE, { roomId });
+  console.log(`Night phase started in room ${roomId}`);
+  
+  // Wait a short moment to ensure all clients have processed the phase change
+  setTimeout(() => {
+    try {
+      // Get player groups
+      const mafiaPlayers = getMafiaPlayers(room);
+      const doctorPlayers = getDoctorPlayers(room, roomId);
+      const seerPlayers = getSeerPlayers(room, roomId);
+      const allAlivePlayers = room.players.filter(p => room.alivePlayers.has(p.id));
+      const aliveNonMafiaPlayers = getAliveNonMafiaPlayers(room);
+      
+      console.log(`=== NIGHT PHASE DEBUG START ===`);
+      console.log(`Room ${roomId} players:`, room.players.map(p => `${p.name}(${p.id})`));
+      console.log(`Alive players:`, Array.from(room.alivePlayers));
+      console.log(`Found ${mafiaPlayers.length} Mafia players`);
+      console.log(`Found ${aliveNonMafiaPlayers.length} targets`);
+      
+      // Send role-specific actions
+      mafiaPlayers.forEach(mafiaPlayer => {
+        const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id);
+        if (mafiaSocket) {
+          mafiaSocket.emit(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, {
+            targets: aliveNonMafiaPlayers.map(p => ({ id: p.id, name: p.name }))
+          });
+          console.log(`Sent voting options to Mafia ${mafiaPlayer.name}`);
+        }
+      });
+      
+      doctorPlayers.forEach(doctorPlayer => {
+        const doctorSocket = io.sockets.sockets.get(doctorPlayer.id);
+        if (doctorSocket) {
+          doctorSocket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
+            targets: allAlivePlayers.map(p => ({ id: p.id, name: p.name }))
+          });
+          console.log(`Sent heal options to Doctor ${doctorPlayer.name}`);
+        }
+      });
+      
+      seerPlayers.forEach(seerPlayer => {
+        const seerSocket = io.sockets.sockets.get(seerPlayer.id);
+        if (seerSocket) {
+          const investigationTargets = allAlivePlayers.filter(p => p.id !== seerPlayer.id);
+          seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
+            targets: investigationTargets.map(p => ({ id: p.id, name: p.name }))
+          });
+          console.log(`Sent investigation options to Seer ${seerPlayer.name}`);
+        }
+      });
+      
+      console.log(`=== NIGHT PHASE DEBUG END ===`);
+    } catch (error) {
+      console.error(`Error in night phase setup for room ${roomId}:`, error);
+    }
+  }, 1000); // Wait 1 second before sending role-specific actions
+} 
