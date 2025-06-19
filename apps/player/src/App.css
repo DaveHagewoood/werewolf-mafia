@@ -7,34 +7,73 @@
 
 .connection-status {
   position: fixed;
-  top: 10px;
-  right: 10px;
-  padding: 8px 12px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 10px;
+  text-align: center;
+  font-weight: bold;
   z-index: 1000;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(10px);
 }
 
-.connection-status.connecting {
-  background: rgba(255, 193, 7, 0.9);
-  color: #856404;
-  border: 1px solid #ffc107;
+.connection-status.attempting_reconnection {
+  background-color: #ffa500;
+  color: white;
+}
+
+.connection-status.paused {
+  background-color: #ff4444;
+  color: white;
 }
 
 .connection-status.disconnected {
-  background: rgba(220, 53, 69, 0.9);
+  background-color: #333;
   color: white;
-  border: 1px solid #dc3545;
-  animation: pulse 2s infinite;
 }
 
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
+/* Error Display */
+.error {
+  background-color: #ff4444;
+  color: white;
+  padding: 10px;
+  margin: 10px 0;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.error.clickable {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.error.clickable:hover {
+  background-color: #ff6666;
+}
+
+/* Game Pause Overlay */
+.pause-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.pause-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.pause-content h2 {
+  margin-top: 0;
+  color: #ff4444;
 }
 
 .game-pause-overlay {

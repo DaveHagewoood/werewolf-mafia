@@ -2,7 +2,8 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport, PlayerConnectionState } from '@werewolf-mafia/shared'
+import ConnectionManager from './utils/ConnectionManager'
 import './App.css'
 
 function HomePage() {
@@ -53,10 +54,8 @@ function JoinRoom() {
   const [supportsWebP, setSupportsWebP] = useState(false) // WebP support detection
 
   // Connection management
-  const [connectionStatus, setConnectionStatus] = useState('connecting')
-  const [gamePaused, setGamePaused] = useState(false)
-  const [pauseReason, setPauseReason] = useState('')
-  const [reconnectAttempts, setReconnectAttempts] = useState(0)
+  const [connectionManager, setConnectionManager] = useState(null)
+  const [connectionState, setConnectionState] = useState(PlayerConnectionState.CONNECTED)
 
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
@@ -82,9 +81,48 @@ function JoinRoom() {
     
     // Connect to Socket.IO server
     const newSocket = io(SERVER_URL, {
-      reconnection: false // Disable auto-reconnection to handle it manually
+      reconnection: false, // We'll handle reconnection ourselves
+      autoConnect: true,
+      transports: ['websocket', 'polling']
     })
+
+    // Create connection manager
+    const manager = new ConnectionManager(
+      newSocket,
+      (newState) => {
+        setConnectionState(newState)
+        if (newState === PlayerConnectionState.PAUSED) {
+          setError('Connection lost. Game paused. Click to try reconnecting.')
+        } else if (newState === PlayerConnectionState.ATTEMPTING_RECONNECTION) {
+          setError('Attempting to reconnect...')
+        }
+      },
+      (gameState) => {
+        // Handle successful reconnection
+        console.log('Reconnection successful, restoring game state:', gameState)
+        setConnectionState(PlayerConnectionState.CONNECTED)
+        setError(null)
+        
+        // Restore game state
+        setGameState(gameState.gameState)
+        if (gameState.role) {
+          setPlayerRole(gameState.role)
+        }
+        setIsReady(gameState.isReady || false)
+        
+        // Show success message briefly
+        setMessage({ type: 'success', text: 'Reconnected successfully!' })
+        setTimeout(() => setMessage(null), 3000)
+      },
+      (reason) => {
+        // Handle failed reconnection
+        console.log('Reconnection failed:', reason)
+        setError('Failed to reconnect. Click to try again.')
+      }
+    )
+    
     setSocket(newSocket)
+    setConnectionManager(manager)
 
     // Get room info when component loads
     if (roomId) {
@@ -108,69 +146,6 @@ function JoinRoom() {
       setPlayerName(autoJoinPlayerName)
     }
 
-    // Handle connection status changes
-    newSocket.on('connect', () => {
-      console.log('Connected to server')
-      setConnectionStatus('connected')
-    })
-    
-    newSocket.on('disconnect', (reason) => {
-      console.log('Disconnected from server:', reason)
-      setConnectionStatus('disconnected')
-      
-      // Clean up the old socket
-      newSocket.removeAllListeners()
-      newSocket.close()
-      
-      // Simple handling: if in lobby, player will be removed by server
-      if (gameState === GAME_STATES.LOBBY) {
-        console.log('Disconnected from lobby - will be removed by server')
-        setIsWaiting(false)
-        setError('Connection lost. Please rejoin the game.')
-      } else if (gameState !== GAME_STATES.LOBBY && gameState !== GAME_STATES.ENDED) {
-        console.log('Disconnected during game - attempting to reconnect')
-        setError('Connection lost during game. Please wait for reconnection.')
-        
-        // Attempt to reconnect after a short delay
-        setTimeout(() => {
-          setReconnectAttempts(prev => prev + 1)
-        }, 1000)
-      }
-    })
-
-    // Handle game pause/resume (simple version for Phase 1)
-    newSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
-      console.log('Game paused:', data.reason)
-      setGamePaused(true)
-      setPauseReason(data.reason)
-      setMessage({ 
-        type: 'warning', 
-        text: `Game paused: ${data.reason}` 
-      })
-    })
-    
-    newSocket.on(SOCKET_EVENTS.GAME_RESUMED, () => {
-      console.log('Game resumed')
-      setGamePaused(false)
-      setPauseReason('')
-      setMessage({ type: 'success', text: 'Game resumed!' })
-      setTimeout(() => setMessage(null), 3000)
-    })
-
-    // Listen for join confirmation
-    newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
-      if (data.success) {
-        setPlayerId(data.playerId)
-        setIsWaiting(true)
-        setIsJoining(false)
-        setError('')
-        setGameState(GAME_STATES.LOBBY)
-        setConnectionStatus('connected')
-        console.log('Joined successfully with ID:', data.playerId)
-        setMessage(null)
-      }
-    })
-
     // Listen for role assignment
     newSocket.on(SOCKET_EVENTS.ROLE_ASSIGNED, (data) => {
       console.log('Role assigned event received:', data.role.name)
@@ -186,153 +161,6 @@ function JoinRoom() {
       }
       
       setMessage(null) // Clear any old messages
-    })
-
-    // Listen for night phase start
-    newSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, (data) => {
-      setGameState(GAME_STATES.NIGHT_PHASE)
-      setHasVoted(false)
-      setSelectedTarget(null)
-      setEliminatedPlayer(null)
-      setMafiaVotesLocked(false) // Reset vote lock for new night
-      // Reset Doctor actions
-      setHasHealed(false)
-      setSelectedHeal(null)
-      setHealTargets([])
-      // Reset Seer actions
-      setHasInvestigated(false)
-      setSelectedInvestigation(null)
-      setInvestigateTargets([])
-      setInvestigationResult(null)
-      // Reset Mafia voting
-      setVoteTargets([])
-      setMafiaVotes({})
-      setConsensusTimer(null)
-      console.log('Night phase started!')
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for Mafia voting (only Mafia will receive this)
-    newSocket.on(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, (data) => {
-      setVoteTargets(data.targets)
-      console.log('Mafia voting started, targets:', data.targets)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for night action completion
-    newSocket.on(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, (data) => {
-      setEliminatedPlayer(data.eliminatedPlayer)
-      console.log('Night action completed:', data.eliminatedPlayer)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for Mafia vote updates (real-time vote sharing)
-    newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_UPDATE, (data) => {
-      setMafiaVotes(data.votes)
-      console.log('Mafia votes updated:', data.votes)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for consensus timer start
-    newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_START, (data) => {
-      setConsensusTimer({
-        targetId: data.targetId,
-        targetName: data.targetName,
-        timeLeft: Math.floor(data.duration / 1000) // Convert to seconds
-      })
-      console.log('Consensus timer started for:', data.targetName)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for consensus timer cancelled
-    newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_CANCELLED, () => {
-      setConsensusTimer(null)
-      console.log('Consensus timer cancelled')
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for Mafia votes locked
-    newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_LOCKED, () => {
-      setMafiaVotesLocked(true)
-      console.log('Mafia votes are now locked')
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for Doctor action start (only Doctor will receive this)
-    newSocket.on(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, (data) => {
-      setHealTargets(data.targets)
-      console.log('Doctor action started, heal targets:', data.targets)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for Seer action start (only Seer will receive this)
-    newSocket.on(SOCKET_EVENTS.BEGIN_SEER_ACTION, (data) => {
-      setInvestigateTargets(data.targets)
-      console.log('Seer action started, investigation targets:', data.targets)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for Seer investigation result
-    newSocket.on(SOCKET_EVENTS.SEER_RESULT, (data) => {
-      setInvestigationResult(data.result)
-      console.log('Investigation result received:', data.result)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for day phase start
-    newSocket.on(SOCKET_EVENTS.START_DAY_PHASE, (data) => {
-      setGameState(GAME_STATES.DAY_PHASE)
-      setDayPhaseTargets(data.alivePlayers)
-      setAccusationTarget(null)
-      setAccusations({})
-      setEliminationCountdown(null)
-      console.log('Day phase started, alive players:', data.alivePlayers)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for accusation updates
-    newSocket.on(SOCKET_EVENTS.ACCUSATIONS_UPDATE, (data) => {
-      setAccusations(data.accusations)
-      console.log('Accusations updated:', data.accusations)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for elimination countdown
-    newSocket.on(SOCKET_EVENTS.ELIMINATION_COUNTDOWN, (data) => {
-      setEliminationCountdown({
-        targetId: data.targetId,
-        targetName: data.targetName,
-        timeLeft: Math.floor(data.duration / 1000) // Convert to seconds
-      })
-      console.log('Elimination countdown started for:', data.targetName)
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for countdown cancelled
-    newSocket.on(SOCKET_EVENTS.COUNTDOWN_CANCELLED, () => {
-      setEliminationCountdown(null)
-      console.log('Elimination countdown cancelled')
-      setMessage(null) // Clear any old messages
-    })
-
-    // Listen for player elimination (general cleanup only)
-    newSocket.on(SOCKET_EVENTS.PLAYER_ELIMINATED, (data) => {
-      console.log('Player eliminated:', data.eliminatedPlayer)
-      setEliminationCountdown(null)
-      setAccusations({})
-      setMessage(null) // Clear any old messages
-      // Note: Individual player elimination check is handled in separate useEffect
-    })
-
-    // Listen for readiness state restoration
-    newSocket.on('readiness-state', (data) => {
-      console.log('Readiness state restored:', data.isReady)
-      setIsReady(data.isReady)
-    })
-
-    // Listen for errors
-    newSocket.on('error', (data) => {
-      handleConnectionError(data.message)
     })
 
     // Listen for game end
@@ -372,14 +200,11 @@ function JoinRoom() {
       setMessage(null) // Clear any old messages
     })
 
-    // Cleanup on unmount or before reconnection
     return () => {
-      if (newSocket) {
-        newSocket.removeAllListeners()
-        newSocket.close()
-      }
+      manager.cleanup()
+      newSocket.close()
     }
-  }, [reconnectAttempts]) // Add reconnectAttempts as dependency
+  }, [])
 
   // Separate effect to handle elimination events when playerId is available
   useEffect(() => {
@@ -587,14 +412,14 @@ function JoinRoom() {
 
   // Add pause overlay to all game phase screens
   const renderPauseOverlay = () => {
-    if (!gamePaused) return null;
+    if (!gameState === GAME_STATES.PAUSED) return null;
 
     return (
       <div className="pause-overlay">
         <div className="pause-content">
           <h2>⚠️ Game Paused</h2>
-          <p>{pauseReason}</p>
-          {pauseReason === 'Host disconnected' && (
+          <p>{error}</p>
+          {error === 'Host disconnected' && (
             <div className="host-disconnect-warning">
               <p>Game will end in 15 seconds if host doesn't reconnect</p>
               <div className="reconnect-spinner"></div>
@@ -1206,54 +1031,12 @@ function JoinRoom() {
   return wrapWithPauseOverlay(
     <div className="app-wrapper">
       {/* Connection Status Indicator */}
-      {connectionStatus !== 'connected' && (
-        <>
-          <div className={`connection-status ${connectionStatus}`}>
-            {connectionStatus === 'connecting' && '🔄 Connecting...'}
-            {connectionStatus === 'disconnected' && '🔴 Disconnected'}
-          </div>
-          
-          {connectionStatus === 'disconnected' && (
-            <div className="disconnect-container">
-              <div className="disconnect-content">
-                <div className="disconnect-icon">🔌</div>
-                <h1>Connection Lost</h1>
-                <p>We've lost connection to the game server.</p>
-                
-                {error ? (
-                  <>
-                    <div className="error-details">
-                      <p>{error}</p>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        setError('')
-                        setIsWaiting(false)
-                        window.location.reload()
-                      }}
-                      className="reconnect-button"
-                    >
-                      Try Again
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="reconnect-message">
-                      <p>Attempting to reconnect automatically...</p>
-                      <div className="reconnect-spinner"></div>
-                    </div>
-                    <button 
-                      onClick={() => window.location.reload()}
-                      className="reconnect-button"
-                    >
-                      Refresh Page
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </>
+      {connectionState !== PlayerConnectionState.CONNECTED && (
+        <div className={`connection-status ${connectionState.toLowerCase()}`}>
+          {connectionState === PlayerConnectionState.ATTEMPTING_RECONNECTION && '🔄 Reconnecting...'}
+          {connectionState === PlayerConnectionState.PAUSED && '🔴 Connection Lost'}
+          {connectionState === PlayerConnectionState.DISCONNECTED && '⚫ Disconnected'}
+        </div>
       )}
       
       {/* Message Display */}
@@ -1264,7 +1047,7 @@ function JoinRoom() {
       )}
       
       {/* Only show join form if connected */}
-      {connectionStatus === 'connected' && (
+      {connectionState === PlayerConnectionState.CONNECTED && (
         <div className="join-container">
           <div className="join-content">
             <h1>Join Game</h1>

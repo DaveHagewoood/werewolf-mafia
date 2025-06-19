@@ -43,7 +43,13 @@ export const SOCKET_EVENTS = {
   HEARTBEAT_RESPONSE: 'heartbeat-response',
   GAME_PAUSED: 'game-paused',
   GAME_RESUMED: 'game-resumed',
-  DISCONNECT: 'disconnect'
+  DISCONNECT: 'disconnect',
+  // Enhanced reconnection events
+  STATE_SYNC_REQUEST: 'state-sync-request',
+  STATE_SYNC_RESPONSE: 'state-sync-response',
+  RECONNECTION_FAILED: 'reconnection-failed',
+  CLIENT_PAUSED: 'client-paused',
+  VERSION_MISMATCH: 'version-mismatch'
 }
 
 export const GAME_CONFIG = {
@@ -236,4 +242,6 @@ export const GAME_STATES = {
 export const PHASES = {
   NIGHT: 'night',
   DAY: 'day'
-} 
+}
+
+export * from './connectionStates'; 
