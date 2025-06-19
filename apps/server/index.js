@@ -673,35 +673,36 @@ function updatePlayerConnection(playerId, isConnected) {
   const player = room.players.find(p => p.id === playerId);
   if (!player) return;
 
-  const wasConnected = player.connected;
-  player.connected = isConnected;
-
+  // If connecting, always update connection status
   if (isConnected) {
+    player.connected = true;
     // Clear any existing reconnect timer
     if (connection.reconnectTimer) {
       clearTimeout(connection.reconnectTimer);
       connection.reconnectTimer = null;
     }
     connection.lastHeartbeat = Date.now();
-  } else if (!isConnected && wasConnected) {
-    // If in lobby, remove player immediately
-    if (room.gameState === GAME_STATES.LOBBY) {
-      console.log(`Player ${player.name} disconnected from lobby - removing immediately`);
-      removePlayerFromGame(room, playerId, room.id);
-      return;
-    }
-
-    // Only start reconnect timer for active game phases
-    console.log(`Starting reconnect timer for ${player.name} in ${room.gameState} phase`);
-    connection.reconnectTimer = setTimeout(() => {
-      handlePlayerTimeout(playerId);
-    }, CONNECTION_CONFIG.RECONNECT_TIMEOUT);
+    return;
   }
 
-  // Update game state based on connection changes (only for active game phases)
-  if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
-    checkGameStateAfterConnectionChange(room.id);
+  // Handle disconnection based on game state
+  if (room.gameState === GAME_STATES.LOBBY) {
+    // In lobby: player should already be removed, this is just cleanup
+    playerConnections.delete(playerId);
+    return;
   }
+
+  // Active game phase disconnection
+  player.connected = false;
+  connection.disconnectedAt = Date.now();
+  
+  // Start reconnect timer
+  connection.reconnectTimer = setTimeout(() => {
+    handlePlayerTimeout(playerId);
+  }, CONNECTION_CONFIG.RECONNECT_TIMEOUT);
+
+  // Update game state for active phases
+  checkGameStateAfterConnectionChange(room.id);
 }
 
 function handlePlayerTimeout(playerId) {
@@ -1818,27 +1819,27 @@ io.on('connection', (socket) => {
 
   // Handle disconnection
   socket.on('disconnect', (reason) => {
-    console.log(`Client disconnected: ${socket.id}, reason: ${reason}`)
+    console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
     
     if (socket.roomId) {
-      const room = getRoom(socket.roomId)
+      const room = getRoom(socket.roomId);
       
       if (socket.isHost) {
         // Host disconnected - give grace period before ending game
-        console.log(`Host disconnected from room ${socket.roomId} - starting ${CONNECTION_CONFIG.RECONNECT_TIMEOUT/1000}s grace period`)
+        console.log(`Host disconnected from room ${socket.roomId} - starting ${CONNECTION_CONFIG.RECONNECT_TIMEOUT/1000}s grace period`);
         
         if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
           // Set a timeout to end the game if host doesn't reconnect
           room.hostDisconnectTimeout = setTimeout(() => {
-            console.log(`Host grace period expired - ending game in room ${socket.roomId}`)
-            room.gameState = GAME_STATES.ENDED
+            console.log(`Host grace period expired - ending game in room ${socket.roomId}`);
+            room.gameState = GAME_STATES.ENDED;
             io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_END, {
               winner: null,
               winCondition: 'Game ended - Host disconnected',
               roomId: socket.roomId
-            })
-            room.hostDisconnectTimeout = null
-          }, CONNECTION_CONFIG.RECONNECT_TIMEOUT)
+            });
+            room.hostDisconnectTimeout = null;
+          }, CONNECTION_CONFIG.RECONNECT_TIMEOUT);
           
           // Notify players that host disconnected
           io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
@@ -1846,23 +1847,33 @@ io.on('connection', (socket) => {
             connectedPlayers: room.players.filter(p => p.connected).length,
             totalPlayers: room.players.length,
             reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_TIMEOUT
-          })
+          });
         }
-      } else if (socket.playerName) {
-        // Player disconnected - mark as disconnected but don't remove immediately
-        const player = room.players.find(p => p.id === socket.id)
+      } else {
+        // Player disconnected
+        const player = room.players.find(p => p.id === socket.id);
         if (player) {
-          console.log(`Player ${player.name} disconnected from room ${socket.roomId}`)
-          updatePlayerConnection(socket.id, false)
+          console.log(`Player ${player.name} disconnected from room ${socket.roomId}`);
           
-          // Notify other players about the disconnection
-          io.to(socket.roomId).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
-            playerId: socket.id,
-            playerName: player.name,
-            reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_TIMEOUT
-          })
+          // Handle differently based on game state
+          if (room.gameState === GAME_STATES.LOBBY) {
+            // In lobby: immediately remove the player
+            console.log(`Removing ${player.name} from lobby immediately`);
+            removePlayerFromGame(room, socket.id, socket.roomId);
+            // No need to notify about disconnection in lobby
+          } else {
+            // In active game: start reconnection process
+            updatePlayerConnection(socket.id, false);
+            
+            // Notify other players about the disconnection
+            io.to(socket.roomId).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
+              playerId: socket.id,
+              playerName: player.name,
+              reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_TIMEOUT
+            });
+          }
         }
       }
     }
-  })
+  });
 }) 
