@@ -1,8 +1,8 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
 import { SOCKET_EVENTS, validatePlayerName, GAME_CONFIG, GAME_STATES, PHASES, ROLES, ROLE_SETS, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, assignRoles, CONNECTION_CONFIG } from '@werewolf-mafia/shared'
-const GameStateManager = require('./gameStateManager');
-const { GameConnectionState } = require('@werewolf-mafia/shared/connectionStates');
+import { GameConnectionState } from '@werewolf-mafia/shared/connectionStates.js'
+import { GameStateManager } from './gameStateManager.js'
 
 const httpServer = createServer()
 const port = process.env.PORT || 3002

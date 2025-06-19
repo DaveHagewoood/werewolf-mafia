@@ -1,7 +1,7 @@
-const { SOCKET_EVENTS } = require('@werewolf-mafia/shared');
-const { GameConnectionState } = require('@werewolf-mafia/shared/connectionStates');
+import { SOCKET_EVENTS } from '@werewolf-mafia/shared';
+import { GameConnectionState } from '@werewolf-mafia/shared/connectionStates.js';
 
-class GameStateManager {
+export class GameStateManager {
   constructor(io) {
     this.io = io;
     this.roomStates = new Map();
@@ -133,6 +133,4 @@ class GameStateManager {
   cleanup(roomId) {
     this.roomStates.delete(roomId);
   }
-}
-
-module.exports = GameStateManager; 
+} 
