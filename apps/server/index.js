@@ -30,13 +30,7 @@ const io = new Server(httpServer, {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
-  },
-  transports: ['polling', 'websocket'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  connectTimeout: 30000,
-  allowEIO3: true,
-  maxHttpBufferSize: 1e8
+  }
 })
 
 // Store game rooms in memory
@@ -819,14 +813,6 @@ io.on('connection', (socket) => {
     const { roomId, requestGameState } = data
     const room = getRoom(roomId)
     
-    console.log(`=== HOST ROOM EVENT ===`)
-    console.log('Data received:', { roomId, requestGameState })
-    console.log('Current room state:', {
-      gameState: room.gameState,
-      playerCount: room.players.length,
-      hasGameType: roomGameTypes.has(roomId)
-    })
-    
     // Clear any existing host disconnect timeout (host reconnected in time)
     if (room.hostDisconnectTimeout) {
       console.log(`Host reconnected to room ${roomId} within grace period - clearing timeout`)
@@ -852,26 +838,13 @@ io.on('connection', (socket) => {
     
     // Send full game state to reconnecting host
     if (requestGameState) {
-      console.log('Preparing full game state for reconnecting host')
-      
-      // Helper function to convert Map to array of entries
-      const mapToArray = (map) => {
-        if (!map) return null;
-        return Array.from(map.entries());
-      };
-
-      // Helper function to convert Set to array
-      const setToArray = (set) => {
-        if (!set) return null;
-        return Array.from(set);
-      };
-
+      console.log('Sending full game state to reconnecting host')
       const gameState = {
         gameState: room.gameState,
         players: room.players,
         gameType: roomGameTypes.get(roomId),
         playerReadiness: room.gameState === GAME_STATES.ROLE_ASSIGNMENT ? 
-          room.players.map(player => ({
+          Array.from(room.players).map(player => ({
             id: player.id,
             name: player.name,
             ready: room.playerReadiness.get(player.id) || false,
@@ -880,13 +853,13 @@ io.on('connection', (socket) => {
         eliminatedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.eliminatedPlayer : null,
         savedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.savedPlayer : null,
         accusations: room.gameState === GAME_STATES.DAY_PHASE ? 
-          mapToArray(room.accusations).map(([key, value]) => [key, setToArray(value)]) : null,
+          Object.fromEntries(room.accusations) : null,
         eliminationCountdown: room.gameState === GAME_STATES.DAY_PHASE ? room.eliminationCountdown : null,
         dayEliminatedPlayer: room.gameState === GAME_STATES.DAY_PHASE ? room.dayEliminatedPlayer : null,
         gameEndData: room.gameState === GAME_STATES.ENDED ? {
           winner: room.winner,
           winCondition: room.winCondition,
-          alivePlayers: setToArray(room.alivePlayers),
+          alivePlayers: room.alivePlayers,
           allPlayers: room.players.map(player => ({
             id: player.id,
             name: player.name,
@@ -895,7 +868,6 @@ io.on('connection', (socket) => {
           }))
         } : null
       }
-      console.log('Sending game state to host:', JSON.stringify(gameState))
       socket.emit(SOCKET_EVENTS.RESTORE_GAME_STATE, gameState)
     } else {
       // Send current game type
@@ -916,8 +888,6 @@ io.on('connection', (socket) => {
         totalPlayers: room.players.length
       })
     }
-    
-    console.log('=== HOST ROOM EVENT COMPLETE ===')
   })
 
   // Host selects game type

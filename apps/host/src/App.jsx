@@ -88,10 +88,7 @@ function GameLobby() {
       reconnectionDelayMax: 5000,
       timeout: 20000,
       autoConnect: true,
-      transports: ['polling', 'websocket'],
-      rejectUnauthorized: false,
-      path: '/socket.io/',
-      withCredentials: true
+      transports: ['websocket', 'polling']
     })
     setSocket(hostSocket)
 
@@ -102,57 +99,90 @@ function GameLobby() {
       setMessage({ type: 'success', text: 'Connected to server' })
       setTimeout(() => setMessage(null), 3000)
 
-      // Always join as host with existing room ID and request game state
-      hostSocket.emit('host-room', { roomId, requestGameState: true })
+      // Always join as host with existing room ID
+      hostSocket.emit('host-room', { roomId })
     })
 
-    // Handle transport errors
-    hostSocket.on('connect_error', (error) => {
-      console.error('Connection error:', error)
-      setConnectionStatus('connecting')
+    // Handle heartbeat
+    hostSocket.on(SOCKET_EVENTS.HEARTBEAT, () => {
+      hostSocket.emit(SOCKET_EVENTS.HEARTBEAT_RESPONSE)
+    })
+
+    hostSocket.on('disconnect', (reason) => {
+      console.log('Disconnected from server:', reason)
+      setConnectionStatus('disconnected')
       setMessage({ 
         type: 'error', 
-        text: 'Connection error. Retrying...' 
+        text: 'Disconnected from server. Attempting to reconnect...' 
       })
     })
 
+    // Listen for reconnect attempts
+    hostSocket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('Attempting to reconnect:', attemptNumber)
+      setConnectionStatus('connecting')
+    })
+
+    // Listen for successful reconnection
+    hostSocket.on('reconnect', () => {
+      console.log('Successfully reconnected')
+      setConnectionStatus('connected')
+      setMessage({ 
+        type: 'success', 
+        text: 'Reconnected to server' 
+      })
+      setTimeout(() => setMessage(null), 3000)
+
+      // Re-join room and request current game state
+      hostSocket.emit('host-room', { roomId, requestGameState: true })
+    })
+
+    // Listen for game state restoration after reconnect
+    hostSocket.on('restore-game-state', (data) => {
+      console.log('Restoring game state:', data)
+      
+      // Restore basic game state
+      setGameState(data.gameState)
+      setPlayers(data.players || [])
+      setSelectedGameType(data.gameType)
+      
+      // Restore phase-specific state
+      if (data.gameState === GAME_STATES.NIGHT_PHASE) {
+        setEliminatedPlayer(data.eliminatedPlayer)
+        setSavedPlayer(data.savedPlayer)
+      } else if (data.gameState === GAME_STATES.DAY_PHASE) {
+        // Convert accusations back to Map if needed
+        const accusationsMap = new Map()
+        if (data.accusations) {
+          Object.entries(data.accusations).forEach(([key, value]) => {
+            accusationsMap.set(key, new Set(value))
+          })
+        }
+        setAccusations(accusationsMap)
+        setEliminationCountdown(data.eliminationCountdown)
+        setDayEliminatedPlayer(data.dayEliminatedPlayer)
+      } else if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+        setPlayerReadiness(data.playerReadiness || [])
+      } else if (data.gameState === GAME_STATES.ENDED && data.gameEndData) {
+        setGameEndData(data.gameEndData)
+      }
+
+      // Update connection status
+      setConnectionStatus('connected')
+      setMessage({ 
+        type: 'success', 
+        text: 'Reconnected to server' 
+      })
+      setTimeout(() => setMessage(null), 3000)
+    })
+
+    // Listen for reconnect errors
     hostSocket.on('reconnect_error', (error) => {
       console.error('Reconnection error:', error)
       setMessage({ 
         type: 'error', 
         text: 'Failed to reconnect. Still trying...' 
       })
-    })
-
-    hostSocket.on('error', (error) => {
-      console.error('Socket error:', error)
-      setMessage({ 
-        type: 'error', 
-        text: 'Socket error occurred' 
-      })
-    })
-
-    hostSocket.on('disconnect', (reason) => {
-      console.log('Disconnected from server:', reason)
-      if (reason === 'transport close' || reason === 'transport error') {
-        // These are expected during network issues, don't show error
-        setConnectionStatus('connecting')
-        setMessage({ 
-          type: 'warning', 
-          text: 'Connection interrupted. Reconnecting...' 
-        })
-      } else {
-        setConnectionStatus('disconnected')
-        setMessage({ 
-          type: 'error', 
-          text: `Disconnected: ${reason}. Attempting to reconnect...` 
-        })
-      }
-    })
-
-    // Handle heartbeat
-    hostSocket.on(SOCKET_EVENTS.HEARTBEAT, () => {
-      hostSocket.emit(SOCKET_EVENTS.HEARTBEAT_RESPONSE)
     })
 
     // Listen for player updates
@@ -276,6 +306,11 @@ function GameLobby() {
         text: `${data.playerName} disconnected. They have ${Math.floor(data.reconnectTimeLeft / 1000)}s to reconnect.` 
       })
       setTimeout(() => setMessage(null), 5000)
+    })
+
+    // Listen for errors
+    hostSocket.on('error', (error) => {
+      console.error('Socket error:', error.message)
     })
 
     // Cleanup on unmount or before reconnection
