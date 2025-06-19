@@ -265,6 +265,4 @@ export const GAME_STATES = {
 export const PHASES = {
   NIGHT: 'night',
   DAY: 'day'
-}
-
-export * from './connectionStates'; 
+} 
