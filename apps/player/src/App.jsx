@@ -61,6 +61,9 @@ function JoinRoom() {
   const [gamePaused, setGamePaused] = useState(false);
   const [pauseReason, setPauseReason] = useState('');
 
+  // New state for reconnection attempts
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
     setError(errorMessage)
@@ -219,6 +222,30 @@ function JoinRoom() {
       setError(null);
       setMessage({ type: 'success', text: 'Game resumed!' });
       setTimeout(() => setMessage(null), 3000);
+    });
+
+    newSocket.on('disconnect', (reason) => {
+      console.log('Disconnected from server:', reason);
+      
+      // If in lobby, just show error and let server remove the player
+      if (gameState === GAME_STATES.LOBBY) {
+        console.log('Disconnected from lobby - will be removed by server');
+        setIsWaiting(false);
+        setError('Connection lost. Please rejoin the game.');
+        return;
+      }
+      
+      // Only attempt reconnection for active game phases
+      if (gameState !== GAME_STATES.ENDED) {
+        console.log('Disconnected during game - attempting to reconnect');
+        setConnectionState(PlayerConnectionState.ATTEMPTING_RECONNECTION);
+        setError('Connection lost during game. Please wait for reconnection.');
+        
+        // Attempt to reconnect after a short delay
+        setTimeout(() => {
+          setReconnectAttempts(prev => prev + 1);
+        }, 1000);
+      }
     });
 
     return () => {

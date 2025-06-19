@@ -664,67 +664,78 @@ function initializePlayerConnection(playerId, roomId, playerName) {
 }
 
 function updatePlayerConnection(playerId, isConnected) {
-  const room = getRoom(playerConnections.get(playerId)?.roomId)
-  if (!room) return
+  const connection = playerConnections.get(playerId);
+  if (!connection) return;
 
-  const player = room.players.find(p => p.id === playerId)
-  if (!player) return
+  const room = getRoom(connection.roomId);
+  if (!room) return;
 
-  const wasConnected = player.connected
-  player.connected = isConnected
+  const player = room.players.find(p => p.id === playerId);
+  if (!player) return;
+
+  const wasConnected = player.connected;
+  player.connected = isConnected;
 
   if (isConnected) {
     // Clear any existing reconnect timer
-    const connection = playerConnections.get(playerId)
-    if (connection?.reconnectTimer) {
-      clearTimeout(connection.reconnectTimer)
-      connection.reconnectTimer = null
+    if (connection.reconnectTimer) {
+      clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
     }
-    connection.lastHeartbeat = Date.now()
+    connection.lastHeartbeat = Date.now();
   } else if (!isConnected && wasConnected) {
-    // Start reconnect timer
-    const connection = playerConnections.get(playerId)
-    if (connection) {
-      connection.reconnectTimer = setTimeout(() => {
-        handlePlayerTimeout(playerId)
-      }, CONNECTION_CONFIG.RECONNECT_TIMEOUT)
+    // If in lobby, remove player immediately
+    if (room.gameState === GAME_STATES.LOBBY) {
+      console.log(`Player ${player.name} disconnected from lobby - removing immediately`);
+      removePlayerFromGame(room, playerId, room.id);
+      return;
     }
+
+    // Only start reconnect timer for active game phases
+    console.log(`Starting reconnect timer for ${player.name} in ${room.gameState} phase`);
+    connection.reconnectTimer = setTimeout(() => {
+      handlePlayerTimeout(playerId);
+    }, CONNECTION_CONFIG.RECONNECT_TIMEOUT);
   }
 
-  // Update game state based on connection changes
-  checkGameStateAfterConnectionChange(room.id)
+  // Update game state based on connection changes (only for active game phases)
+  if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
+    checkGameStateAfterConnectionChange(room.id);
+  }
 }
 
 function handlePlayerTimeout(playerId) {
-  const connection = playerConnections.get(playerId)
-  if (!connection) return
+  const connection = playerConnections.get(playerId);
+  if (!connection) return;
 
-  const room = getRoom(connection.roomId)
-  if (!room) return
+  const room = getRoom(connection.roomId);
+  if (!room) return;
 
-  const player = room.players.find(p => p.id === playerId)
-  if (!player) return
+  const player = room.players.find(p => p.id === playerId);
+  if (!player) return;
 
-  console.log(`Player ${player.name} (${playerId}) timed out after ${CONNECTION_CONFIG.RECONNECT_TIMEOUT}ms`)
+  console.log(`Player ${player.name} (${playerId}) timed out after ${CONNECTION_CONFIG.RECONNECT_TIMEOUT}ms`);
   
-  // Remove player from game if in lobby
+  // In lobby, player should have already been removed by updatePlayerConnection
   if (room.gameState === GAME_STATES.LOBBY) {
-    removePlayerFromGame(room, playerId, room.id)
-  } else {
-    // In active game, mark as permanently disconnected
-    player.connected = false
-    player.timedOut = true
-    
-    // Notify other players
-    io.to(room.id).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
-      playerId,
-      playerName: player.name,
-      permanent: true
-    })
-    
-    // Check if game should end due to disconnections
-    checkGameStateAfterConnectionChange(room.id)
+    console.log(`Unexpected timeout in lobby for ${player.name} - removing if still present`);
+    removePlayerFromGame(room, playerId, room.id);
+    return;
   }
+  
+  // For active game phases, mark as permanently disconnected
+  player.connected = false;
+  player.timedOut = true;
+  
+  // Notify other players
+  io.to(room.id).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
+    playerId,
+    playerName: player.name,
+    permanent: true
+  });
+  
+  // Check if game should end due to disconnections
+  checkGameStateAfterConnectionChange(room.id);
 }
 
 function isPlayerConnectionAlive(playerId) {
