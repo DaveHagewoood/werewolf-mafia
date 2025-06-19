@@ -1,4 +1,5 @@
-const { GameConnectionState, SOCKET_EVENTS } = require('@werewolf-mafia/shared');
+const { SOCKET_EVENTS } = require('@werewolf-mafia/shared');
+const { GameConnectionState } = require('@werewolf-mafia/shared/connectionStates');
 
 class GameStateManager {
   constructor(io) {

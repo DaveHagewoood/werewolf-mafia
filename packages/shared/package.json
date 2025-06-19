@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
-  "dependencies": {
-    "socket.io-client": "^4.7.4"
-  }
+  "exports": {
+    ".": "./index.js",
+    "./connectionStates": "./connectionStates.js"
+  },
+  "dependencies": {}
 } 
