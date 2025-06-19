@@ -57,6 +57,10 @@ function JoinRoom() {
   const [connectionManager, setConnectionManager] = useState(null)
   const [connectionState, setConnectionState] = useState(PlayerConnectionState.CONNECTED)
 
+  // New state for game pause/resume
+  const [gamePaused, setGamePaused] = useState(false);
+  const [pauseReason, setPauseReason] = useState('');
+
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
     setError(errorMessage)
@@ -199,6 +203,23 @@ function JoinRoom() {
       // This event is now replaced by ROLE_ASSIGNED
       setMessage(null) // Clear any old messages
     })
+
+    // Listen for game pause/resume events
+    newSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
+      console.log('Game paused:', data.reason);
+      setGamePaused(true);
+      setPauseReason(data.reason);
+      setError(data.reason);
+    });
+
+    newSocket.on(SOCKET_EVENTS.GAME_RESUMED, () => {
+      console.log('Game resumed');
+      setGamePaused(false);
+      setPauseReason('');
+      setError(null);
+      setMessage({ type: 'success', text: 'Game resumed!' });
+      setTimeout(() => setMessage(null), 3000);
+    });
 
     return () => {
       manager.cleanup()
@@ -412,14 +433,14 @@ function JoinRoom() {
 
   // Add pause overlay to all game phase screens
   const renderPauseOverlay = () => {
-    if (!gameState === GAME_STATES.PAUSED) return null;
+    if (!gamePaused) return null;
 
     return (
       <div className="pause-overlay">
         <div className="pause-content">
           <h2>⚠️ Game Paused</h2>
-          <p>{error}</p>
-          {error === 'Host disconnected' && (
+          <p>{pauseReason}</p>
+          {pauseReason === 'Host disconnected' && (
             <div className="host-disconnect-warning">
               <p>Game will end in 15 seconds if host doesn't reconnect</p>
               <div className="reconnect-spinner"></div>

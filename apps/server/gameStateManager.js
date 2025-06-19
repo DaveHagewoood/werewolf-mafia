@@ -74,10 +74,13 @@ export class GameStateManager {
 
     state.reconnectingPlayers.add(playerId);
 
-    if (state.connectionState === GameConnectionState.ACTIVE &&
-        state.gameState !== 'LOBBY' && 
-        state.gameState !== 'ENDED') {
-      
+    // Don't pause in lobby or ended state
+    if (state.gameState === 'LOBBY' || state.gameState === 'ENDED') {
+      return;
+    }
+
+    // If we're in an active game state, pause if needed
+    if (state.connectionState === GameConnectionState.ACTIVE) {
       state.connectionState = GameConnectionState.PAUSED_RECONNECTING;
       state.gamePaused = true;
       state.pauseReason = 'Waiting for player reconnection';
