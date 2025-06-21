@@ -59,6 +59,9 @@ const roomGameTypes = new Map()
 // Store player connection data
 const playerConnections = new Map() // playerId -> { lastHeartbeat, reconnectTimer }
 
+// Store reconnect tokens for player reconnection
+const reconnectTokens = new Map() // token -> { playerId, roomId, playerName, expiry }
+
 // Start listening on the configured port
 httpServer.listen(port, '0.0.0.0', (err) => {
   if (err) {
@@ -1714,27 +1717,39 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     
+    // Get the room for this socket
+    if (!socket.roomId) {
+      console.log('Socket disconnected but was not in a room');
+      return;
+    }
+    
+    const room = getRoom(socket.roomId);
+    if (!room) {
+      console.log(`Socket disconnected but room ${socket.roomId} not found`);
+      return;
+    }
+    
     const player = room.players.find(p => p.id === socket.id);
     if (player) {
-      console.log(`Player ${player.name} disconnected`);
+      console.log(`Player ${player.name} disconnected from room ${socket.roomId}`);
       
       // If in lobby phase, immediately remove the player
       if (room.gameState === GAME_STATES.LOBBY) {
         console.log(`Removing ${player.name} from lobby immediately`);
-        room.players = room.players.filter(p => p.id !== player.id);
+        const updatedPlayers = room.players.filter(p => p.id !== player.id);
         
-        // Emit updated player list to all remaining clients
-        io.emit('playersUpdate', room.players);
-        
-        // Update game state
-        room.players = room.players;
-        gameStateManager.updateGameState(room);
+        // Update game state through GameStateManager
+        gameStateManager.updateGameState(socket.roomId, {
+          players: updatedPlayers
+        });
         
         return; // Exit early, don't use connection management for lobby
       }
       
       // For active game phases, use connection management
-      gameStateManager.handlePlayerDisconnect(player.id, io);
+      gameStateManager.handlePlayerDisconnect(socket.roomId, player.id);
+    } else {
+      console.log(`Disconnected client ${socket.id} was not found in room ${socket.roomId} players`);
     }
   });
 }) 
