@@ -13,9 +13,8 @@ import {
   getProfileImageUrl, 
   assignRoles, 
   CONNECTION_CONFIG,
-  GameConnectionState 
+  GameStateManager 
 } from '@werewolf-mafia/shared'
-import { GameStateManager } from './gameStateManager.js'
 
 const httpServer = createServer()
 const port = process.env.PORT || 3002
@@ -47,6 +46,9 @@ const io = new Server(httpServer, {
     credentials: true
   }
 })
+
+// Initialize game state manager
+const gameStateManager = new GameStateManager(io)
 
 // Store game rooms in memory
 const gameRooms = new Map()
@@ -83,29 +85,7 @@ process.on('SIGTERM', () => {
 
 // Helper function to get or create room
 function getRoom(roomId) {
-  if (!gameRooms.has(roomId)) {
-    gameRooms.set(roomId, {
-      id: roomId,
-      host: null,
-      players: [],
-      gameState: GAME_STATES.LOBBY,
-      currentPhase: null,
-      playerRoles: new Map(), // playerId -> role
-      playerReadiness: new Map(), // playerId -> boolean
-      alivePlayers: new Set(), // Set of alive player IDs
-      mafiaVotes: new Map(), // mafiaPlayerId -> targetPlayerId
-      voteConsensusTimer: null,
-      mafiaVotesLocked: false, // Whether Mafia votes are locked in
-      healedPlayerId: null, // Doctor's heal target
-      seerInvestigatedPlayerId: null, // Seer's investigation target
-      accusations: new Map(), // accusedPlayerId -> Set of voterPlayerIds
-      eliminationCountdown: null, // Timer for elimination countdown
-      gamePaused: false, // Whether game is paused due to disconnections
-      pauseReason: null, // Reason for game pause  
-      createdAt: new Date()
-    })
-  }
-  return gameRooms.get(roomId)
+  return gameStateManager.getRoom(roomId)
 }
 
 // Helper function to get Mafia players
@@ -864,7 +844,15 @@ io.on('connection', (socket) => {
   // Host creates/joins a room
   socket.on('host-room', (data) => {
     const { roomId, requestGameState } = data
-    const room = getRoom(roomId)
+    let room = getRoom(roomId)
+    
+    // Create room if it doesn't exist
+    if (!room) {
+      console.log(`Creating new room ${roomId}`)
+      gameRooms.set(roomId, true) // Mark room as existing
+      gameStateManager.initializeRoom(roomId)
+      room = getRoom(roomId)
+    }
     
     // Clear any existing host disconnect timeout (host reconnected in time)
     if (room.hostDisconnectTimeout) {
@@ -874,15 +862,18 @@ io.on('connection', (socket) => {
       
       // Resume game if it was paused for host disconnect
       if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
-        room.gamePaused = false
-        room.pauseReason = null
-        io.to(roomId).emit(SOCKET_EVENTS.GAME_RESUMED)
+        gameStateManager.updateGameState(roomId, {
+          gamePaused: false,
+          pauseReason: null
+        })
         console.log(`Game resumed after host reconnection in room ${roomId}`)
       }
     }
     
     // Set this socket as the host
-    room.host = socket.id
+    gameStateManager.updateGameState(roomId, {
+      host: socket.id
+    })
     socket.join(roomId)
     socket.roomId = roomId
     socket.isHost = true
@@ -892,36 +883,8 @@ io.on('connection', (socket) => {
     // Send full game state to reconnecting host
     if (requestGameState) {
       console.log('Sending full game state to reconnecting host')
-      const gameState = {
-        gameState: room.gameState,
-        players: room.players,
-        gameType: roomGameTypes.get(roomId),
-        playerReadiness: room.gameState === GAME_STATES.ROLE_ASSIGNMENT ? 
-          Array.from(room.players).map(player => ({
-            id: player.id,
-            name: player.name,
-            ready: room.playerReadiness.get(player.id) || false,
-            connected: player.connected
-          })) : null,
-        eliminatedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.eliminatedPlayer : null,
-        savedPlayer: room.gameState === GAME_STATES.NIGHT_PHASE ? room.savedPlayer : null,
-        accusations: room.gameState === GAME_STATES.DAY_PHASE ? 
-          Object.fromEntries(room.accusations) : null,
-        eliminationCountdown: room.gameState === GAME_STATES.DAY_PHASE ? room.eliminationCountdown : null,
-        dayEliminatedPlayer: room.gameState === GAME_STATES.DAY_PHASE ? room.dayEliminatedPlayer : null,
-        gameEndData: room.gameState === GAME_STATES.ENDED ? {
-          winner: room.winner,
-          winCondition: room.winCondition,
-          alivePlayers: room.alivePlayers,
-          allPlayers: room.players.map(player => ({
-            id: player.id,
-            name: player.name,
-            role: room.playerRoles.get(player.id),
-            alive: room.alivePlayers.has(player.id)
-          }))
-        } : null
-      }
-      socket.emit(SOCKET_EVENTS.RESTORE_GAME_STATE, gameState)
+      const hostState = gameStateManager.getHostGameState(room)
+      socket.emit(SOCKET_EVENTS.RESTORE_GAME_STATE, hostState)
     } else {
       // Send current game type
       const gameType = roomGameTypes.get(roomId)
@@ -930,17 +893,8 @@ io.on('connection', (socket) => {
       }
     }
 
-    // Send current player list
-    broadcastPlayersUpdate(roomId)
-
-    // If game is paused, send pause state
-    if (room.gamePaused) {
-      socket.emit(SOCKET_EVENTS.GAME_PAUSED, {
-        reason: room.pauseReason,
-        connectedPlayers: room.players.filter(p => p.connected).length,
-        totalPlayers: room.players.length
-      })
-    }
+    // Send current player list (will be handled by broadcast)
+    gameStateManager.broadcastGameState(roomId)
   })
 
   // Host selects game type
@@ -959,8 +913,11 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Store the game type for this room
+    // Store the game type for this room and update game state
     roomGameTypes.set(roomId, gameType)
+    gameStateManager.updateGameState(roomId, {
+      gameType: gameType
+    })
     
     console.log(`Host selected game type ${gameType} for room ${roomId}`)
     
@@ -1046,7 +1003,12 @@ io.on('connection', (socket) => {
       profileImageSelected: true
     }
 
-    room.players.push(newPlayer)
+    // Add player to game state
+    const currentPlayers = [...room.players, newPlayer]
+    gameStateManager.updateGameState(roomId, {
+      players: currentPlayers
+    })
+    
     socket.join(roomId)
     socket.roomId = roomId
     socket.playerName = playerName.trim()
@@ -1064,9 +1026,6 @@ io.on('connection', (socket) => {
       playerName: playerName.trim(),
       reconnectToken: reconnectToken
     })
-
-    // Broadcast updated player list to room
-    broadcastPlayersUpdate(roomId)
   })
 
   // Host starts the game
@@ -1090,32 +1049,41 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Change game state to role assignment
-    room.gameState = GAME_STATES.ROLE_ASSIGNMENT
-    
     try {
       // Assign roles to players
       const gameType = roomGameTypes.get(roomId) || 'werewolf'
       const roles = assignRoles(room.players.length, gameType)
       
-      // Store role assignments and initialize readiness to false
+      // Create new role and readiness maps
+      const newPlayerRoles = new Map()
+      const newPlayerReadiness = new Map()
+      const newAlivePlayers = new Set()
+      
       room.players.forEach((player, index) => {
-        room.playerRoles.set(player.id, roles[index])
-        room.playerReadiness.set(player.id, false)
-        room.alivePlayers.add(player.id) // All players start alive
+        newPlayerRoles.set(player.id, roles[index])
+        newPlayerReadiness.set(player.id, false)
+        newAlivePlayers.add(player.id) // All players start alive
       })
       
       console.log(`Roles assigned in room ${roomId}:`)
       room.players.forEach(player => {
-        const role = room.playerRoles.get(player.id)
+        const role = newPlayerRoles.get(player.id)
         console.log(`  ${player.name}: ${role.name}`)
       })
       
-      // Send role assignments to each player
+      // Update game state to role assignment with all assignments
+      gameStateManager.updateGameState(roomId, {
+        gameState: GAME_STATES.ROLE_ASSIGNMENT,
+        playerRoles: newPlayerRoles,
+        playerReadiness: newPlayerReadiness,
+        alivePlayers: newAlivePlayers
+      })
+      
+      // Send role assignments to each player (these will be individual events)
       room.players.forEach(player => {
         const playerSocket = io.sockets.sockets.get(player.id)
         if (playerSocket) {
-          const role = room.playerRoles.get(player.id)
+          const role = newPlayerRoles.get(player.id)
           playerSocket.emit(SOCKET_EVENTS.ROLE_ASSIGNED, {
             role: role,
             playerName: player.name
@@ -1126,14 +1094,13 @@ io.on('connection', (socket) => {
         }
       })
       
-      // Send initial readiness update to host (all players start as not ready)
-      broadcastReadinessUpdate(roomId)
-      
     } catch (error) {
       console.error('Error assigning roles:', error)
       socket.emit('error', { message: 'Failed to assign roles' })
       // Revert game state on error
-      room.gameState = GAME_STATES.LOBBY
+      gameStateManager.updateGameState(roomId, {
+        gameState: GAME_STATES.LOBBY
+      })
     }
   })
 
@@ -1157,17 +1124,20 @@ io.on('connection', (socket) => {
     }
 
     // Set player as ready
-    room.playerReadiness.set(socket.id, true)
-    console.log(`Player ${socket.playerName} is ready in room ${socket.roomId}`)
+    const newReadiness = new Map(room.playerReadiness)
+    newReadiness.set(socket.id, true)
     
-    // Broadcast updated readiness to host
-    broadcastReadinessUpdate(socket.roomId)
+    gameStateManager.updateGameState(socket.roomId, {
+      playerReadiness: newReadiness
+    })
+    
+    console.log(`Player ${socket.playerName} is ready in room ${socket.roomId}`)
     
     // Check if all connected players are ready
     // During role assignment, we need ALL players (including disconnected ones) to be ready
     // Don't auto-advance for disconnected players since they haven't seen their role yet
     const allReady = room.players.every(player => {
-      return room.playerReadiness.get(player.id) === true
+      return newReadiness.get(player.id) === true
     })
     
     // If there are disconnected players who haven't marked ready, check if they've been gone too long
@@ -1741,99 +1711,68 @@ io.on('connection', (socket) => {
   // ===================== END CONNECTION MANAGEMENT HANDLERS =====================
 
   // Handle disconnection
-  socket.on('disconnect', (reason) => {
-    console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
     
-    if (socket.roomId) {
-      const room = getRoom(socket.roomId);
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) {
+      console.log(`Player ${player.name} disconnected`);
       
-      if (socket.isHost) {
-        // Host disconnected - give grace period before ending game
-        console.log(`Host disconnected from room ${socket.roomId} - starting ${CONNECTION_CONFIG.RECONNECT_TIMEOUT/1000}s grace period`);
+      // If in lobby phase, immediately remove the player
+      if (room.gameState === GAME_STATES.LOBBY) {
+        console.log(`Removing ${player.name} from lobby immediately`);
+        room.players = room.players.filter(p => p.id !== player.id);
         
-        if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
-          // Set a timeout to end the game if host doesn't reconnect
-          room.hostDisconnectTimeout = setTimeout(() => {
-            console.log(`Host grace period expired - ending game in room ${socket.roomId}`);
-            room.gameState = GAME_STATES.ENDED;
-            io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_END, {
-              winner: null,
-              winCondition: 'Game ended - Host disconnected',
-              roomId: socket.roomId
-            });
-            room.hostDisconnectTimeout = null;
-          }, CONNECTION_CONFIG.RECONNECT_TIMEOUT);
-          
-          // Notify players that host disconnected
-          io.to(socket.roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
-            reason: 'Host disconnected',
-            connectedPlayers: room.players.filter(p => p.connected).length,
-            totalPlayers: room.players.length,
-            reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_TIMEOUT
-          });
-        }
-      } else {
-        // Player disconnected
-        const player = room.players.find(p => p.id === socket.id);
-        if (player) {
-          console.log(`Player ${player.name} disconnected from room ${socket.roomId}`);
-          
-          // Handle differently based on game state
-          if (room.gameState === GAME_STATES.LOBBY) {
-            // In lobby: immediately remove the player
-            console.log(`Removing ${player.name} from lobby immediately`);
-            removePlayerFromGame(room, socket.id, socket.roomId);
-            // No need to notify about disconnection in lobby
-          } else {
-            // In active game: start reconnection process
-            updatePlayerConnection(socket.id, false);
-            
-            // Notify other players about the disconnection
-            io.to(socket.roomId).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
-              playerId: socket.id,
-              playerName: player.name,
-              reconnectTimeLeft: CONNECTION_CONFIG.RECONNECT_TIMEOUT
-            });
-          }
-        }
+        // Emit updated player list to all remaining clients
+        io.emit('playersUpdate', room.players);
+        
+        // Update game state
+        room.players = room.players;
+        gameStateManager.updateGameState(room);
+        
+        return; // Exit early, don't use connection management for lobby
       }
+      
+      // For active game phases, use connection management
+      gameStateManager.handlePlayerDisconnect(player.id, io);
     }
   });
 }) 
 
 // Helper function to start night phase
 function startNightPhase(room, roomId) {
-  // Change game state to night phase
-  room.gameState = GAME_STATES.NIGHT_PHASE;
-  room.currentPhase = PHASES.NIGHT;
+  console.log(`Starting night phase in room ${roomId}`);
   
-  // Reset night phase data
-  room.mafiaVotes.clear();
-  room.healedPlayerId = null;
-  room.seerInvestigatedPlayerId = null;
-  room.mafiaVotesLocked = false;
+  // Update game state through GameStateManager
+  gameStateManager.updateGameState(roomId, {
+    gameState: GAME_STATES.NIGHT_PHASE,
+    currentPhase: PHASES.NIGHT,
+    mafiaVotes: new Map(),
+    healedPlayerId: null,
+    seerInvestigatedPlayerId: null,
+    mafiaVotesLocked: false
+  });
   
-  // First, notify ALL players that night phase is starting
-  io.to(roomId).emit(SOCKET_EVENTS.START_NIGHT_PHASE, { roomId });
-  console.log(`Night phase started in room ${roomId}`);
+  // Get updated room state
+  const updatedRoom = getRoom(roomId);
   
-  // Wait a short moment to ensure all clients have processed the phase change
+  // Wait a short moment to ensure all clients have processed the phase change via state update
   setTimeout(() => {
     try {
-      // Get player groups
-      const mafiaPlayers = getMafiaPlayers(room);
-      const doctorPlayers = getDoctorPlayers(room, roomId);
-      const seerPlayers = getSeerPlayers(room, roomId);
-      const allAlivePlayers = room.players.filter(p => room.alivePlayers.has(p.id));
-      const aliveNonMafiaPlayers = getAliveNonMafiaPlayers(room);
+      // Get player groups using GameStateManager helper functions
+      const mafiaPlayers = gameStateManager.getMafiaPlayers(updatedRoom);
+      const doctorPlayers = getDoctorPlayers(updatedRoom, roomId);
+      const seerPlayers = getSeerPlayers(updatedRoom, roomId);
+      const allAlivePlayers = gameStateManager.getAlivePlayers(updatedRoom);
+      const aliveNonMafiaPlayers = gameStateManager.getAliveNonMafiaPlayers(updatedRoom);
       
       console.log(`=== NIGHT PHASE DEBUG START ===`);
-      console.log(`Room ${roomId} players:`, room.players.map(p => `${p.name}(${p.id})`));
-      console.log(`Alive players:`, Array.from(room.alivePlayers));
+      console.log(`Room ${roomId} players:`, updatedRoom.players.map(p => `${p.name}(${p.id})`));
+      console.log(`Alive players:`, Array.from(updatedRoom.alivePlayers));
       console.log(`Found ${mafiaPlayers.length} Mafia players`);
       console.log(`Found ${aliveNonMafiaPlayers.length} targets`);
       
-      // Send role-specific actions
+      // Send role-specific actions (these remain as individual events for now)
       mafiaPlayers.forEach(mafiaPlayer => {
         const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id);
         if (mafiaSocket) {

@@ -49,7 +49,9 @@ export const SOCKET_EVENTS = {
   STATE_SYNC_RESPONSE: 'state-sync-response',
   RECONNECTION_FAILED: 'reconnection-failed',
   CLIENT_PAUSED: 'client-paused',
-  VERSION_MISMATCH: 'version-mismatch'
+  VERSION_MISMATCH: 'version-mismatch',
+  // State management
+  GAME_STATE_UPDATE: 'game-state-update'
 }
 
 // Connection state enums
@@ -265,4 +267,98 @@ export const GAME_STATES = {
 export const PHASES = {
   NIGHT: 'night',
   DAY: 'day'
-} 
+}
+
+// Player-specific game state view
+export const getPlayerGameState = (room, playerId, helpers = {}) => {
+  const baseState = {
+    gameState: room.gameState,
+    playerId: playerId,
+    playerName: room.players.find(p => p.id === playerId)?.name,
+    gamePaused: room.gamePaused,
+    pauseReason: room.pauseReason,
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      connected: p.connected,
+      isReady: room.playerReadiness.get(p.id) || false
+    }))
+  };
+
+  // Add phase-specific state
+  switch (room.gameState) {
+    case GAME_STATES.LOBBY:
+      return {
+        ...baseState,
+        canStart: room.players.length >= GAME_CONFIG.MIN_PLAYERS,
+        gameType: room.gameType
+      };
+
+    case GAME_STATES.ROLE_ASSIGNMENT:
+      return {
+        ...baseState,
+        role: room.playerRoles.get(playerId),
+        isReady: room.playerReadiness.get(playerId) || false
+      };
+
+    case GAME_STATES.NIGHT_PHASE:
+      const playerRole = room.playerRoles.get(playerId);
+      const isAlive = room.alivePlayers.has(playerId);
+      const nightState = {
+        ...baseState,
+        role: playerRole,
+        isAlive,
+        eliminatedPlayer: room.eliminatedPlayer,
+        savedPlayer: room.savedPlayer
+      };
+
+      // Add role-specific actions
+      if (isAlive && helpers.getAliveNonMafiaPlayers) {
+        if (playerRole && playerRole.alignment === 'evil') {
+          nightState.availableTargets = helpers.getAliveNonMafiaPlayers(room)
+            .map(p => ({ id: p.id, name: p.name }));
+          nightState.currentVotes = Array.from(room.mafiaVotes.entries());
+        } else if (playerRole && (playerRole.name === 'Doctor' || playerRole.name === 'Protector')) {
+          nightState.availableTargets = room.players
+            .filter(p => room.alivePlayers.has(p.id))
+            .map(p => ({ id: p.id, name: p.name }));
+        } else if (playerRole && (playerRole.name === 'Seer' || playerRole.name === 'Investigator')) {
+          nightState.availableTargets = room.players
+            .filter(p => room.alivePlayers.has(p.id) && p.id !== playerId)
+            .map(p => ({ id: p.id, name: p.name }));
+        }
+      }
+      return nightState;
+
+    case GAME_STATES.DAY_PHASE:
+      return {
+        ...baseState,
+        role: room.playerRoles.get(playerId),
+        isAlive: room.alivePlayers.has(playerId),
+        accusations: Array.from(room.accusations.entries()),
+        eliminationCountdown: room.eliminationCountdown,
+        dayEliminatedPlayer: room.dayEliminatedPlayer,
+        alivePlayers: room.players
+          .filter(p => room.alivePlayers.has(p.id))
+          .map(p => ({ id: p.id, name: p.name }))
+      };
+
+    case GAME_STATES.ENDED:
+      return {
+        ...baseState,
+        role: room.playerRoles.get(playerId),
+        winner: room.winner,
+        winCondition: room.winCondition,
+        alivePlayers: Array.from(room.alivePlayers),
+        allPlayers: room.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          role: room.playerRoles.get(p.id),
+          alive: room.alivePlayers.has(p.id)
+        }))
+      };
+
+    default:
+      return baseState;
+  }
+}; 

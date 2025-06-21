@@ -1,53 +1,51 @@
-import { SOCKET_EVENTS, GameConnectionState } from '@werewolf-mafia/shared';
+import { SOCKET_EVENTS, GameConnectionState, getPlayerGameState, GAME_STATES } from '@werewolf-mafia/shared';
 
 export class GameStateManager {
   constructor(io) {
     this.io = io;
     this.roomStates = new Map();
-    this.stateVersions = new Map();
   }
 
-  initializeRoom(roomId) {
+  initializeRoom(roomId, gameType = null) {
     this.roomStates.set(roomId, {
       connectionState: GameConnectionState.ACTIVE,
-      stateVersion: 0,
-      lastUpdate: Date.now(),
-      reconnectingPlayers: new Set(),
-      gameState: null,
+      gameState: GAME_STATES.LOBBY,
+      gameType: gameType,
       players: [],
       playerRoles: new Map(),
       playerReadiness: new Map(),
       alivePlayers: new Set(),
       mafiaVotes: new Map(),
       accusations: new Map(),
+      reconnectingPlayers: new Set(),
       gamePaused: false,
-      pauseReason: null
+      pauseReason: null,
+      eliminatedPlayer: null,
+      savedPlayer: null,
+      eliminationCountdown: null,
+      dayEliminatedPlayer: null,
+      winner: null,
+      winCondition: null,
+      consensusTimer: null,
+      nightActionResults: new Map(),
+      votingData: new Map()
     });
+    
+    console.log(`GameStateManager: Initialized room ${roomId} with game type ${gameType}`);
   }
 
-  getFullGameState(roomId) {
-    const state = this.roomStates.get(roomId);
-    if (!state) return null;
-
-    return {
-      version: state.stateVersion,
-      timestamp: state.lastUpdate,
-      connectionState: state.connectionState,
-      gameState: state.gameState,
-      players: state.players,
-      playerRoles: Array.from(state.playerRoles.entries()),
-      playerReadiness: Array.from(state.playerReadiness.entries()),
-      alivePlayers: Array.from(state.alivePlayers),
-      mafiaVotes: Array.from(state.mafiaVotes.entries()),
-      accusations: Array.from(state.accusations.entries()),
-      gamePaused: state.gamePaused,
-      pauseReason: state.pauseReason
-    };
+  getRoom(roomId) {
+    return this.roomStates.get(roomId);
   }
 
   updateGameState(roomId, updates) {
     const state = this.roomStates.get(roomId);
-    if (!state) return;
+    if (!state) {
+      console.error(`GameStateManager: Room ${roomId} not found for update`);
+      return false;
+    }
+
+    console.log(`GameStateManager: Updating state for room ${roomId}:`, Object.keys(updates));
 
     // Apply updates
     Object.entries(updates).forEach(([key, value]) => {
@@ -60,79 +58,147 @@ export class GameStateManager {
       }
     });
 
-    // Update metadata
-    state.stateVersion++;
-    state.lastUpdate = Date.now();
-
-    // Broadcast state update to all players
+    // Broadcast updated state to all players
     this.broadcastGameState(roomId);
+    return true;
+  }
+
+  broadcastGameState(roomId) {
+    const state = this.roomStates.get(roomId);
+    if (!state) {
+      console.error(`GameStateManager: Room ${roomId} not found for broadcast`);
+      return;
+    }
+
+    console.log(`GameStateManager: Broadcasting state for room ${roomId}, gameState: ${state.gameState}, players: ${state.players.length}`);
+
+    // Send state to each player
+    state.players.forEach(player => {
+      const playerState = getPlayerGameState(state, player.id, {
+        getAliveNonMafiaPlayers: (room) => this.getAliveNonMafiaPlayers(room),
+        getMafiaPlayers: (room) => this.getMafiaPlayers(room)
+      });
+      this.io.to(player.id).emit(SOCKET_EVENTS.GAME_STATE_UPDATE, playerState);
+    });
+
+    // Also send to host if it exists
+    if (state.host) {
+      // Host gets a fuller view of the game state
+      const hostState = this.getHostGameState(state);
+      this.io.to(state.host).emit('host-game-state-update', hostState);
+    }
+  }
+
+  // Helper function to get host-specific game state
+  getHostGameState(room) {
+    return {
+      gameState: room.gameState,
+      players: room.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        connected: p.connected,
+        role: room.playerRoles.get(p.id),
+        isReady: room.playerReadiness.get(p.id) || false,
+        alive: room.alivePlayers.has(p.id)
+      })),
+      gameType: room.gameType,
+      gamePaused: room.gamePaused,
+      pauseReason: room.pauseReason,
+      eliminatedPlayer: room.eliminatedPlayer,
+      savedPlayer: room.savedPlayer,
+      dayEliminatedPlayer: room.dayEliminatedPlayer,
+      accusations: Array.from(room.accusations.entries()),
+      eliminationCountdown: room.eliminationCountdown,
+      mafiaVotes: Array.from(room.mafiaVotes.entries()),
+      winner: room.winner,
+      winCondition: room.winCondition
+    };
+  }
+
+  // Helper functions for game logic
+  getAliveNonMafiaPlayers(room) {
+    return room.players.filter(player => {
+      const isAlive = room.alivePlayers.has(player.id);
+      const role = room.playerRoles.get(player.id);
+      const isNotMafia = !role || role.alignment !== 'evil';
+      return isAlive && isNotMafia;
+    });
+  }
+
+  getMafiaPlayers(room) {
+    return room.players.filter(player => {
+      const role = room.playerRoles.get(player.id);
+      return role && role.alignment === 'evil';
+    });
+  }
+
+  getAlivePlayers(room) {
+    return room.players.filter(player => room.alivePlayers.has(player.id));
   }
 
   handlePlayerDisconnect(roomId, playerId) {
     const state = this.roomStates.get(roomId);
     if (!state) return;
 
+    // Don't handle reconnection in lobby
+    if (state.gameState === GAME_STATES.LOBBY) return;
+
+    console.log(`GameStateManager: Handling disconnect for player ${playerId} in room ${roomId}`);
+
+    if (!state.reconnectingPlayers) {
+      state.reconnectingPlayers = new Set();
+    }
+    
     state.reconnectingPlayers.add(playerId);
+    const player = state.players.find(p => p.id === playerId);
+    if (!player) return;
 
-    // Don't pause in lobby or ended state
-    if (state.gameState === 'LOBBY' || state.gameState === 'ENDED') {
-      return;
-    }
-
-    // If we're in an active game state, pause if needed
-    if (state.connectionState === GameConnectionState.ACTIVE) {
-      state.connectionState = GameConnectionState.PAUSED_RECONNECTING;
-      state.gamePaused = true;
-      state.pauseReason = 'Waiting for player reconnection';
-      
-      this.io.to(roomId).emit(SOCKET_EVENTS.GAME_PAUSED, {
-        reason: state.pauseReason,
-        disconnectedPlayer: playerId,
-        reconnectTimeLeft: 30000 // 30 seconds timeout
-      });
-    }
+    // Update player connection status
+    this.updateGameState(roomId, {
+      players: state.players.map(p => 
+        p.id === playerId ? { ...p, connected: false } : p
+      ),
+      gamePaused: state.gameState !== GAME_STATES.ENDED,
+      pauseReason: state.gameState !== GAME_STATES.ENDED ? 'Waiting for player reconnection' : null
+    });
   }
 
   handlePlayerReconnect(roomId, playerId, socket) {
     const state = this.roomStates.get(roomId);
     if (!state) return;
 
-    state.reconnectingPlayers.delete(playerId);
+    console.log(`GameStateManager: Handling reconnect for player ${playerId} in room ${roomId}`);
 
-    // Send full state to reconnected player
-    const fullState = this.getFullGameState(roomId);
-    socket.emit(SOCKET_EVENTS.PLAYER_RECONNECTED, fullState);
+    const player = state.players.find(p => p.id === playerId);
+    if (!player) return;
 
-    // If all players are back, resume the game
-    if (state.reconnectingPlayers.size === 0 && 
-        state.connectionState === GameConnectionState.PAUSED_RECONNECTING) {
-      
-      state.connectionState = GameConnectionState.ACTIVE;
-      state.gamePaused = false;
-      state.pauseReason = null;
-      
-      this.io.to(roomId).emit(SOCKET_EVENTS.GAME_RESUMED);
+    // Update reconnecting players
+    if (state.reconnectingPlayers) {
+      state.reconnectingPlayers.delete(playerId);
     }
-  }
 
-  handleStateSyncRequest(roomId, playerId, clientVersion) {
-    const state = this.roomStates.get(roomId);
-    if (!state) return;
+    // Check if all players are back
+    const allConnected = state.players.every(p => p.connected || p.id === playerId);
 
-    if (clientVersion !== state.stateVersion) {
-      const fullState = this.getFullGameState(roomId);
-      this.io.to(playerId).emit(SOCKET_EVENTS.STATE_SYNC_RESPONSE, fullState);
-    }
-  }
+    // Update player connection status and game pause state
+    this.updateGameState(roomId, {
+      players: state.players.map(p => 
+        p.id === playerId ? { ...p, connected: true } : p
+      ),
+      gamePaused: !allConnected,
+      pauseReason: !allConnected ? 'Waiting for player reconnection' : null
+    });
 
-  broadcastGameState(roomId) {
-    const state = this.getFullGameState(roomId);
-    if (state) {
-      this.io.to(roomId).emit(SOCKET_EVENTS.STATE_SYNC_RESPONSE, state);
-    }
+    // Send current state to reconnected player immediately
+    const playerState = getPlayerGameState(state, playerId, {
+      getAliveNonMafiaPlayers: (room) => this.getAliveNonMafiaPlayers(room),
+      getMafiaPlayers: (room) => this.getMafiaPlayers(room)
+    });
+    socket.emit(SOCKET_EVENTS.GAME_STATE_UPDATE, playerState);
   }
 
   cleanup(roomId) {
+    console.log(`GameStateManager: Cleaning up room ${roomId}`);
     this.roomStates.delete(roomId);
   }
 } 

@@ -88,9 +88,11 @@ function JoinRoom() {
     
     // Connect to Socket.IO server
     const newSocket = io(SERVER_URL, {
-      reconnection: false, // We'll handle reconnection ourselves
-      autoConnect: true,
-      transports: ['websocket', 'polling']
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000
     })
 
     // Create connection manager
@@ -245,6 +247,60 @@ function JoinRoom() {
         setTimeout(() => {
           setReconnectAttempts(prev => prev + 1);
         }, 1000);
+      }
+    });
+
+    // Handle game state updates
+    newSocket.on(SOCKET_EVENTS.GAME_STATE_UPDATE, (state) => {
+      console.log('Game state update:', state);
+      
+      // Update basic state
+      setGameState(state.gameState);
+      setPlayerId(state.playerId);
+      setPlayerName(state.playerName);
+      setPlayers(state.players);
+      setGamePaused(state.gamePaused);
+      setPauseReason(state.pauseReason);
+      
+      // Update phase-specific state
+      switch (state.gameState) {
+        case GAME_STATES.ROLE_ASSIGNMENT:
+          setPlayerRole(state.role);
+          setIsReady(state.isReady);
+          break;
+          
+        case GAME_STATES.NIGHT_PHASE:
+          setPlayerRole(state.role);
+          setIsAlive(state.isAlive);
+          setEliminatedPlayer(state.eliminatedPlayer);
+          setSavedPlayer(state.savedPlayer);
+          if (state.availableTargets) {
+            setAvailableTargets(state.availableTargets);
+          }
+          if (state.currentVotes) {
+            setCurrentVotes(state.currentVotes);
+          }
+          break;
+          
+        case GAME_STATES.DAY_PHASE:
+          setPlayerRole(state.role);
+          setIsAlive(state.isAlive);
+          setAccusations(state.accusations);
+          setEliminationCountdown(state.eliminationCountdown);
+          setDayEliminatedPlayer(state.dayEliminatedPlayer);
+          break;
+          
+        case GAME_STATES.ENDED:
+          setGameEndData(state);
+          break;
+      }
+    });
+
+    // Handle errors
+    newSocket.on('error', (data) => {
+      setError(data.message);
+      if (isJoining) {
+        setIsJoining(false);
       }
     });
 
