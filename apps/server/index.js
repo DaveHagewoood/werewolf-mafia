@@ -155,11 +155,16 @@ function broadcastMafiaVotes(room) {
 
 // Helper function to check Mafia vote consensus
 function checkMafiaVoteConsensus(room) {
+  return checkMafiaVoteConsensusWithVotes(room.mafiaVotes, room)
+}
+
+// Helper function to check Mafia vote consensus with specific votes
+function checkMafiaVoteConsensusWithVotes(mafiaVotes, room) {
   const mafiaPlayers = getMafiaPlayers(room)
-  const votes = Array.from(room.mafiaVotes.values())
+  const votes = Array.from(mafiaVotes.values())
   
   // Need all mafia to vote
-  if (room.mafiaVotes.size !== mafiaPlayers.length) {
+  if (mafiaVotes.size !== mafiaPlayers.length) {
     return null
   }
   
@@ -1229,9 +1234,12 @@ io.on('connection', (socket) => {
 
     const { targetId } = data
     
+    // Create new votes map for state update
+    const newMafiaVotes = new Map(room.mafiaVotes)
+    
     // Allow toggling vote off by voting for same target or sending null
     if (room.mafiaVotes.get(socket.id) === targetId || targetId === null) {
-      room.mafiaVotes.delete(socket.id)
+      newMafiaVotes.delete(socket.id)
       console.log(`Mafia ${socket.playerName} removed their vote in room ${socket.roomId}`)
     } else {
       // Verify target is valid (alive and not Mafia) if not toggling off
@@ -1250,51 +1258,48 @@ io.on('connection', (socket) => {
 
       // Record the vote
       if (targetId) {
-        room.mafiaVotes.set(socket.id, targetId)
+        newMafiaVotes.set(socket.id, targetId)
         const targetPlayer = room.players.find(p => p.id === targetId)
         console.log(`Mafia ${socket.playerName} voted to eliminate ${targetPlayer?.name} in room ${socket.roomId}`)
       }
     }
 
-    // Broadcast current vote state to all Mafia
-    broadcastMafiaVotes(room)
-
-    // Clear any existing timer
+    // Clear any existing timer if vote changed
+    let updates = { mafiaVotes: newMafiaVotes }
     if (room.voteConsensusTimer) {
       clearTimeout(room.voteConsensusTimer)
-      room.voteConsensusTimer = null
-      
-      // Notify Mafia that consensus was broken
-      const mafiaPlayers = getMafiaPlayers(room)
-      mafiaPlayers.forEach(mafiaPlayer => {
-        const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id)
-        if (mafiaSocket) {
-          mafiaSocket.emit(SOCKET_EVENTS.CONSENSUS_TIMER_CANCELLED)
-        }
-      })
+      updates.voteConsensusTimer = null
+      updates.consensusTimer = null // Clear consensus timer data for players
     }
 
-    // Check for consensus and start timer if all votes agree
-    const consensusTarget = checkMafiaVoteConsensus(room)
+    // Check for consensus with new votes
+    const consensusTarget = checkMafiaVoteConsensusWithVotes(newMafiaVotes, room)
     if (consensusTarget) {
       const targetPlayer = room.players.find(p => p.id === consensusTarget)
       console.log(`Mafia consensus forming in room ${socket.roomId} for target ${targetPlayer?.name}`)
       
-      // Notify all Mafia that consensus timer is starting
-      const mafiaPlayers = getMafiaPlayers(room)
-      mafiaPlayers.forEach(mafiaPlayer => {
-        const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id)
-        if (mafiaSocket) {
-          mafiaSocket.emit(SOCKET_EVENTS.CONSENSUS_TIMER_START, {
-            targetId: consensusTarget,
-            targetName: targetPlayer?.name,
-            duration: GAME_CONFIG.MAFIA_VOTE_CONSENSUS_TIME
-          })
-        }
-      })
+      // Set consensus timer data
+      updates.consensusTimer = {
+        targetId: consensusTarget,
+        targetName: targetPlayer?.name,
+        timeLeft: Math.floor(GAME_CONFIG.MAFIA_VOTE_CONSENSUS_TIME / 1000)
+      }
       
-      startConsensusTimer(room, socket.roomId)
+      // Start the actual timer
+      const timer = setTimeout(() => {
+        // Lock votes after consensus time
+        gameStateManager.updateGameState(socket.roomId, {
+          mafiaVotesLocked: true,
+          consensusTimer: null
+        })
+        checkNightCompletion(getRoom(socket.roomId), socket.roomId)
+      }, GAME_CONFIG.MAFIA_VOTE_CONSENSUS_TIME)
+      
+      updates.voteConsensusTimer = timer
     }
+
+    // Update game state through GameStateManager
+    gameStateManager.updateGameState(socket.roomId, updates)
   })
 
   // Doctor player heals a target
@@ -1340,13 +1345,16 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Store the heal target
-    room.healedPlayerId = targetId
+    // Update game state through GameStateManager
+    gameStateManager.updateGameState(socket.roomId, {
+      healedPlayerId: targetId
+    })
+    
     const targetPlayer = room.players.find(p => p.id === targetId)
     console.log(`${roleSet.PROTECTOR.name} ${socket.playerName} chose to heal ${targetPlayer?.name} in room ${socket.roomId}`)
     
-    // Check if both Mafia and Doctor actions are complete
-    checkNightCompletion(room, socket.roomId)
+    // Check if night actions are complete
+    checkNightCompletion(getRoom(socket.roomId), socket.roomId)
   })
 
   // Seer player investigates a target
@@ -1410,8 +1418,6 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Store the investigation target
-    room.seerInvestigatedPlayerId = targetId
     const targetPlayer = room.players.find(p => p.id === targetId)
     const targetRole = room.playerRoles.get(targetId)
     
@@ -1425,16 +1431,20 @@ io.on('connection', (socket) => {
       resultMessage = `${targetPlayer?.name} appears innocent... for now.`
     }
     
-    // Send result back to investigator
-    socket.emit(SOCKET_EVENTS.SEER_RESULT, {
-      targetName: targetPlayer?.name,
-      result: resultMessage
+    // Store investigation results in a map for the player
+    const currentResults = room.investigationResults || new Map()
+    currentResults.set(socket.id, resultMessage)
+    
+    // Update game state through GameStateManager
+    gameStateManager.updateGameState(socket.roomId, {
+      seerInvestigatedPlayerId: targetId,
+      investigationResults: currentResults
     })
     
-    console.log(`Sent investigation result to ${roleSet.INVESTIGATOR.name} ${socket.playerName}: ${resultMessage}`)
+    console.log(`Investigation result determined for ${roleSet.INVESTIGATOR.name} ${socket.playerName}: ${resultMessage}`)
     
     // Check if all night actions are complete
-    checkNightCompletion(room, socket.roomId)
+    checkNightCompletion(getRoom(socket.roomId), socket.roomId)
   })
 
   // Player makes an accusation during day phase

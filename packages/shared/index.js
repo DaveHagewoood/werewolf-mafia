@@ -309,7 +309,12 @@ export const getPlayerGameState = (room, playerId, helpers = {}) => {
         role: playerRole,
         isAlive,
         eliminatedPlayer: room.eliminatedPlayer,
-        savedPlayer: room.savedPlayer
+        savedPlayer: room.savedPlayer,
+        mafiaVotesLocked: room.mafiaVotesLocked || false,
+        consensusTimer: room.consensusTimer || null,
+        hasHealed: room.healedPlayerId !== null && room.healedPlayerId !== undefined,
+        hasInvestigated: room.seerInvestigatedPlayerId !== null && room.seerInvestigatedPlayerId !== undefined,
+        investigationResult: room.investigationResults?.get(playerId) || null
       };
 
       // Add role-specific actions
@@ -317,15 +322,33 @@ export const getPlayerGameState = (room, playerId, helpers = {}) => {
         if (playerRole && playerRole.alignment === 'evil') {
           nightState.availableTargets = helpers.getAliveNonMafiaPlayers(room)
             .map(p => ({ id: p.id, name: p.name }));
-          nightState.currentVotes = Array.from(room.mafiaVotes.entries());
+          
+          // Add current votes and player's vote status
+          nightState.currentVotes = Array.from(room.mafiaVotes.entries()).map(([voterId, targetId]) => {
+            const voter = room.players.find(p => p.id === voterId);
+            const target = room.players.find(p => p.id === targetId);
+            return {
+              voterId,
+              voterName: voter?.name || 'Unknown',
+              targetId,
+              targetName: target?.name || 'Unknown'
+            };
+          });
+          
+          nightState.selectedTarget = room.mafiaVotes.get(playerId) || null;
+          nightState.hasVoted = room.mafiaVotes.has(playerId);
+          
         } else if (playerRole && (playerRole.name === 'Doctor' || playerRole.name === 'Protector')) {
           nightState.availableTargets = room.players
             .filter(p => room.alivePlayers.has(p.id))
             .map(p => ({ id: p.id, name: p.name }));
+          nightState.selectedHeal = room.healedPlayerId || null;
+          
         } else if (playerRole && (playerRole.name === 'Seer' || playerRole.name === 'Investigator')) {
           nightState.availableTargets = room.players
             .filter(p => room.alivePlayers.has(p.id) && p.id !== playerId)
             .map(p => ({ id: p.id, name: p.name }));
+          nightState.selectedInvestigation = room.seerInvestigatedPlayerId || null;
         }
       }
       return nightState;

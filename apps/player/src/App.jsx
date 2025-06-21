@@ -274,12 +274,31 @@ function JoinRoom() {
           setIsAlive(state.isAlive);
           setEliminatedPlayer(state.eliminatedPlayer);
           setSavedPlayer(state.savedPlayer);
+          
+          // Update available targets (now from state instead of separate events)
           if (state.availableTargets) {
-            setAvailableTargets(state.availableTargets);
+            setVoteTargets(state.availableTargets); // For mafia
+            setHealTargets(state.availableTargets); // For doctor
+            setInvestigateTargets(state.availableTargets); // For seer
           }
+          
+          // Update voting state from server
           if (state.currentVotes) {
-            setCurrentVotes(state.currentVotes);
+            setMafiaVotes(state.currentVotes);
           }
+          setSelectedTarget(state.selectedTarget || null);
+          setHasVoted(state.hasVoted || false);
+          setMafiaVotesLocked(state.mafiaVotesLocked || false);
+          setConsensusTimer(state.consensusTimer || null);
+          
+          // Update heal state from server
+          setSelectedHeal(state.selectedHeal || null);
+          setHasHealed(state.hasHealed || false);
+          
+          // Update investigation state from server
+          setSelectedInvestigation(state.selectedInvestigation || null);
+          setHasInvestigated(state.hasInvestigated || false);
+          setInvestigationResult(state.investigationResult || null);
           break;
           
         case GAME_STATES.DAY_PHASE:
@@ -397,25 +416,18 @@ function JoinRoom() {
       // Toggle vote off if clicking same target
       if (selectedTarget === targetId) {
         socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId: null })
-        setSelectedTarget(null)
-        setHasVoted(false)
         console.log('Removed vote')
-        setMessage(null) // Clear any old messages
       } else {
         socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId })
-        setSelectedTarget(targetId)
-        setHasVoted(true)
         console.log('Voted for target:', targetId)
-        setMessage(null) // Clear any old messages
       }
+      setMessage(null) // Clear any old messages
     }
   }
 
   const handleDoctorHeal = (targetId) => {
     if (socket && !hasHealed && !isEliminated) { // Prevent dead players from healing
       socket.emit(SOCKET_EVENTS.DOCTOR_HEAL, { targetId })
-      setSelectedHeal(targetId)
-      setHasHealed(true)
       console.log('Healed target:', targetId)
       setMessage(null) // Clear any old messages
     }
@@ -424,8 +436,6 @@ function JoinRoom() {
   const handleSeerInvestigate = (targetId) => {
     if (socket && !hasInvestigated && !isEliminated) { // Prevent dead players from investigating
       socket.emit(SOCKET_EVENTS.SEER_INVESTIGATE, { targetId })
-      setSelectedInvestigation(targetId)
-      setHasInvestigated(true)
       console.log('Investigated target:', targetId)
       setMessage(null) // Clear any old messages
     }

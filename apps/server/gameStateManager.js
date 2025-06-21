@@ -28,7 +28,8 @@ export class GameStateManager {
       winCondition: null,
       consensusTimer: null,
       nightActionResults: new Map(),
-      votingData: new Map()
+      votingData: new Map(),
+      investigationResults: new Map() // Store seer investigation results
     });
     
     console.log(`GameStateManager: Initialized room ${roomId} with game type ${gameType}`);
