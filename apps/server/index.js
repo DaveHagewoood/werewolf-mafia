@@ -12,9 +12,9 @@ import {
   PROFILE_IMAGES, 
   getProfileImageUrl, 
   assignRoles, 
-  CONNECTION_CONFIG,
-  GameStateManager 
+  CONNECTION_CONFIG
 } from '@werewolf-mafia/shared'
+import { GameStateManager } from './gameStateManager.js'
 
 const httpServer = createServer()
 const port = process.env.PORT || 3002
