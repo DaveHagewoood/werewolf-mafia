@@ -1,4 +1,4 @@
-import { SOCKET_EVENTS, GameConnectionState, getPlayerGameState, GAME_STATES } from '@werewolf-mafia/shared';
+import { SOCKET_EVENTS, GameConnectionState, getPlayerGameState, GAME_STATES, GAME_CONFIG } from '@werewolf-mafia/shared';
 
 export class GameStateManager {
   constructor(io) {
@@ -86,6 +86,20 @@ export class GameStateManager {
       // Host gets a fuller view of the game state
       const hostState = this.getHostGameState(state);
       this.io.to(state.host).emit('host-game-state-update', hostState);
+      
+      // Also send legacy PLAYERS_UPDATE event for backward compatibility
+      this.io.to(state.host).emit('players-update', {
+        players: state.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          connected: p.connected,
+          profileImage: p.profileImage,
+          role: state.playerRoles.get(p.id),
+          alive: state.alivePlayers.has(p.id),
+          disconnectionInfo: p.disconnectionInfo || null
+        })),
+        canStart: state.players.length >= GAME_CONFIG.MIN_PLAYERS && state.gameState === GAME_STATES.LOBBY
+      });
     }
   }
 
