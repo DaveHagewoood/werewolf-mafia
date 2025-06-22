@@ -360,11 +360,21 @@ function JoinRoom() {
                 console.log('Setting mafia targets:', masterState.availableTargets.mafia);
                 setVoteTargets(masterState.availableTargets.mafia || []);
               } else if (currentPlayer.role.name === 'Doctor' || currentPlayer.role.name === 'Healer') {
-                console.log('Setting doctor targets:', masterState.availableTargets.doctor);
-                setHealTargets(masterState.availableTargets.doctor || []);
+                console.log('Doctor role detected, available targets:', masterState.availableTargets.doctor);
+                console.log('Doctor targets type:', typeof masterState.availableTargets.doctor);
+                console.log('Doctor targets length:', masterState.availableTargets.doctor?.length);
+                console.log('Doctor targets content:', JSON.stringify(masterState.availableTargets.doctor, null, 2));
+                const doctorTargets = masterState.availableTargets.doctor || [];
+                setHealTargets(doctorTargets);
+                console.log('setHealTargets called with:', doctorTargets.length, 'targets');
               } else if (currentPlayer.role.name === 'Seer' || currentPlayer.role.name === 'Detective') {
-                console.log('Setting seer targets:', masterState.availableTargets.seer);
-                setInvestigateTargets(masterState.availableTargets.seer || []);
+                console.log('Seer/Detective role detected, available targets:', masterState.availableTargets.seer);
+                console.log('Seer targets type:', typeof masterState.availableTargets.seer);
+                console.log('Seer targets length:', masterState.availableTargets.seer?.length);
+                console.log('Seer targets content:', JSON.stringify(masterState.availableTargets.seer, null, 2));
+                const seerTargets = masterState.availableTargets.seer || [];
+                setInvestigateTargets(seerTargets);
+                console.log('setInvestigateTargets called with:', seerTargets.length, 'targets');
               }
             } else {
               console.log('No available targets or role in master state');
