@@ -204,12 +204,16 @@ function JoinRoom() {
 
     // Listen for successful player join
     newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
+      console.log('=== PLAYER_JOINED EVENT RECEIVED ===')
       console.log('Player joined successfully:', data)
+      console.log('Setting playerId to:', data.playerId)
+      console.log('Setting playerName to:', data.playerName)
       setPlayerId(data.playerId)
       setPlayerName(data.playerName)
       setIsJoining(false)
       setIsWaiting(true)
       setMessage(null) // Clear any old messages
+      console.log('=== PLAYER_JOINED PROCESSING COMPLETE ===')
     })
 
     // Listen for game start (legacy - now handled by role assignment)
@@ -262,27 +266,32 @@ function JoinRoom() {
 
     // Handle master game state updates (same as host receives)
     newSocket.on('game-state-update', (masterState) => {
+      console.log('=== MASTER GAME STATE UPDATE ===');
       console.log('Master game state received by player:', masterState);
       console.log('Current playerId:', playerId);
+      console.log('Current playerName:', playerName);
       
       // If we don't have a playerId yet, try to find ourselves in the player list
       let currentPlayer = null;
       if (playerId) {
         currentPlayer = masterState.players?.find(p => p.id === playerId);
-      } else {
+        console.log('Found player by ID:', currentPlayer);
+      } else if (playerName && playerName.trim()) {
         // If no playerId, try to find by name as fallback (for state updates before PLAYER_JOINED)
-        currentPlayer = masterState.players?.find(p => p.name === playerName);
+        currentPlayer = masterState.players?.find(p => p.name === playerName.trim());
         if (currentPlayer) {
           console.log('Found player by name, setting playerId:', currentPlayer.id);
           setPlayerId(currentPlayer.id);
+          setPlayerName(currentPlayer.name); // Ensure name is synced
         }
+      } else {
+        console.log('No playerId or playerName available, cannot identify current player');
       }
       
       if (!currentPlayer) {
         console.log('Current player not found in master state, playerId:', playerId, 'playerName:', playerName, 'available players:', masterState.players?.map(p => `${p.name}(${p.id})`));
         // Still update basic state even if we can't find current player
         setGameState(masterState.gameState);
-        setPlayers(masterState.players || []);
         setGamePaused(masterState.gamePaused);
         setPauseReason(masterState.pauseReason);
         return;
@@ -292,7 +301,6 @@ function JoinRoom() {
       
       // Update basic state
       setGameState(masterState.gameState);
-      setPlayers(masterState.players || []);
       setGamePaused(masterState.gamePaused);
       setPauseReason(masterState.pauseReason);
       
@@ -470,12 +478,19 @@ function JoinRoom() {
     setIsJoining(true)
     setError('')
 
+    console.log('=== SENDING PLAYER_JOIN EVENT ===')
+    console.log('playerName:', playerName.trim())
+    console.log('roomId:', roomId)
+    console.log('profileImage:', currentProfileImage)
+
     // Emit join event to server
     socket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
       playerName: playerName.trim(),
       roomId: roomId,
       profileImage: currentProfileImage
     })
+    
+    console.log('=== PLAYER_JOIN EVENT SENT ===')
   }
 
   const handleReady = () => {
