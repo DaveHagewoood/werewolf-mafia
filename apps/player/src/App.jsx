@@ -352,7 +352,6 @@ function JoinRoom() {
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
             setEliminatedPlayer(masterState.eliminatedPlayer);
-            setSavedPlayer(masterState.savedPlayer);
             
             // Set available targets based on role
             if (masterState.availableTargets && currentPlayer.role) {
@@ -417,7 +416,7 @@ function JoinRoom() {
             setIsEliminated(!currentPlayer.alive);
             setAccusations(masterState.accusations);
             setEliminationCountdown(masterState.eliminationCountdown);
-            setDayEliminatedPlayer(masterState.dayEliminatedPlayer);
+            // Day eliminated player is handled by the general eliminatedPlayer state
           }
           break;
           
