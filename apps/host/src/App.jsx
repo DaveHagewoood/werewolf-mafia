@@ -108,6 +108,67 @@ function GameLobby() {
       const gameStateManager = new HostGameStateManager(hostSocket, roomId)
       setHostGameStateManager(gameStateManager)
       console.log('HostGameStateManager initialized')
+      
+      // Set up player action handler using the local gameStateManager variable
+      hostSocket.on('player-action', (action) => {
+        console.log('Player action received by host:', action)
+        
+        try {
+          switch (action.type) {
+            case 'PLAYER_JOIN':
+              gameStateManager.addPlayer(action.playerId, action.playerName, action.data.profileImage)
+              break
+              
+            case 'PLAYER_READY':
+              gameStateManager.playerReady(action.playerId)
+              break
+              
+            case 'MAFIA_VOTE':
+              gameStateManager.processMafiaVote(action.playerId, action.data.targetId)
+              break
+              
+            case 'DOCTOR_HEAL':
+              gameStateManager.processDoctorHeal(action.playerId, action.data.targetId)
+              break
+              
+            case 'SEER_INVESTIGATE':
+              gameStateManager.processSeerInvestigation(action.playerId, action.data.targetId)
+              break
+              
+            default:
+              console.log('Unknown player action type:', action.type)
+          }
+        } catch (error) {
+          console.error('Error processing player action:', error)
+          // Send error back to the player
+          hostSocket.emit('host-send-to-player', {
+            roomId: roomId,
+            playerId: action.playerId,
+            event: 'error',
+            data: { message: error.message }
+          })
+        }
+      })
+      
+      // Set up host action handler using the local gameStateManager variable
+      hostSocket.on('host-action-confirmed', (action) => {
+        console.log('Host action confirmed:', action)
+        
+        try {
+          switch (action.type) {
+            case 'GAME_START':
+              gameStateManager.startGame()
+              break
+              
+            default:
+              console.log('Unknown host action type:', action.type)
+          }
+        } catch (error) {
+          console.error('Error processing host action:', error)
+          setMessage({ type: 'error', text: error.message })
+          setTimeout(() => setMessage(null), 5000)
+        }
+      })
     })
 
     // Handle heartbeat
@@ -355,79 +416,6 @@ function GameLobby() {
       if (data.gamePaused !== undefined) {
         setGamePaused(data.gamePaused)
         setPauseReason(data.pauseReason || '')
-      }
-    })
-    
-    // HOST AUTHORITATIVE HANDLERS
-    
-    // Handle player actions forwarded by server
-    hostSocket.on('player-action', (action) => {
-      console.log('Player action received by host:', action)
-      
-      if (!hostGameStateManager) {
-        console.log('HostGameStateManager not yet initialized')
-        return
-      }
-      
-      try {
-        switch (action.type) {
-          case 'PLAYER_JOIN':
-            hostGameStateManager.addPlayer(action.playerId, action.playerName, action.data.profileImage)
-            break
-            
-          case 'PLAYER_READY':
-            hostGameStateManager.playerReady(action.playerId)
-            break
-            
-          case 'MAFIA_VOTE':
-            hostGameStateManager.processMafiaVote(action.playerId, action.data.targetId)
-            break
-            
-          case 'DOCTOR_HEAL':
-            hostGameStateManager.processDoctorHeal(action.playerId, action.data.targetId)
-            break
-            
-          case 'SEER_INVESTIGATE':
-            hostGameStateManager.processSeerInvestigation(action.playerId, action.data.targetId)
-            break
-            
-          default:
-            console.log('Unknown player action type:', action.type)
-        }
-      } catch (error) {
-        console.error('Error processing player action:', error)
-        // Send error back to the player
-        hostSocket.emit('host-send-to-player', {
-          roomId: roomId,
-          playerId: action.playerId,
-          event: 'error',
-          data: { message: error.message }
-        })
-      }
-    })
-    
-    // Handle host action confirmations from server
-    hostSocket.on('host-action-confirmed', (action) => {
-      console.log('Host action confirmed:', action)
-      
-      if (!hostGameStateManager) {
-        console.log('HostGameStateManager not yet initialized')
-        return
-      }
-      
-      try {
-        switch (action.type) {
-          case 'GAME_START':
-            hostGameStateManager.startGame()
-            break
-            
-          default:
-            console.log('Unknown host action type:', action.type)
-        }
-      } catch (error) {
-        console.error('Error processing host action:', error)
-        setMessage({ type: 'error', text: error.message })
-        setTimeout(() => setMessage(null), 5000)
       }
     })
 
