@@ -275,8 +275,27 @@ function JoinRoom() {
       }
     });
 
-    // Handle master game state updates (same as host receives)
-    newSocket.on('game-state-update', (masterState) => {
+
+
+    // Handle errors
+    newSocket.on('error', (data) => {
+      setError(data.message);
+      if (isJoining) {
+        setIsJoining(false);
+      }
+    });
+
+    return () => {
+      manager.cleanup()
+      newSocket.close()
+    }
+  }, [])
+
+  // Separate effect to handle game state updates with current playerId/playerName
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleGameStateUpdate = (masterState) => {
       console.log('=== MASTER GAME STATE UPDATE ===');
       console.log('Master game state received by player:', masterState);
       console.log('Current playerId:', playerId);
@@ -406,21 +425,14 @@ function JoinRoom() {
           setGameEndData(masterState);
           break;
       }
-    });
+    };
 
-    // Handle errors
-    newSocket.on('error', (data) => {
-      setError(data.message);
-      if (isJoining) {
-        setIsJoining(false);
-      }
-    });
+    socket.on('game-state-update', handleGameStateUpdate);
 
     return () => {
-      manager.cleanup()
-      newSocket.close()
-    }
-  }, [])
+      socket.off('game-state-update', handleGameStateUpdate);
+    };
+  }, [socket, playerId, playerName]); // This useEffect will re-run when playerId/playerName change
 
   // Separate effect to handle elimination events when playerId is available
   useEffect(() => {
