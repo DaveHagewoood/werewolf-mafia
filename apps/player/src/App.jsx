@@ -202,6 +202,16 @@ function JoinRoom() {
       }
     })
 
+    // Listen for successful player join
+    newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
+      console.log('Player joined successfully:', data)
+      setPlayerId(data.playerId)
+      setPlayerName(data.playerName)
+      setIsJoining(false)
+      setIsWaiting(true)
+      setMessage(null) // Clear any old messages
+    })
+
     // Listen for game start (legacy - now handled by role assignment)
     newSocket.on(SOCKET_EVENTS.GAME_START, () => {
       console.log('Game is starting!')
@@ -253,13 +263,32 @@ function JoinRoom() {
     // Handle master game state updates (same as host receives)
     newSocket.on('game-state-update', (masterState) => {
       console.log('Master game state received by player:', masterState);
+      console.log('Current playerId:', playerId);
       
-      // Extract player-specific data from master state
-      const currentPlayer = masterState.players?.find(p => p.id === playerId);
-      if (!currentPlayer && playerId) {
-        console.log('Current player not found in master state');
+      // If we don't have a playerId yet, try to find ourselves in the player list
+      let currentPlayer = null;
+      if (playerId) {
+        currentPlayer = masterState.players?.find(p => p.id === playerId);
+      } else {
+        // If no playerId, try to find by name as fallback (for state updates before PLAYER_JOINED)
+        currentPlayer = masterState.players?.find(p => p.name === playerName);
+        if (currentPlayer) {
+          console.log('Found player by name, setting playerId:', currentPlayer.id);
+          setPlayerId(currentPlayer.id);
+        }
+      }
+      
+      if (!currentPlayer) {
+        console.log('Current player not found in master state, playerId:', playerId, 'playerName:', playerName, 'available players:', masterState.players?.map(p => `${p.name}(${p.id})`));
+        // Still update basic state even if we can't find current player
+        setGameState(masterState.gameState);
+        setPlayers(masterState.players || []);
+        setGamePaused(masterState.gamePaused);
+        setPauseReason(masterState.pauseReason);
         return;
       }
+      
+      console.log('Current player found:', currentPlayer);
       
       // Update basic state
       setGameState(masterState.gameState);
@@ -278,6 +307,10 @@ function JoinRoom() {
           
         case GAME_STATES.NIGHT_PHASE:
           if (currentPlayer) {
+            console.log('NIGHT_PHASE: Setting player role and targets');
+            console.log('Current player role:', currentPlayer.role);
+            console.log('Available targets in master state:', masterState.availableTargets);
+            
             setPlayerRole(currentPlayer.role);
             setIsAlive(currentPlayer.alive);
             setEliminatedPlayer(masterState.eliminatedPlayer);
@@ -285,13 +318,19 @@ function JoinRoom() {
             
             // Set available targets based on role
             if (masterState.availableTargets && currentPlayer.role) {
+              console.log('Setting targets for role:', currentPlayer.role);
               if (currentPlayer.role.alignment === 'evil') {
+                console.log('Setting mafia targets:', masterState.availableTargets.mafia);
                 setVoteTargets(masterState.availableTargets.mafia || []);
               } else if (currentPlayer.role.name === 'Doctor' || currentPlayer.role.name === 'Healer') {
+                console.log('Setting doctor targets:', masterState.availableTargets.doctor);
                 setHealTargets(masterState.availableTargets.doctor || []);
               } else if (currentPlayer.role.name === 'Seer' || currentPlayer.role.name === 'Detective') {
+                console.log('Setting seer targets:', masterState.availableTargets.seer);
                 setInvestigateTargets(masterState.availableTargets.seer || []);
               }
+            } else {
+              console.log('No available targets or role in master state');
             }
             
             // Update voting state from master state
