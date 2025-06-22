@@ -205,15 +205,26 @@ function JoinRoom() {
     // Listen for successful player join
     newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
       console.log('=== PLAYER_JOINED EVENT RECEIVED ===')
-      console.log('Player joined successfully:', data)
-      console.log('Setting playerId to:', data.playerId)
-      console.log('Setting playerName to:', data.playerName)
+      console.log('Full event data received:', JSON.stringify(data, null, 2))
+      console.log('data.playerId type:', typeof data.playerId, 'value:', data.playerId)
+      console.log('data.playerName type:', typeof data.playerName, 'value:', data.playerName)
+      console.log('data.success:', data.success)
+      console.log('data.reconnectToken:', data.reconnectToken ? 'present' : 'missing')
+      
+      if (!data.playerId) {
+        console.error('ERROR: playerId is missing from PLAYER_JOINED event!', data)
+      }
+      if (!data.playerName) {
+        console.error('ERROR: playerName is missing from PLAYER_JOINED event!', data)
+      }
+      
       setPlayerId(data.playerId)
       setPlayerName(data.playerName)
       setIsJoining(false)
       setIsWaiting(true)
       setMessage(null) // Clear any old messages
       console.log('=== PLAYER_JOINED PROCESSING COMPLETE ===')
+      console.log('State after setting - playerId:', data.playerId, 'playerName:', data.playerName)
     })
 
     // Listen for game start (legacy - now handled by role assignment)
@@ -482,6 +493,8 @@ function JoinRoom() {
     console.log('playerName:', playerName.trim())
     console.log('roomId:', roomId)
     console.log('profileImage:', currentProfileImage)
+    console.log('socket connected:', socket.connected)
+    console.log('socket id:', socket.id)
 
     // Emit join event to server
     socket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
@@ -491,6 +504,14 @@ function JoinRoom() {
     })
     
     console.log('=== PLAYER_JOIN EVENT SENT ===')
+    
+    // Add a timeout to catch if PLAYER_JOINED never comes back
+    setTimeout(() => {
+      if (isJoining) {
+        console.error('TIMEOUT: PLAYER_JOINED event never received after 10 seconds')
+        console.log('Socket status - connected:', socket.connected, 'id:', socket.id)
+      }
+    }, 10000)
   }
 
   const handleReady = () => {
