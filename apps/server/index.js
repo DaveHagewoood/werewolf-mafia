@@ -14,8 +14,6 @@ import {
   assignRoles, 
   CONNECTION_CONFIG
 } from '@werewolf-mafia/shared'
-import { GameStateManager } from './gameStateManager.js'
-
 const httpServer = createServer()
 const port = process.env.PORT || 3002
 
@@ -47,10 +45,7 @@ const io = new Server(httpServer, {
   }
 })
 
-// Initialize game state manager
-const gameStateManager = new GameStateManager(io)
-
-// Store game rooms in memory
+// Store game rooms in memory (simplified for relay server)
 const gameRooms = new Map()
 
 // Store game types for each room
@@ -86,9 +81,9 @@ process.on('SIGTERM', () => {
   })
 })
 
-// Helper function to get or create room
+// Helper function to get or create room (simplified for relay server)
 function getRoom(roomId) {
-  return gameStateManager.getRoom(roomId)
+  return gameRooms.get(roomId)
 }
 
 // Helper function to get Mafia players
@@ -808,52 +803,185 @@ io.on('connection', (socket) => {
     // Create room if it doesn't exist
     if (!room) {
       console.log(`Creating new room ${roomId}`)
-      gameRooms.set(roomId, true) // Mark room as existing
-      gameStateManager.initializeRoom(roomId)
-      room = getRoom(roomId)
-    }
-    
-    // Clear any existing host disconnect timeout (host reconnected in time)
-    if (room.hostDisconnectTimeout) {
-      console.log(`Host reconnected to room ${roomId} within grace period - clearing timeout`)
-      clearTimeout(room.hostDisconnectTimeout)
-      room.hostDisconnectTimeout = null
-      
-      // Resume game if it was paused for host disconnect
-      if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
-        gameStateManager.updateGameState(roomId, {
-          gamePaused: false,
-          pauseReason: null
-        })
-        console.log(`Game resumed after host reconnection in room ${roomId}`)
+      room = {
+        id: roomId,
+        host: null,
+        players: [],
+        createdAt: Date.now()
       }
+      gameRooms.set(roomId, room)
     }
     
     // Set this socket as the host
-    gameStateManager.updateGameState(roomId, {
-      host: socket.id
-    })
+    room.host = socket.id
     socket.join(roomId)
     socket.roomId = roomId
     socket.isHost = true
     
     console.log(`Host ${socket.id} created/joined room ${roomId}`)
     
-    // Send full game state to reconnecting host
-    if (requestGameState) {
-      console.log('Sending full game state to reconnecting host')
-      const hostState = gameStateManager.getHostGameState(room)
-      socket.emit(SOCKET_EVENTS.RESTORE_GAME_STATE, hostState)
+    // Send current game type if available
+    const gameType = roomGameTypes.get(roomId)
+    if (gameType) {
+      socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, gameType)
+    }
+  })
+
+  // HOST RELAY HANDLERS - for host-authoritative architecture
+  
+  // Host broadcasting state to players
+  socket.on('host-broadcast-state', (data) => {
+    const { roomId, gameState } = data
+    console.log(`Host broadcasting state for room ${roomId}`)
+    
+    if (!socket.isHost) {
+      socket.emit('error', { message: 'Only host can broadcast state' })
+      return
+    }
+    
+    // Relay state to all players in the room (not back to host)
+    socket.to(roomId).emit('game-state-update', gameState)
+  })
+
+  // Host sending individual message to specific player
+  socket.on('host-send-to-player', (data) => {
+    const { roomId, playerId, event, data: eventData } = data
+    console.log(`Host sending ${event} to player ${playerId} in room ${roomId}`)
+    
+    if (!socket.isHost) {
+      socket.emit('error', { message: 'Only host can send to players' })
+      return
+    }
+    
+    // Find player socket and send event
+    const playerSocket = io.sockets.sockets.get(playerId)
+    if (playerSocket && playerSocket.roomId === roomId) {
+      playerSocket.emit(event, eventData)
     } else {
-      // Send current game type
-      const gameType = roomGameTypes.get(roomId)
-      if (gameType) {
-        socket.emit(SOCKET_EVENTS.GAME_TYPE_SELECTED, gameType)
-      }
+      console.log(`Player ${playerId} not found or not in room ${roomId}`)
+    }
+  })
+
+  // PLAYER ACTION RELAY HANDLERS - forward actions to host instead of processing
+
+  // Forward Mafia votes to host
+  socket.on(SOCKET_EVENTS.MAFIA_VOTE, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot vote' })
+      return
     }
 
-    // Send current player list (will be handled by broadcast)
-    gameStateManager.broadcastGameState(roomId)
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' })
+      return
+    }
+
+    // Forward action to host
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      hostSocket.emit('player-action', {
+        type: 'MAFIA_VOTE',
+        playerId: socket.id,
+        playerName: socket.playerName,
+        data: data
+      })
+    }
+  })
+
+  // Forward Doctor heals to host
+  socket.on(SOCKET_EVENTS.DOCTOR_HEAL, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot heal' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' })
+      return
+    }
+
+    // Forward action to host
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      hostSocket.emit('player-action', {
+        type: 'DOCTOR_HEAL',
+        playerId: socket.id,
+        playerName: socket.playerName,
+        data: data
+      })
+    }
+  })
+
+  // Forward Seer investigations to host
+  socket.on(SOCKET_EVENTS.SEER_INVESTIGATE, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot investigate' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' })
+      return
+    }
+
+    // Forward action to host
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      hostSocket.emit('player-action', {
+        type: 'SEER_INVESTIGATE',
+        playerId: socket.id,
+        playerName: socket.playerName,
+        data: data
+      })
+    }
+  })
+
+  // Forward Player Ready to host
+  socket.on(SOCKET_EVENTS.PLAYER_READY, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot ready up' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' })
+      return
+    }
+
+    // Forward action to host
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      hostSocket.emit('player-action', {
+        type: 'PLAYER_READY',
+        playerId: socket.id,
+        playerName: socket.playerName,
+        data: data
+      })
+    }
   })
 
   // Host selects game type
@@ -938,13 +1066,7 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Check if game already started
-    if (room.gameState !== GAME_STATES.LOBBY) {
-      socket.emit('error', { message: 'Game already in progress' })
-      return
-    }
-
-    // Add player to room
+    // Add player to room (simplified for relay server)
     const gameType = roomGameTypes.get(roomId) || GAME_TYPES.WEREWOLF
     const availableImages = PROFILE_IMAGES[gameType]
     
@@ -962,11 +1084,8 @@ io.on('connection', (socket) => {
       profileImageSelected: true
     }
 
-    // Add player to game state
-    const currentPlayers = [...room.players, newPlayer]
-    gameStateManager.updateGameState(roomId, {
-      players: currentPlayers
-    })
+    // Add player to simple room structure
+    room.players.push(newPlayer)
     
     socket.join(roomId)
     socket.roomId = roomId
@@ -985,9 +1104,22 @@ io.on('connection', (socket) => {
       playerName: playerName.trim(),
       reconnectToken: reconnectToken
     })
+
+    // Forward player join to host for host-authoritative architecture
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      hostSocket.emit('player-action', {
+        type: 'PLAYER_JOIN',
+        playerId: socket.id,
+        playerName: playerName.trim(),
+        data: {
+          profileImage: profileImage
+        }
+      })
+    }
   })
 
-  // Host starts the game
+  // Host starts the game - now just validates and lets host handle the logic
   socket.on(SOCKET_EVENTS.GAME_START, (data) => {
     const { roomId } = data
     
@@ -1003,64 +1135,14 @@ io.on('connection', (socket) => {
       return
     }
 
-    if (room.gameState !== GAME_STATES.LOBBY) {
-      socket.emit('error', { message: 'Game already started' })
-      return
-    }
+    // For relay server, we don't track game state - let host handle validation
 
-    try {
-      // Assign roles to players
-      const gameType = roomGameTypes.get(roomId) || 'werewolf'
-      const roles = assignRoles(room.players.length, gameType)
-      
-      // Create new role and readiness maps
-      const newPlayerRoles = new Map()
-      const newPlayerReadiness = new Map()
-      const newAlivePlayers = new Set()
-      
-      room.players.forEach((player, index) => {
-        newPlayerRoles.set(player.id, roles[index])
-        newPlayerReadiness.set(player.id, false)
-        newAlivePlayers.add(player.id) // All players start alive
-      })
-      
-      console.log(`Roles assigned in room ${roomId}:`)
-      room.players.forEach(player => {
-        const role = newPlayerRoles.get(player.id)
-        console.log(`  ${player.name}: ${role.name}`)
-      })
-      
-      // Update game state to role assignment with all assignments
-      gameStateManager.updateGameState(roomId, {
-        gameState: GAME_STATES.ROLE_ASSIGNMENT,
-        playerRoles: newPlayerRoles,
-        playerReadiness: newPlayerReadiness,
-        alivePlayers: newAlivePlayers
-      })
-      
-      // Send role assignments to each player (these will be individual events)
-      room.players.forEach(player => {
-        const playerSocket = io.sockets.sockets.get(player.id)
-        if (playerSocket) {
-          const role = newPlayerRoles.get(player.id)
-          playerSocket.emit(SOCKET_EVENTS.ROLE_ASSIGNED, {
-            role: role,
-            playerName: player.name
-          })
-          console.log(`Sent role ${role.name} to ${player.name}`)
-        } else {
-          console.log(`Warning: Could not find socket for player ${player.name} (${player.id})`)
-        }
-      })
-      
-    } catch (error) {
-      console.error('Error assigning roles:', error)
-      socket.emit('error', { message: 'Failed to assign roles' })
-      // Revert game state on error
-      gameStateManager.updateGameState(roomId, {
-        gameState: GAME_STATES.LOBBY
-      })
-    }
+    // Host will handle game start logic in host-authoritative architecture
+    // Just emit back to host to confirm the action
+    socket.emit('host-action-confirmed', {
+      type: 'GAME_START',
+      data: data
+    })
   })
 
   // Player confirms they're ready after seeing their role

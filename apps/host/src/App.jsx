@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
 import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport } from '@werewolf-mafia/shared'
+import { HostGameStateManager } from './HostGameStateManager'
 
 function GameLobby() {
   const [roomId, setRoomId] = useState(generateRoomId())
@@ -25,6 +26,7 @@ function GameLobby() {
   const [gamePaused, setGamePaused] = useState(false)
   const [pauseReason, setPauseReason] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('connecting')
+  const [hostGameStateManager, setHostGameStateManager] = useState(null)
 
   // Environment-based URLs
   const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
@@ -101,6 +103,11 @@ function GameLobby() {
 
       // Always join as host with existing room ID
       hostSocket.emit('host-room', { roomId })
+      
+      // Initialize host game state manager
+      const gameStateManager = new HostGameStateManager(hostSocket, roomId)
+      setHostGameStateManager(gameStateManager)
+      console.log('HostGameStateManager initialized')
     })
 
     // Handle heartbeat
@@ -307,6 +314,121 @@ function GameLobby() {
           setPlayerReadiness(readinessData)
         }
       }
+      
+      // Update other state from master state
+      if (data.eliminatedPlayer) {
+        setEliminatedPlayer(data.eliminatedPlayer)
+      }
+      if (data.savedPlayer) {
+        setSavedPlayer(data.savedPlayer)
+      }
+      if (data.dayEliminatedPlayer) {
+        setDayEliminatedPlayer(data.dayEliminatedPlayer)
+      }
+      if (data.winner) {
+        setGameEndData({
+          winner: data.winner,
+          winCondition: data.winCondition,
+          alivePlayers: data.players?.filter(p => p.alive) || [],
+          allPlayers: data.players || []
+        })
+      }
+      
+      // Convert accusations array back to object for UI
+      if (data.accusations) {
+        const accusationsObj = {}
+        data.accusations.forEach(([accusedId, accusers]) => {
+          const accusedPlayer = data.players?.find(p => p.id === accusedId)
+          accusationsObj[accusedId] = {
+            name: accusedPlayer?.name || 'Unknown',
+            accusers: accusers,
+            voteCount: accusers.length
+          }
+        })
+        setAccusations(accusationsObj)
+      }
+      
+      if (data.eliminationCountdown) {
+        setEliminationCountdown(data.eliminationCountdown)
+      }
+      
+      if (data.gamePaused !== undefined) {
+        setGamePaused(data.gamePaused)
+        setPauseReason(data.pauseReason || '')
+      }
+    })
+    
+    // HOST AUTHORITATIVE HANDLERS
+    
+    // Handle player actions forwarded by server
+    hostSocket.on('player-action', (action) => {
+      console.log('Player action received by host:', action)
+      
+      if (!hostGameStateManager) {
+        console.log('HostGameStateManager not yet initialized')
+        return
+      }
+      
+      try {
+        switch (action.type) {
+          case 'PLAYER_JOIN':
+            hostGameStateManager.addPlayer(action.playerId, action.playerName, action.data.profileImage)
+            break
+            
+          case 'PLAYER_READY':
+            hostGameStateManager.playerReady(action.playerId)
+            break
+            
+          case 'MAFIA_VOTE':
+            hostGameStateManager.processMafiaVote(action.playerId, action.data.targetId)
+            break
+            
+          case 'DOCTOR_HEAL':
+            hostGameStateManager.processDoctorHeal(action.playerId, action.data.targetId)
+            break
+            
+          case 'SEER_INVESTIGATE':
+            hostGameStateManager.processSeerInvestigation(action.playerId, action.data.targetId)
+            break
+            
+          default:
+            console.log('Unknown player action type:', action.type)
+        }
+      } catch (error) {
+        console.error('Error processing player action:', error)
+        // Send error back to the player
+        hostSocket.emit('host-send-to-player', {
+          roomId: roomId,
+          playerId: action.playerId,
+          event: 'error',
+          data: { message: error.message }
+        })
+      }
+    })
+    
+    // Handle host action confirmations from server
+    hostSocket.on('host-action-confirmed', (action) => {
+      console.log('Host action confirmed:', action)
+      
+      if (!hostGameStateManager) {
+        console.log('HostGameStateManager not yet initialized')
+        return
+      }
+      
+      try {
+        switch (action.type) {
+          case 'GAME_START':
+            hostGameStateManager.startGame()
+            break
+            
+          default:
+            console.log('Unknown host action type:', action.type)
+        }
+      } catch (error) {
+        console.error('Error processing host action:', error)
+        setMessage({ type: 'error', text: error.message })
+        setTimeout(() => setMessage(null), 5000)
+      }
     })
 
     // Listen for game pause/resume events
@@ -405,10 +527,12 @@ function GameLobby() {
   }, [gameState, players.map(p => p.connected).join(','), socket, roomId]) // Use connection status as dependency
 
   const handleStartGame = () => {
-    if (canStartGame && socket) {
+    if (canStartGame && socket && hostGameStateManager) {
+      // Send to server for validation, then server will confirm back to host
       socket.emit(SOCKET_EVENTS.GAME_START, { roomId })
-      setGameState(GAME_STATES.ROLE_ASSIGNMENT)
-      console.log('Starting game...')
+      console.log('Requesting game start...')
+    } else {
+      console.log('Cannot start game:', { canStartGame, socket: !!socket, hostGameStateManager: !!hostGameStateManager })
     }
   }
 
@@ -455,13 +579,14 @@ function GameLobby() {
   const handleGameTypeSelect = (gameType) => {
     console.log('Game type selected:', gameType)
     
-    if (socket && socket.connected) {
-      socket.emit(SOCKET_EVENTS.SELECT_GAME_TYPE, { roomId, gameType })
+    if (hostGameStateManager) {
+      hostGameStateManager.selectGameType(gameType)
+      setSelectedGameType(gameType)
     } else {
-      console.log('Socket not available or not connected - cannot select game type')
+      console.log('HostGameStateManager not available - cannot select game type')
       setMessage({ 
         type: 'error', 
-        text: 'Not connected to server. Please wait for reconnection.' 
+        text: 'Game manager not ready. Please wait.' 
       })
     }
   }
