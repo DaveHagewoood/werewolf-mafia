@@ -1109,34 +1109,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  // Host starts the game - validate and send confirmation
-  socket.on(SOCKET_EVENTS.GAME_START, (data) => {
-    const { roomId } = data
-    
-    if (!socket.isHost) {
-      socket.emit('error', { message: 'Only host can start the game' })
-      return
-    }
-
-    const room = getRoom(roomId)
-    if (!room) {
-      socket.emit('error', { message: 'Room not found' })
-      return
-    }
-    
-    if (room.players.length < GAME_CONFIG.MIN_PLAYERS) {
-      socket.emit('error', { message: `Need at least ${GAME_CONFIG.MIN_PLAYERS} players to start` })
-      return
-    }
-
-    console.log(`Host requesting game start for room ${roomId} with ${room.players.length} players`)
-
-    // Send confirmation back to host - host will handle the actual game start logic
-    socket.emit('host-action-confirmed', {
-      type: 'GAME_START',
-      data: data
-    })
-  })
+  // Host starts the game - handled by existing relay in 'host-action-confirmed'
 
   // ===================== CONNECTION MANAGEMENT HANDLERS =====================
   
