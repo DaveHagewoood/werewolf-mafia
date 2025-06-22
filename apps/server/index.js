@@ -839,8 +839,8 @@ io.on('connection', (socket) => {
       return
     }
     
-    // Relay state to all players in the room (not back to host)
-    socket.to(roomId).emit('game-state-update', gameState)
+    // Relay state to ALL sockets in the room (including the host for UI updates)
+    io.to(roomId).emit('game-state-update', gameState)
   })
 
   // Host sending individual message to specific player
