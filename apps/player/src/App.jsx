@@ -350,7 +350,7 @@ function JoinRoom() {
             console.log('Available targets in master state:', masterState.availableTargets);
             
             setPlayerRole(currentPlayer.role);
-            setIsAlive(currentPlayer.alive);
+            setIsEliminated(!currentPlayer.alive);
             setEliminatedPlayer(masterState.eliminatedPlayer);
             setSavedPlayer(masterState.savedPlayer);
             
@@ -414,7 +414,7 @@ function JoinRoom() {
         case GAME_STATES.DAY_PHASE:
           if (currentPlayer) {
             setPlayerRole(currentPlayer.role);
-            setIsAlive(currentPlayer.alive);
+            setIsEliminated(!currentPlayer.alive);
             setAccusations(masterState.accusations);
             setEliminationCountdown(masterState.eliminationCountdown);
             setDayEliminatedPlayer(masterState.dayEliminatedPlayer);
