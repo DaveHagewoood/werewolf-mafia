@@ -416,7 +416,11 @@ function JoinRoom() {
             setIsEliminated(!currentPlayer.alive);
             setAccusations(masterState.accusations);
             setEliminationCountdown(masterState.eliminationCountdown);
-            // Day eliminated player is handled by the general eliminatedPlayer state
+            
+            // Set day phase targets (all alive players for voting)
+            const alivePlayers = masterState.players.filter(p => p.alive);
+            setDayPhaseTargets(alivePlayers);
+            console.log('Setting day phase targets:', alivePlayers.map(p => p.name));
           }
           break;
           
