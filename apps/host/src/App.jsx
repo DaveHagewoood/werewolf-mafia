@@ -290,6 +290,11 @@ function GameLobby() {
       
       if (data.players) {
         setPlayers(data.players)
+        
+        // Set canStartGame based on player count and game state
+        const canStart = data.players.length >= GAME_CONFIG.MIN_PLAYERS && data.gameState === GAME_STATES.LOBBY
+        setCanStartGame(canStart)
+        
         // For role assignment, extract playerReadiness from players
         if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
           const readinessData = data.players.map(p => ({
