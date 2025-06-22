@@ -250,67 +250,102 @@ function JoinRoom() {
       }
     });
 
-    // Handle game state updates
-    newSocket.on(SOCKET_EVENTS.GAME_STATE_UPDATE, (state) => {
-      console.log('Game state update:', state);
+    // Handle master game state updates (same as host receives)
+    newSocket.on('game-state-update', (masterState) => {
+      console.log('Master game state received by player:', masterState);
+      
+      // Extract player-specific data from master state
+      const currentPlayer = masterState.players?.find(p => p.id === playerId);
+      if (!currentPlayer && playerId) {
+        console.log('Current player not found in master state');
+        return;
+      }
       
       // Update basic state
-      setGameState(state.gameState);
-      setPlayerId(state.playerId);
-      setPlayerName(state.playerName);
-      setPlayers(state.players);
-      setGamePaused(state.gamePaused);
-      setPauseReason(state.pauseReason);
+      setGameState(masterState.gameState);
+      setPlayers(masterState.players || []);
+      setGamePaused(masterState.gamePaused);
+      setPauseReason(masterState.pauseReason);
       
       // Update phase-specific state
-      switch (state.gameState) {
+      switch (masterState.gameState) {
         case GAME_STATES.ROLE_ASSIGNMENT:
-          setPlayerRole(state.role);
-          setIsReady(state.isReady);
+          if (currentPlayer) {
+            setPlayerRole(currentPlayer.role);
+            setIsReady(currentPlayer.isReady);
+          }
           break;
           
         case GAME_STATES.NIGHT_PHASE:
-          setPlayerRole(state.role);
-          setIsAlive(state.isAlive);
-          setEliminatedPlayer(state.eliminatedPlayer);
-          setSavedPlayer(state.savedPlayer);
-          
-          // Update available targets (now from state instead of separate events)
-          if (state.availableTargets) {
-            setVoteTargets(state.availableTargets); // For mafia
-            setHealTargets(state.availableTargets); // For doctor
-            setInvestigateTargets(state.availableTargets); // For seer
+          if (currentPlayer) {
+            setPlayerRole(currentPlayer.role);
+            setIsAlive(currentPlayer.alive);
+            setEliminatedPlayer(masterState.eliminatedPlayer);
+            setSavedPlayer(masterState.savedPlayer);
+            
+            // Set available targets based on role
+            if (masterState.availableTargets && currentPlayer.role) {
+              if (currentPlayer.role.alignment === 'evil') {
+                setVoteTargets(masterState.availableTargets.mafia || []);
+              } else if (currentPlayer.role.name === 'Doctor' || currentPlayer.role.name === 'Healer') {
+                setHealTargets(masterState.availableTargets.doctor || []);
+              } else if (currentPlayer.role.name === 'Seer' || currentPlayer.role.name === 'Detective') {
+                setInvestigateTargets(masterState.availableTargets.seer || []);
+              }
+            }
+            
+            // Update voting state from master state
+            const mafiaVotesArray = masterState.mafiaVotes || [];
+            const currentVotes = mafiaVotesArray.map(([voterId, targetId]) => {
+              const voter = masterState.players.find(p => p.id === voterId);
+              const target = masterState.players.find(p => p.id === targetId);
+              return {
+                voterId,
+                voterName: voter?.name || 'Unknown',
+                targetId,
+                targetName: target?.name || 'Unknown'
+              };
+            });
+            setMafiaVotes(currentVotes);
+            
+            // Find current player's selected target
+            const playerVote = mafiaVotesArray.find(([voterId]) => voterId === playerId);
+            setSelectedTarget(playerVote ? playerVote[1] : null);
+            setHasVoted(!!playerVote);
+            setMafiaVotesLocked(masterState.mafiaVotesLocked || false);
+            setConsensusTimer(masterState.consensusTimer || null);
+            
+            // Update heal state from master state
+            const healActionsArray = masterState.healActions || [];
+            const playerHeal = healActionsArray.find(([healerId]) => healerId === playerId);
+            setSelectedHeal(playerHeal ? playerHeal[1] : null);
+            setHasHealed(!!playerHeal);
+            
+            // Update investigation state from master state
+            const investigationActionsArray = masterState.investigationActions || [];
+            const playerInvestigation = investigationActionsArray.find(([investigatorId]) => investigatorId === playerId);
+            setSelectedInvestigation(playerInvestigation ? playerInvestigation[1] : null);
+            setHasInvestigated(!!playerInvestigation);
+            
+            // Update investigation result
+            const investigationResultsArray = masterState.investigationResults || [];
+            const playerResult = investigationResultsArray.find(([investigatorId]) => investigatorId === playerId);
+            setInvestigationResult(playerResult ? playerResult[1] : null);
           }
-          
-          // Update voting state from server
-          if (state.currentVotes) {
-            setMafiaVotes(state.currentVotes);
-          }
-          setSelectedTarget(state.selectedTarget || null);
-          setHasVoted(state.hasVoted || false);
-          setMafiaVotesLocked(state.mafiaVotesLocked || false);
-          setConsensusTimer(state.consensusTimer || null);
-          
-          // Update heal state from server
-          setSelectedHeal(state.selectedHeal || null);
-          setHasHealed(state.hasHealed || false);
-          
-          // Update investigation state from server
-          setSelectedInvestigation(state.selectedInvestigation || null);
-          setHasInvestigated(state.hasInvestigated || false);
-          setInvestigationResult(state.investigationResult || null);
           break;
           
         case GAME_STATES.DAY_PHASE:
-          setPlayerRole(state.role);
-          setIsAlive(state.isAlive);
-          setAccusations(state.accusations);
-          setEliminationCountdown(state.eliminationCountdown);
-          setDayEliminatedPlayer(state.dayEliminatedPlayer);
+          if (currentPlayer) {
+            setPlayerRole(currentPlayer.role);
+            setIsAlive(currentPlayer.alive);
+            setAccusations(masterState.accusations);
+            setEliminationCountdown(masterState.eliminationCountdown);
+            setDayEliminatedPlayer(masterState.dayEliminatedPlayer);
+          }
           break;
           
         case GAME_STATES.ENDED:
-          setGameEndData(state);
+          setGameEndData(masterState);
           break;
       }
     });

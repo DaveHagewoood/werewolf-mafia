@@ -29,7 +29,9 @@ export class GameStateManager {
       consensusTimer: null,
       nightActionResults: new Map(),
       votingData: new Map(),
-      investigationResults: new Map() // Store seer investigation results
+      investigationResults: new Map(), // Store seer investigation results
+      healActions: new Map(), // Store per-player heal actions (playerId -> targetId)
+      investigationActions: new Map() // Store per-player investigation actions (playerId -> targetId)
     });
     
     console.log(`GameStateManager: Initialized room ${roomId} with game type ${gameType}`);
@@ -73,62 +75,70 @@ export class GameStateManager {
 
     console.log(`GameStateManager: Broadcasting state for room ${roomId}, gameState: ${state.gameState}, players: ${state.players.length}`);
 
-    // Send state to each player
-    state.players.forEach(player => {
-      const playerState = getPlayerGameState(state, player.id, {
-        getAliveNonMafiaPlayers: (room) => this.getAliveNonMafiaPlayers(room),
-        getMafiaPlayers: (room) => this.getMafiaPlayers(room)
-      });
-      this.io.to(player.id).emit(SOCKET_EVENTS.GAME_STATE_UPDATE, playerState);
-    });
-
-    // Also send to host if it exists
+    // Generate the MASTER state (what host sees)
+    const masterState = this.getMasterGameState(state);
+    
+    // Send SAME state to host
     if (state.host) {
-      // Host gets a fuller view of the game state
-      const hostState = this.getHostGameState(state);
-      this.io.to(state.host).emit('host-game-state-update', hostState);
-      
-      // Also send legacy PLAYERS_UPDATE event for backward compatibility
-      this.io.to(state.host).emit('players-update', {
-        players: state.players.map(p => ({
-          id: p.id,
-          name: p.name,
-          connected: p.connected,
-          profileImage: p.profileImage,
-          role: state.playerRoles.get(p.id),
-          alive: state.alivePlayers.has(p.id),
-          disconnectionInfo: p.disconnectionInfo || null
-        })),
-        canStart: state.players.length >= GAME_CONFIG.MIN_PLAYERS && state.gameState === GAME_STATES.LOBBY
-      });
+      this.io.to(state.host).emit('game-state-update', masterState);
     }
+    
+    // Send SAME state to each player (they'll filter it client-side for their role)
+    state.players.forEach(player => {
+      this.io.to(player.id).emit('game-state-update', masterState);
+    });
   }
 
-  // Helper function to get host-specific game state
-  getHostGameState(room) {
-    return {
+  // Generate the single source of truth state
+  getMasterGameState(room) {
+    const masterState = {
       gameState: room.gameState,
+      gameType: room.gameType,
+      gamePaused: room.gamePaused,
+      pauseReason: room.pauseReason,
+      
+      // Players with all info
       players: room.players.map(p => ({
         id: p.id,
         name: p.name,
         connected: p.connected,
         role: room.playerRoles.get(p.id),
         isReady: room.playerReadiness.get(p.id) || false,
-        alive: room.alivePlayers.has(p.id)
+        alive: room.alivePlayers.has(p.id),
+        disconnectionInfo: p.disconnectionInfo || null
       })),
-      gameType: room.gameType,
-      gamePaused: room.gamePaused,
-      pauseReason: room.pauseReason,
+      
+      // Phase-specific data
       eliminatedPlayer: room.eliminatedPlayer,
       savedPlayer: room.savedPlayer,
       dayEliminatedPlayer: room.dayEliminatedPlayer,
       accusations: Array.from(room.accusations.entries()),
       eliminationCountdown: room.eliminationCountdown,
-      mafiaVotes: Array.from(room.mafiaVotes.entries()),
       winner: room.winner,
-      winCondition: room.winCondition
+      winCondition: room.winCondition,
+      
+      // Night phase actions
+      mafiaVotes: Array.from(room.mafiaVotes.entries()),
+      mafiaVotesLocked: room.mafiaVotesLocked || false,
+      consensusTimer: room.consensusTimer || null,
+      healActions: room.healActions ? Array.from(room.healActions.entries()) : [],
+      investigationActions: room.investigationActions ? Array.from(room.investigationActions.entries()) : [],
+      investigationResults: room.investigationResults ? Array.from(room.investigationResults.entries()) : []
     };
+
+    // Add available targets for different roles (calculated server-side)
+    if (room.gameState === GAME_STATES.NIGHT_PHASE) {
+      masterState.availableTargets = {
+        mafia: this.getAliveNonMafiaPlayers(room).map(p => ({ id: p.id, name: p.name })),
+        doctor: room.players.filter(p => room.alivePlayers.has(p.id)).map(p => ({ id: p.id, name: p.name })),
+        seer: room.players.filter(p => room.alivePlayers.has(p.id)).map(p => ({ id: p.id, name: p.name }))
+      };
+    }
+
+    return masterState;
   }
+
+
 
   // Helper functions for game logic
   getAliveNonMafiaPlayers(room) {

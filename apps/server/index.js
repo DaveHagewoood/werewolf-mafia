@@ -426,59 +426,10 @@ function startNextNightPhase(room, roomId) {
   room.seerInvestigatedPlayerId = null
   room.mafiaVotesLocked = false
   
-  // Notify all players that night phase is starting
-  io.to(roomId).emit(SOCKET_EVENTS.START_NIGHT_PHASE, { roomId: roomId })
   console.log(`Next night phase started in room ${roomId}`)
   
-  // Begin night actions for remaining alive players
-  try {
-    const mafiaPlayers = getMafiaPlayers(room)
-    const doctorPlayers = getDoctorPlayers(room, roomId)
-    const seerPlayers = getSeerPlayers(room, roomId)
-    const allAlivePlayers = room.players.filter(player => room.alivePlayers.has(player.id))
-    const aliveNonMafiaPlayers = getAliveNonMafiaPlayers(room)
-    
-    console.log(`Next night - Alive: ${allAlivePlayers.length}, Mafia: ${mafiaPlayers.length}, Doctor: ${doctorPlayers.length}, Seer: ${seerPlayers.length}`)
-    
-    // Send actions to each role type
-    mafiaPlayers.forEach(mafiaPlayer => {
-      const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id)
-      if (mafiaSocket) {
-        mafiaSocket.emit(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, {
-          targets: aliveNonMafiaPlayers.map(player => ({ id: player.id, name: player.name }))
-        })
-      }
-    })
-    
-    doctorPlayers.forEach(doctorPlayer => {
-      const doctorSocket = io.sockets.sockets.get(doctorPlayer.id)
-      if (doctorSocket) {
-        doctorSocket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
-          targets: allAlivePlayers.map(player => ({ id: player.id, name: player.name }))
-        })
-      }
-    })
-    
-    seerPlayers.forEach(seerPlayer => {
-      const seerSocket = io.sockets.sockets.get(seerPlayer.id)
-      if (seerSocket) {
-        // Filter out the Seer themselves from investigation targets
-        const investigationTargets = allAlivePlayers.filter(player => player.id !== seerPlayer.id)
-        seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
-          targets: investigationTargets.map(player => ({
-            id: player.id,
-            name: player.name
-          }))
-        })
-      }
-    })
-    
-    // Broadcast initial empty vote state to all Mafia
-    broadcastMafiaVotes(room)
-    
-  } catch (error) {
-    console.error(`ERROR in next night phase setup for room ${roomId}:`, error)
-  }
+  // All night phase data is now sent via master state updates
+  // No need for individual events - players get everything they need from the master state
 }
 
 // Helper function to check win conditions
@@ -1345,9 +1296,13 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Update game state through GameStateManager
+    // Update game state through GameStateManager - store per-player actions
+    const currentHealActions = room.healActions || new Map()
+    currentHealActions.set(socket.id, targetId)
+    
     gameStateManager.updateGameState(socket.roomId, {
-      healedPlayerId: targetId
+      healActions: currentHealActions,
+      healedPlayerId: targetId // Keep for backward compatibility
     })
     
     const targetPlayer = room.players.find(p => p.id === targetId)
@@ -1435,9 +1390,14 @@ io.on('connection', (socket) => {
     const currentResults = room.investigationResults || new Map()
     currentResults.set(socket.id, resultMessage)
     
+    // Store per-player investigation actions
+    const currentInvestigationActions = room.investigationActions || new Map()
+    currentInvestigationActions.set(socket.id, targetId)
+    
     // Update game state through GameStateManager
     gameStateManager.updateGameState(socket.roomId, {
-      seerInvestigatedPlayerId: targetId,
+      investigationActions: currentInvestigationActions,
+      seerInvestigatedPlayerId: targetId, // Keep for backward compatibility
       investigationResults: currentResults
     })
     
@@ -1775,63 +1735,14 @@ function startNightPhase(room, roomId) {
     mafiaVotes: new Map(),
     healedPlayerId: null,
     seerInvestigatedPlayerId: null,
+    healActions: new Map(),
+    investigationActions: new Map(),
     mafiaVotesLocked: false
   });
   
   // Get updated room state
   const updatedRoom = getRoom(roomId);
   
-  // Wait a short moment to ensure all clients have processed the phase change via state update
-  setTimeout(() => {
-    try {
-      // Get player groups using GameStateManager helper functions
-      const mafiaPlayers = gameStateManager.getMafiaPlayers(updatedRoom);
-      const doctorPlayers = getDoctorPlayers(updatedRoom, roomId);
-      const seerPlayers = getSeerPlayers(updatedRoom, roomId);
-      const allAlivePlayers = gameStateManager.getAlivePlayers(updatedRoom);
-      const aliveNonMafiaPlayers = gameStateManager.getAliveNonMafiaPlayers(updatedRoom);
-      
-      console.log(`=== NIGHT PHASE DEBUG START ===`);
-      console.log(`Room ${roomId} players:`, updatedRoom.players.map(p => `${p.name}(${p.id})`));
-      console.log(`Alive players:`, Array.from(updatedRoom.alivePlayers));
-      console.log(`Found ${mafiaPlayers.length} Mafia players`);
-      console.log(`Found ${aliveNonMafiaPlayers.length} targets`);
-      
-      // Send role-specific actions (these remain as individual events for now)
-      mafiaPlayers.forEach(mafiaPlayer => {
-        const mafiaSocket = io.sockets.sockets.get(mafiaPlayer.id);
-        if (mafiaSocket) {
-          mafiaSocket.emit(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, {
-            targets: aliveNonMafiaPlayers.map(p => ({ id: p.id, name: p.name }))
-          });
-          console.log(`Sent voting options to Mafia ${mafiaPlayer.name}`);
-        }
-      });
-      
-      doctorPlayers.forEach(doctorPlayer => {
-        const doctorSocket = io.sockets.sockets.get(doctorPlayer.id);
-        if (doctorSocket) {
-          doctorSocket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
-            targets: allAlivePlayers.map(p => ({ id: p.id, name: p.name }))
-          });
-          console.log(`Sent heal options to Doctor ${doctorPlayer.name}`);
-        }
-      });
-      
-      seerPlayers.forEach(seerPlayer => {
-        const seerSocket = io.sockets.sockets.get(seerPlayer.id);
-        if (seerSocket) {
-          const investigationTargets = allAlivePlayers.filter(p => p.id !== seerPlayer.id);
-          seerSocket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
-            targets: investigationTargets.map(p => ({ id: p.id, name: p.name }))
-          });
-          console.log(`Sent investigation options to Seer ${seerPlayer.name}`);
-        }
-      });
-      
-      console.log(`=== NIGHT PHASE DEBUG END ===`);
-    } catch (error) {
-      console.error(`Error in night phase setup for room ${roomId}:`, error);
-    }
-  }, 1000); // Wait 1 second before sending role-specific actions
+  // All night phase data is now included in the master state update
+  // Players will receive their available targets and role-specific UI from the master state
 } 

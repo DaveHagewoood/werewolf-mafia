@@ -279,6 +279,31 @@ function GameLobby() {
       setMessage(null) // Clear any error messages
     })
 
+    // Listen for master game state updates (truly host-authoritative system)
+    hostSocket.on('game-state-update', (data) => {
+      console.log('Master game state received by host:', data)
+      
+      // Host renders from the same master state as players
+      if (data.gameState) {
+        setGameState(data.gameState)
+      }
+      
+      if (data.players) {
+        setPlayers(data.players)
+        // For role assignment, extract playerReadiness from players
+        if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+          const readinessData = data.players.map(p => ({
+            id: p.id,
+            name: p.name,
+            ready: p.isReady,
+            connected: p.connected,
+            disconnectionInfo: p.disconnectionInfo
+          }))
+          setPlayerReadiness(readinessData)
+        }
+      }
+    })
+
     // Listen for game pause/resume events
     hostSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
       console.log('Game paused:', data.reason)

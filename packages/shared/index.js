@@ -312,8 +312,8 @@ export const getPlayerGameState = (room, playerId, helpers = {}) => {
         savedPlayer: room.savedPlayer,
         mafiaVotesLocked: room.mafiaVotesLocked || false,
         consensusTimer: room.consensusTimer || null,
-        hasHealed: room.healedPlayerId !== null && room.healedPlayerId !== undefined,
-        hasInvestigated: room.seerInvestigatedPlayerId !== null && room.seerInvestigatedPlayerId !== undefined,
+        hasHealed: room.healActions && room.healActions.has(playerId),
+        hasInvestigated: room.investigationActions && room.investigationActions.has(playerId),
         investigationResult: room.investigationResults?.get(playerId) || null
       };
 
@@ -342,13 +342,13 @@ export const getPlayerGameState = (room, playerId, helpers = {}) => {
           nightState.availableTargets = room.players
             .filter(p => room.alivePlayers.has(p.id))
             .map(p => ({ id: p.id, name: p.name }));
-          nightState.selectedHeal = room.healedPlayerId || null;
+          nightState.selectedHeal = room.healActions?.get(playerId) || null;
           
         } else if (playerRole && (playerRole.name === 'Seer' || playerRole.name === 'Investigator')) {
           nightState.availableTargets = room.players
             .filter(p => room.alivePlayers.has(p.id) && p.id !== playerId)
             .map(p => ({ id: p.id, name: p.name }));
-          nightState.selectedInvestigation = room.seerInvestigatedPlayerId || null;
+          nightState.selectedInvestigation = room.investigationActions?.get(playerId) || null;
         }
       }
       return nightState;
