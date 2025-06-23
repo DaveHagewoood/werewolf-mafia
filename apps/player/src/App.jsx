@@ -335,9 +335,14 @@ function JoinRoom() {
       setPauseReason(masterState.pauseReason);
       
       // Update phase-specific state
+      console.log('GAME STATE HANDLER - masterState.gameState:', masterState.gameState);
+      console.log('GAME STATE HANDLER - setting gameState to:', masterState.gameState);
+      setGameState(masterState.gameState);
+      
       switch (masterState.gameState) {
         case GAME_STATES.ROLE_ASSIGNMENT:
           if (currentPlayer) {
+            console.log('ROLE_ASSIGNMENT - setting playerRole to:', currentPlayer.role);
             setPlayerRole(currentPlayer.role);
             setIsReady(currentPlayer.isReady);
           }
@@ -348,6 +353,7 @@ function JoinRoom() {
             console.log('NIGHT_PHASE: Setting player role and targets');
             console.log('Current player role:', currentPlayer.role);
             console.log('Available targets in master state:', masterState.availableTargets);
+            console.log('NIGHT_PHASE - setting playerRole to:', currentPlayer.role);
             
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
@@ -838,6 +844,12 @@ function JoinRoom() {
   }
 
   // Show night phase screen
+  console.log('UI MAIN DEBUG - gameState:', gameState);
+  console.log('UI MAIN DEBUG - GAME_STATES.NIGHT_PHASE:', GAME_STATES.NIGHT_PHASE);
+  console.log('UI MAIN DEBUG - gameState === GAME_STATES.NIGHT_PHASE:', gameState === GAME_STATES.NIGHT_PHASE);
+  console.log('UI MAIN DEBUG - playerRole:', playerRole);
+  console.log('UI MAIN DEBUG - night phase condition result:', gameState === GAME_STATES.NIGHT_PHASE && playerRole);
+  
   if (gameState === GAME_STATES.NIGHT_PHASE && playerRole) {
     // Mafia voting interface - check if this player is evil (Mafia/Werewolf)
     if (playerRole.alignment === 'evil') {
@@ -951,6 +963,12 @@ function JoinRoom() {
 
     // Doctor/Healer healing interface - check if this player is the protector
     const roleSet = gameType ? ROLE_SETS[gameType] : null
+    console.log('UI Debug - Game type:', gameType);
+    console.log('UI Debug - Role set:', roleSet);
+    console.log('UI Debug - Player role name:', playerRole.name);
+    console.log('UI Debug - Expected protector name:', roleSet?.PROTECTOR?.name);
+    console.log('UI Debug - Names match:', playerRole.name === roleSet?.PROTECTOR?.name);
+    
     if (roleSet && playerRole.name === roleSet.PROTECTOR.name) {
       // If we haven't received heal targets yet, show loading
       if (healTargets.length === 0) {
@@ -1028,6 +1046,10 @@ function JoinRoom() {
     }
 
     // Seer/Detective investigation interface - check if this player is the investigator
+    console.log('UI Debug - Investigator check - Player role name:', playerRole.name);
+    console.log('UI Debug - Investigator check - Expected investigator name:', roleSet?.INVESTIGATOR?.name);
+    console.log('UI Debug - Investigator check - Names match:', playerRole.name === roleSet?.INVESTIGATOR?.name);
+    
     if (roleSet && playerRole.name === roleSet.INVESTIGATOR.name) {
       // If we haven't received investigation targets yet, show loading
       if (investigateTargets.length === 0) {
