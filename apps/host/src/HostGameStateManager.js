@@ -68,6 +68,7 @@ export class HostGameStateManager {
 
   // Generate the single source of truth state
   getMasterGameState() {
+    console.log('HOST DEBUG - getMasterGameState() gameType:', this.gameState.gameType);
     const masterState = {
       gameState: this.gameState.gameState,
       gameType: this.gameState.gameType,
@@ -138,6 +139,7 @@ export class HostGameStateManager {
 
   // Game action methods that host calls directly
   selectGameType(gameType) {
+    console.log('HOST DEBUG - selectGameType() called with:', gameType);
     this.updateGameState({
       gameType: gameType,
       gameState: GAME_STATES.LOBBY
@@ -191,7 +193,11 @@ export class HostGameStateManager {
 
     // Assign roles to players
     const gameType = this.gameState.gameType || 'werewolf';
+    console.log('HOST DEBUG - startGame() gameType:', gameType);
+    console.log('HOST DEBUG - this.gameState.gameType:', this.gameState.gameType);
+    
     const roles = assignRoles(this.gameState.players.length, gameType);
+    console.log('HOST DEBUG - assigned roles:', roles.map(r => r.name));
     
     const newPlayerRoles = new Map();
     const newPlayerReadiness = new Map();
