@@ -336,8 +336,11 @@ function JoinRoom() {
       
       // Update phase-specific state
       console.log('GAME STATE HANDLER - masterState.gameState:', masterState.gameState);
+      console.log('GAME STATE HANDLER - masterState.gameType:', masterState.gameType);
       console.log('GAME STATE HANDLER - setting gameState to:', masterState.gameState);
+      console.log('GAME STATE HANDLER - setting gameType to:', masterState.gameType);
       setGameState(masterState.gameState);
+      setGameType(masterState.gameType);
       
       switch (masterState.gameState) {
         case GAME_STATES.ROLE_ASSIGNMENT:
