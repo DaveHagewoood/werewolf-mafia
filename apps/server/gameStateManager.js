@@ -163,7 +163,7 @@ export class GameStateManager {
       eliminatedPlayer: room.eliminatedPlayer,
       savedPlayer: room.savedPlayer,
       dayEliminatedPlayer: room.dayEliminatedPlayer,
-      accusations: Array.from(room.accusations.entries()),
+      accusations: this.formatAccusationsForClients(room),
       eliminationCountdown: room.eliminationCountdown,
       winner: room.winner,
       winCondition: room.winCondition,
@@ -321,6 +321,28 @@ export class GameStateManager {
     
     // Default to full phase time if no start time set
     return phaseTimeout;
+  }
+
+  // BUGFIX: Format accusations for client compatibility
+  formatAccusationsForClients(room) {
+    const accusationData = {};
+    
+    // Convert Map format to object format expected by clients
+    room.accusations.forEach((accusers, accusedId) => {
+      const accusedPlayer = room.players.find(p => p.id === accusedId);
+      const accuserNames = Array.from(accusers).map(accuserId => {
+        const accuserPlayer = room.players.find(p => p.id === accuserId);
+        return accuserPlayer?.name || 'Unknown';
+      });
+      
+      accusationData[accusedId] = {
+        name: accusedPlayer?.name || 'Unknown',
+        accusers: accuserNames,
+        voteCount: accusers.size
+      };
+    });
+    
+    return accusationData;
   }
 
   handlePlayerDisconnect(roomId, playerId) {

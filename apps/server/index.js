@@ -954,6 +954,79 @@ io.on('connection', (socket) => {
     }
   })
 
+  // Handle Day Phase Voting/Accusations (MISSING HANDLER - FIXED)
+  socket.on(SOCKET_EVENTS.PLAYER_ACCUSE, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot vote' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' })
+      return
+    }
+
+    if (room.gameState !== GAME_STATES.DAY_PHASE) {
+      socket.emit('error', { message: 'Can only vote during day phase' })
+      return
+    }
+
+    const playerId = socket.id
+    const { targetId } = data
+
+    // Check if player is alive
+    if (!room.alivePlayers.has(playerId)) {
+      socket.emit('error', { message: 'Dead players cannot vote' })
+      return
+    }
+
+    // Handle vote logic
+    if (targetId === null) {
+      // Remove accusation
+      room.accusations.forEach((accusers, accusedId) => {
+        accusers.delete(playerId)
+        if (accusers.size === 0) {
+          room.accusations.delete(accusedId)
+        }
+      })
+    } else {
+      // Validate target
+      if (!room.alivePlayers.has(targetId)) {
+        socket.emit('error', { message: 'Cannot vote for dead or non-existent player' })
+        return
+      }
+
+      // Remove any existing accusation by this player
+      room.accusations.forEach((accusers, accusedId) => {
+        accusers.delete(playerId)
+        if (accusers.size === 0) {
+          room.accusations.delete(accusedId)
+        }
+      })
+
+      // Add new accusation
+      if (!room.accusations.has(targetId)) {
+        room.accusations.set(targetId, new Set())
+      }
+      room.accusations.get(targetId).add(playerId)
+    }
+
+    // Broadcast updated accusations
+    broadcastAccusations(room, socket.roomId);
+
+    // Check for majority vote
+    const majorityTarget = checkMajorityVote(room)
+    if (majorityTarget) {
+      startEliminationCountdown(room, majorityTarget, socket.roomId)
+    }
+  })
+
   // Forward Player Ready to host
   socket.on(SOCKET_EVENTS.PLAYER_READY, (data) => {
     if (socket.isHost) {
