@@ -299,11 +299,17 @@ function startDayPhase(room, roomId) {
   // Reset accusations for new day
   room.accusations.clear()
   
-  // Notify all clients that day phase is starting
+  // Clear any previous day elimination data
+  room.dayEliminatedPlayer = null
+  
+  // Notify all clients that day phase is starting (legacy event)
   io.to(roomId).emit(SOCKET_EVENTS.START_DAY_PHASE, { 
     roomId: roomId,
     alivePlayers: room.players.filter(player => room.alivePlayers.has(player.id))
   })
+  
+  // Broadcast comprehensive enhanced state for day phase
+  broadcastMasterGameState(room, roomId)
   
   console.log(`Day phase started in room ${roomId}`)
 }
@@ -331,6 +337,132 @@ function broadcastAccusations(room, roomId) {
   io.to(roomId).emit(SOCKET_EVENTS.ACCUSATIONS_UPDATE, { accusations: accusationData })
 }
 
+// NEW: Helper function to broadcast comprehensive master game state
+function broadcastMasterGameState(room, roomId) {
+  // Generate comprehensive master state (similar to GameStateManager logic)
+  const masterState = {
+    gameState: room.gameState,
+    gameType: roomGameTypes.get(roomId),
+    gamePaused: room.gamePaused || false,
+    pauseReason: room.pauseReason || null,
+    
+    // Enhanced players with comprehensive info
+    players: room.players.map(p => {
+      const role = room.playerRoles.get(p.id);
+      const isAlive = room.alivePlayers.has(p.id);
+      const hasHealed = room.healActions && room.healActions.has(p.id);
+      const hasInvestigated = room.investigationActions && room.investigationActions.has(p.id);
+      const hasVoted = room.mafiaVotes && room.mafiaVotes.has(p.id);
+      
+      // Calculate actionStatus based on game phase and role
+      let actionStatus = 'WAITING_FOR_ACTION';
+      let hasActed = false;
+      
+      if (!isAlive) {
+        actionStatus = 'ELIMINATED';
+      } else if (room.gameState === GAME_STATES.NIGHT_PHASE && role) {
+        if (role.alignment === 'evil' && hasVoted) {
+          actionStatus = 'COMPLETED';
+          hasActed = true;
+        } else if ((role.name === 'Doctor' || role.name === 'Healer') && hasHealed) {
+          actionStatus = 'COMPLETED'; 
+          hasActed = true;
+        } else if ((role.name === 'Seer' || role.name === 'Detective') && hasInvestigated) {
+          actionStatus = 'COMPLETED';
+          hasActed = true;
+        }
+      }
+      
+      // Day phase accusations
+      let hasAccused = false;
+      if (room.gameState === GAME_STATES.DAY_PHASE) {
+        room.accusations.forEach((accusers) => {
+          if (accusers.has(p.id)) {
+            hasAccused = true;
+          }
+        });
+      }
+      
+      return {
+        id: p.id,
+        name: p.name,
+        connected: p.connected,
+        role: role,
+        isReady: room.playerReadiness ? room.playerReadiness.get(p.id) || false : false,
+        alive: isAlive,
+        disconnectionInfo: p.disconnectionInfo || null,
+        
+        // Enhanced action status information
+        actionStatus: actionStatus,
+        hasActed: hasActed || hasAccused,
+        
+        // Role-specific capability flags
+        canVote: isAlive && room.gameState === GAME_STATES.DAY_PHASE,
+        canHeal: isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
+                role && (role.name === 'Doctor' || role.name === 'Healer') && !hasHealed,
+        canInvestigate: isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
+                       role && (role.name === 'Seer' || role.name === 'Detective') && !hasInvestigated,
+        canMafiaVote: isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
+                     role && role.alignment === 'evil' && !hasVoted,
+        
+        // Individual action status
+        isHealed: room.healActions && Array.from(room.healActions.values()).includes(p.id),
+        investigationResult: room.investigationResults && room.investigationResults.get(p.id) || null
+      };
+    }),
+    
+    // Phase-specific data
+    eliminatedPlayer: room.eliminatedPlayer || null,
+    savedPlayer: room.savedPlayer || null,
+    dayEliminatedPlayer: room.dayEliminatedPlayer || null,
+    accusations: formatAccusationsForClients(room),
+    eliminationCountdown: room.eliminationCountdown ? {
+      targetId: room.eliminationCountdown.targetId,
+      targetName: room.eliminationCountdown.targetName,
+      timeLeft: room.eliminationCountdown.timeLeft
+    } : null,
+    winner: room.winner || null,
+    winCondition: room.winCondition || null,
+    
+    // Night phase actions
+    mafiaVotes: room.mafiaVotes ? Array.from(room.mafiaVotes.entries()) : [],
+    mafiaVotesLocked: room.mafiaVotesLocked || false,
+    consensusTimer: room.consensusTimer || null,
+    healActions: room.healActions ? Array.from(room.healActions.entries()) : [],
+    investigationActions: room.investigationActions ? Array.from(room.investigationActions.entries()) : [],
+    investigationResults: room.investigationResults ? Array.from(room.investigationResults.entries()) : []
+  };
+
+  console.log(`Broadcasting master game state to room ${roomId}`);
+  
+  // Send comprehensive state to all clients
+  io.to(roomId).emit('game-state-update', masterState);
+}
+
+// Helper function to format accusations for client compatibility
+function formatAccusationsForClients(room) {
+  const accusationData = {};
+  
+  if (!room.accusations) return accusationData;
+  
+  // Convert Map format to object format expected by clients
+  room.accusations.forEach((accusers, accusedId) => {
+    const accusedPlayer = room.players.find(p => p.id === accusedId);
+    const accuserNames = Array.from(accusers).map(accuserId => {
+      const accuserPlayer = room.players.find(p => p.id === accuserId);
+      return accuserPlayer?.name || 'Unknown';
+    });
+    
+    accusationData[accusedId] = {
+      name: accusedPlayer?.name || 'Unknown',
+      accusers: accuserNames,
+      voteCount: accusers.size
+    };
+  });
+  
+  return accusationData;
+}
+
 // Helper function to check for majority vote
 function checkMajorityVote(room) {
   const aliveCount = room.alivePlayers.size
@@ -351,17 +483,48 @@ function startEliminationCountdown(room, targetId, roomId) {
   const targetPlayer = room.players.find(p => p.id === targetId)
   console.log(`Starting elimination countdown for ${targetPlayer?.name} in room ${roomId}`)
   
-  // Notify all clients about the countdown
+  // Store countdown data for enhanced state
+  const countdownDuration = Math.floor(GAME_CONFIG.ELIMINATION_COUNTDOWN_TIME / 1000) // Convert to seconds
+  room.eliminationCountdown = {
+    targetId,
+    targetName: targetPlayer?.name,
+    timeLeft: countdownDuration,
+    startTime: Date.now()
+  }
+  
+  // Notify all clients about the countdown (legacy event)
   io.to(roomId).emit(SOCKET_EVENTS.ELIMINATION_COUNTDOWN, {
     targetId,
     targetName: targetPlayer?.name,
     duration: GAME_CONFIG.ELIMINATION_COUNTDOWN_TIME
   })
   
-  // Start countdown timer
-  room.eliminationCountdown = setTimeout(() => {
-    eliminatePlayer(room, targetId, roomId)
-  }, GAME_CONFIG.ELIMINATION_COUNTDOWN_TIME)
+  // Broadcast enhanced state with countdown info
+  broadcastMasterGameState(room, roomId)
+  
+  // Start countdown timer with periodic updates
+  const countdownInterval = setInterval(() => {
+    if (!room.eliminationCountdown) {
+      clearInterval(countdownInterval)
+      return
+    }
+    
+    const elapsed = Math.floor((Date.now() - room.eliminationCountdown.startTime) / 1000)
+    const remaining = Math.max(0, countdownDuration - elapsed)
+    
+    room.eliminationCountdown.timeLeft = remaining
+    
+    if (remaining <= 0) {
+      clearInterval(countdownInterval)
+      eliminatePlayer(room, targetId, roomId)
+    } else {
+      // Broadcast updated countdown every second
+      broadcastMasterGameState(room, roomId)
+    }
+  }, 1000)
+  
+  // Store interval reference for cleanup
+  room.eliminationCountdownInterval = countdownInterval
 }
 
 // Helper function to eliminate a player
@@ -379,7 +542,14 @@ function eliminatePlayer(room, playerId, roomId) {
   
   console.log(`${eliminatedPlayer.name} (${eliminatedRole?.name}) was eliminated in room ${roomId}`)
   
-  // Notify all clients about the elimination
+  // Store elimination data for enhanced state
+  room.dayEliminatedPlayer = {
+    id: playerId,
+    name: eliminatedPlayer.name,
+    role: eliminatedRole
+  }
+  
+  // Notify all clients about the elimination (legacy event)
   io.to(roomId).emit(SOCKET_EVENTS.PLAYER_ELIMINATED, {
     eliminatedPlayer: {
       id: playerId,
@@ -389,11 +559,18 @@ function eliminatePlayer(room, playerId, roomId) {
     roomId: roomId
   })
   
-  // Clear elimination countdown
+  // Clear elimination countdown and interval
+  if (room.eliminationCountdownInterval) {
+    clearInterval(room.eliminationCountdownInterval)
+    room.eliminationCountdownInterval = null
+  }
   room.eliminationCountdown = null
   
   // Reset accusations
   room.accusations.clear()
+  
+  // Broadcast enhanced state with elimination result
+  broadcastMasterGameState(room, roomId)
   
   // Check for win conditions after elimination
   const gameEnded = checkWinConditions(room, roomId)
@@ -954,7 +1131,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  // Handle Day Phase Voting/Accusations (MISSING HANDLER - FIXED)
+  // Handle Day Phase Voting/Accusations (ENHANCED STATE INTEGRATION - FIXED)
   socket.on(SOCKET_EVENTS.PLAYER_ACCUSE, (data) => {
     if (socket.isHost) {
       socket.emit('error', { message: 'Host cannot vote' })
@@ -1017,8 +1194,11 @@ io.on('connection', (socket) => {
       room.accusations.get(targetId).add(playerId)
     }
 
-    // Broadcast updated accusations
+    // CRITICAL FIX: Broadcast enhanced state updates immediately
     broadcastAccusations(room, socket.roomId);
+    
+    // ENHANCED STATE FIX: Also broadcast master game state to all clients  
+    broadcastMasterGameState(room, socket.roomId);
 
     // Check for majority vote
     const majorityTarget = checkMajorityVote(room)
