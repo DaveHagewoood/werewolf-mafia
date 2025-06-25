@@ -31,7 +31,8 @@ export class GameStateManager {
       votingData: new Map(),
       investigationResults: new Map(), // Store seer investigation results
       healActions: new Map(), // Store per-player heal actions (playerId -> targetId)
-      investigationActions: new Map() // Store per-player investigation actions (playerId -> targetId)
+      investigationActions: new Map(), // Store per-player investigation actions (playerId -> targetId)
+      phaseStartTime: Date.now() // NEW for Step 1.2: Track when current phase started
     });
     
     console.log(`GameStateManager: Initialized room ${roomId} with game type ${gameType}`);
@@ -98,15 +99,65 @@ export class GameStateManager {
       pauseReason: room.pauseReason,
       
       // Players with all info
-      players: room.players.map(p => ({
-        id: p.id,
-        name: p.name,
-        connected: p.connected,
-        role: room.playerRoles.get(p.id),
-        isReady: room.playerReadiness.get(p.id) || false,
-        alive: room.alivePlayers.has(p.id),
-        disconnectionInfo: p.disconnectionInfo || null
-      })),
+      players: room.players.map(p => {
+        const role = room.playerRoles.get(p.id);
+        const isAlive = room.alivePlayers.has(p.id);
+        const hasHealed = room.healActions && room.healActions.has(p.id);
+        const hasInvestigated = room.investigationActions && room.investigationActions.has(p.id);
+        const hasVoted = room.mafiaVotes && room.mafiaVotes.has(p.id);
+        
+        // Calculate actionStatus based on game phase and role
+        let actionStatus = 'WAITING_FOR_ACTION';
+        let hasActed = false;
+        
+        if (!isAlive) {
+          actionStatus = 'ELIMINATED';
+        } else if (room.gameState === GAME_STATES.NIGHT_PHASE && role) {
+          if (role.alignment === 'evil' && hasVoted) {
+            actionStatus = 'COMPLETED';
+            hasActed = true;
+          } else if ((role.name === 'Doctor' || role.name === 'Healer') && hasHealed) {
+            actionStatus = 'COMPLETED'; 
+            hasActed = true;
+          } else if ((role.name === 'Seer' || role.name === 'Detective') && hasInvestigated) {
+            actionStatus = 'COMPLETED';
+            hasActed = true;
+          }
+        }
+        
+        // Role-specific capability flags
+        const canVote = isAlive && room.gameState === GAME_STATES.DAY_PHASE;
+        const canHeal = isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
+                       role && (role.name === 'Doctor' || role.name === 'Healer') && !hasHealed;
+        const canInvestigate = isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
+                             role && (role.name === 'Seer' || role.name === 'Detective') && !hasInvestigated;
+        const canMafiaVote = isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
+                           role && role.alignment === 'evil' && !hasVoted;
+        
+        return {
+          id: p.id,
+          name: p.name,
+          connected: p.connected,
+          role: role,
+          isReady: room.playerReadiness.get(p.id) || false,
+          alive: isAlive,
+          disconnectionInfo: p.disconnectionInfo || null,
+          
+          // Enhanced action status information (NEW)
+          actionStatus: actionStatus,
+          hasActed: hasActed,
+          
+          // Role-specific capability flags (NEW)
+          canVote: canVote,
+          canHeal: canHeal,
+          canInvestigate: canInvestigate,
+          canMafiaVote: canMafiaVote,
+          
+          // Individual action status (NEW)
+          isHealed: room.healActions && Array.from(room.healActions.values()).includes(p.id),
+          investigationResult: room.investigationResults && room.investigationResults.get(p.id) || null
+        };
+      }),
       
       // Phase-specific data
       eliminatedPlayer: room.eliminatedPlayer,
@@ -126,7 +177,13 @@ export class GameStateManager {
       investigationResults: room.investigationResults ? Array.from(room.investigationResults.entries()) : []
     };
 
-    // Add available targets for different roles (calculated server-side)
+    // Add comprehensive derived action information (NEW for Step 1.2)
+    masterState.derivedActions = this.calculateDerivedActions(room);
+    
+    // Add timing information (NEW for Step 1.2)
+    masterState.timeRemaining = this.calculateTimeRemaining(room);
+    
+    // Legacy: Keep existing availableTargets for backward compatibility
     if (room.gameState === GAME_STATES.NIGHT_PHASE) {
       masterState.availableTargets = {
         mafia: this.getAliveNonMafiaPlayers(room).map(p => ({ id: p.id, name: p.name })),
@@ -159,6 +216,111 @@ export class GameStateManager {
 
   getAlivePlayers(room) {
     return room.players.filter(player => room.alivePlayers.has(player.id));
+  }
+
+  // NEW for Step 1.2: Calculate comprehensive derived action information
+  calculateDerivedActions(room) {
+    const derivedActions = {};
+    
+    // Calculate for each player what actions they can take and targets available
+    room.players.forEach(player => {
+      const role = room.playerRoles.get(player.id);
+      const isAlive = room.alivePlayers.has(player.id);
+      
+      const playerActions = {
+        availableActions: [],
+        actionTargets: [],
+        primaryAction: null, // The main action this player should take
+        actionContext: {}    // Additional context for the action
+      };
+      
+      if (!isAlive) {
+        playerActions.availableActions = [];
+        playerActions.actionTargets = [];
+        playerActions.primaryAction = null;
+      } else {
+        // Calculate based on game phase and role
+        switch (room.gameState) {
+          case GAME_STATES.NIGHT_PHASE:
+            if (role && role.alignment === 'evil') {
+              const hasVoted = room.mafiaVotes && room.mafiaVotes.has(player.id);
+              if (!hasVoted) {
+                playerActions.availableActions.push('mafia_vote');
+                playerActions.actionTargets = this.getAliveNonMafiaPlayers(room)
+                  .map(p => ({ id: p.id, name: p.name, action: 'mafia_vote' }));
+                playerActions.primaryAction = 'mafia_vote';
+                playerActions.actionContext.description = 'Vote to eliminate a player';
+              }
+            } else if (role && (role.name === 'Doctor' || role.name === 'Healer')) {
+              const hasHealed = room.healActions && room.healActions.has(player.id);
+              if (!hasHealed) {
+                playerActions.availableActions.push('heal');
+                playerActions.actionTargets = room.players
+                  .filter(p => room.alivePlayers.has(p.id))
+                  .map(p => ({ id: p.id, name: p.name, action: 'heal' }));
+                playerActions.primaryAction = 'heal';
+                playerActions.actionContext.description = 'Protect a player from elimination';
+              }
+            } else if (role && (role.name === 'Seer' || role.name === 'Detective')) {
+              const hasInvestigated = room.investigationActions && room.investigationActions.has(player.id);
+              if (!hasInvestigated) {
+                playerActions.availableActions.push('investigate');
+                playerActions.actionTargets = room.players
+                  .filter(p => room.alivePlayers.has(p.id) && p.id !== player.id)
+                  .map(p => ({ id: p.id, name: p.name, action: 'investigate' }));
+                playerActions.primaryAction = 'investigate';
+                playerActions.actionContext.description = 'Learn a player\'s alignment';
+              }
+            }
+            break;
+            
+          case GAME_STATES.DAY_PHASE:
+            // All alive players can participate in discussion
+            playerActions.availableActions.push('discuss');
+            playerActions.actionTargets = room.players
+              .filter(p => room.alivePlayers.has(p.id) && p.id !== player.id)
+              .map(p => ({ id: p.id, name: p.name, action: 'accuse' }));
+            playerActions.primaryAction = 'discuss';
+            playerActions.actionContext.description = 'Discuss and identify suspicious players';
+            break;
+            
+          case GAME_STATES.ROLE_ASSIGNMENT:
+            if (!room.playerReadiness.get(player.id)) {
+              playerActions.availableActions.push('confirm_role');
+              playerActions.primaryAction = 'confirm_role';
+              playerActions.actionContext.description = 'Confirm your role to continue';
+            }
+            break;
+        }
+      }
+      
+      derivedActions[player.id] = playerActions;
+    });
+    
+    return derivedActions;
+  }
+
+  // NEW for Step 1.2: Calculate time remaining in current phase
+  calculateTimeRemaining(room) {
+    // For now, return a placeholder. In future phases, we'll add actual timing logic
+    // based on phase start time and phase duration settings
+    const phaseTimeouts = {
+      [GAME_STATES.ROLE_ASSIGNMENT]: 60000, // 60 seconds
+      [GAME_STATES.NIGHT_PHASE]: 90000,     // 90 seconds  
+      [GAME_STATES.DAY_PHASE]: 180000,      // 3 minutes
+    };
+    
+    const phaseTimeout = phaseTimeouts[room.gameState] || 0;
+    
+    // If we have a phase start time, calculate remaining time
+    if (room.phaseStartTime) {
+      const elapsed = Date.now() - room.phaseStartTime;
+      const remaining = Math.max(0, phaseTimeout - elapsed);
+      return remaining;
+    }
+    
+    // Default to full phase time if no start time set
+    return phaseTimeout;
   }
 
   handlePlayerDisconnect(roomId, playerId) {
