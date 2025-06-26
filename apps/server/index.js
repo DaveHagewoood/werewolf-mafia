@@ -1296,9 +1296,70 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Check if player already exists
+    // Check if player already exists - HANDLE REFRESH DURING ACTIVE GAME
     const existingPlayer = room.players.find(p => p.name.toLowerCase() === playerName.toLowerCase())
-    if (existingPlayer) {
+    
+    // If game is active and player exists, this is likely a refresh - restore their state
+    if (existingPlayer && room.gameState !== GAME_STATES.LOBBY) {
+      console.log(`Player ${playerName} rejoining active game in room ${roomId} - restoring state`)
+      
+      // Update the existing player's socket ID and connection
+      const oldSocketId = existingPlayer.id
+      existingPlayer.id = socket.id
+      existingPlayer.connected = true
+      
+      // Update all game state references from old socket ID to new socket ID
+      if (room.playerRoles.has(oldSocketId)) {
+        room.playerRoles.set(socket.id, room.playerRoles.get(oldSocketId))
+        room.playerRoles.delete(oldSocketId)
+      }
+      if (room.playerReadiness.has(oldSocketId)) {
+        room.playerReadiness.set(socket.id, room.playerReadiness.get(oldSocketId))
+        room.playerReadiness.delete(oldSocketId)
+      }
+      if (room.alivePlayers.has(oldSocketId)) {
+        room.alivePlayers.delete(oldSocketId)
+        room.alivePlayers.add(socket.id)
+        console.log(`Restored alive status for ${playerName}`)
+      }
+      if (room.mafiaVotes.has(oldSocketId)) {
+        room.mafiaVotes.set(socket.id, room.mafiaVotes.get(oldSocketId))
+        room.mafiaVotes.delete(oldSocketId)
+      }
+      
+      // Update accusations
+      room.accusations.forEach((accusers, accusedId) => {
+        if (accusers.has(oldSocketId)) {
+          accusers.delete(oldSocketId)
+          accusers.add(socket.id)
+        }
+      })
+      if (room.accusations.has(oldSocketId)) {
+        room.accusations.set(socket.id, room.accusations.get(oldSocketId))
+        room.accusations.delete(oldSocketId)
+      }
+      
+      socket.join(roomId)
+      socket.roomId = roomId
+      socket.playerName = playerName.trim()
+      socket.isHost = false
+      
+      console.log(`Player ${playerName} state restored - alive: ${room.alivePlayers.has(socket.id)}`)
+      
+      // Send success response
+      socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
+        success: true, 
+        playerId: socket.id,
+        playerName: playerName.trim(),
+        reconnectToken: null
+      })
+      
+      // Broadcast updated state
+      broadcastMasterGameState(room, roomId)
+      
+      return
+    } else if (existingPlayer) {
+      // Lobby case - name already taken
       socket.emit('error', { message: 'Player name already taken' })
       return
     }

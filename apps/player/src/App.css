@@ -602,6 +602,7 @@ body .reconnect-message {
 .info-row .value {
   font-weight: 600;
   font-size: 1.2rem;
+  color: #ffffff;
 }
 
 .alignment-good {
