@@ -135,6 +135,10 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               gameStateManager.processSeerInvestigation(action.playerId, action.data.targetId)
               break
               
+            case 'PLAYER_ACCUSE':
+              gameStateManager.processDayVote(action.playerId, action.data.targetId)
+              break
+              
             default:
               console.log('Unknown player action type:', action.type)
           }

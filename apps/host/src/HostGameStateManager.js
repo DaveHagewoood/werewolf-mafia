@@ -600,4 +600,146 @@ export class HostGameStateManager {
     
     return false;
   }
+
+  // Day Phase Voting Logic
+  processDayVote(playerId, targetId) {
+    console.log(`🗳️ Player ${playerId} voting for ${targetId || 'no target'}`);
+    
+    if (this.gameState.gameState !== GAME_STATES.DAY_PHASE) {
+      console.log('❌ Day vote received but not in day phase');
+      return;
+    }
+    
+    // Don't allow dead players to vote
+    if (!this.gameState.alivePlayers.has(playerId)) {
+      console.log(`❌ Dead player ${playerId} attempted to vote`);
+      return;
+    }
+    
+    const newAccusations = new Map(this.gameState.accusations);
+    
+    // Remove player's previous accusation
+    newAccusations.forEach((accusers, accusedId) => {
+      if (accusers.has(playerId)) {
+        accusers.delete(playerId);
+        if (accusers.size === 0) {
+          newAccusations.delete(accusedId);
+        }
+      }
+    });
+    
+    // Add new accusation if target provided
+    if (targetId && this.gameState.alivePlayers.has(targetId)) {
+      if (!newAccusations.has(targetId)) {
+        newAccusations.set(targetId, new Set());
+      }
+      newAccusations.get(targetId).add(playerId);
+      
+      const voterName = this.getPlayerName(playerId);
+      const targetName = this.getPlayerName(targetId);
+      console.log(`✅ ${voterName} accused ${targetName}`);
+    }
+    
+    this.updateGameState({
+      accusations: newAccusations
+    });
+    
+    // Check for majority vote
+    this.checkDayVoteConsensus();
+  }
+  
+  checkDayVoteConsensus() {
+    const alivePlayers = Array.from(this.gameState.alivePlayers);
+    const majorityThreshold = Math.floor(alivePlayers.length / 2) + 1;
+    
+    console.log(`🔍 Checking consensus: ${alivePlayers.length} alive, need ${majorityThreshold} votes`);
+    
+    // Find if any player has majority votes
+    for (const [accusedId, accusers] of this.gameState.accusations.entries()) {
+      const voteCount = accusers.size;
+      console.log(`📊 ${this.getPlayerName(accusedId)}: ${voteCount} votes`);
+      
+      if (voteCount >= majorityThreshold) {
+        const targetName = this.getPlayerName(accusedId);
+        console.log(`🎯 MAJORITY REACHED! ${targetName} has ${voteCount}/${majorityThreshold} votes`);
+        this.startEliminationCountdown(accusedId);
+        return;
+      }
+    }
+    
+    console.log('⏳ No consensus yet, voting continues...');
+  }
+  
+  startEliminationCountdown(targetId) {
+    const targetName = this.getPlayerName(targetId);
+    const countdownDuration = 5; // 5 seconds
+    
+    console.log(`⏰ Starting elimination countdown for ${targetName}`);
+    
+    this.updateGameState({
+      eliminationCountdown: {
+        targetId: targetId,
+        targetName: targetName,
+        timeLeft: countdownDuration
+      }
+    });
+    
+    // Start countdown timer
+    this.eliminationTimer = setInterval(() => {
+      if (this.gameState.eliminationCountdown && this.gameState.eliminationCountdown.timeLeft > 0) {
+        const newTimeLeft = this.gameState.eliminationCountdown.timeLeft - 1;
+        
+        this.updateGameState({
+          eliminationCountdown: {
+            ...this.gameState.eliminationCountdown,
+            timeLeft: newTimeLeft
+          }
+        });
+        
+        if (newTimeLeft === 0) {
+          this.executeElimination(targetId);
+        }
+      }
+    }, 1000);
+  }
+  
+  executeElimination(targetId) {
+    clearInterval(this.eliminationTimer);
+    const targetName = this.getPlayerName(targetId);
+    const targetRole = this.gameState.playerRoles.get(targetId);
+    
+    console.log(`💀 ELIMINATED: ${targetName} (${targetRole?.name})`);
+    
+    // Remove from alive players
+    const newAlivePlayers = new Set(this.gameState.alivePlayers);
+    newAlivePlayers.delete(targetId);
+    
+    // Mark player as dead
+    const eliminatedPlayerInfo = {
+      id: targetId,
+      name: targetName,
+      role: targetRole
+    };
+    
+    this.updateGameState({
+      alivePlayers: newAlivePlayers,
+      dayEliminatedPlayer: eliminatedPlayerInfo,
+      accusations: new Map(), // Clear accusations
+      eliminationCountdown: null // Clear countdown
+    });
+    
+    // Check win conditions
+    if (this.checkWinConditions()) {
+      return; // Game ended
+    }
+    
+    // Start next night phase after 3 seconds
+    setTimeout(() => {
+      this.startNightPhase();
+    }, 3000);
+  }
+  
+  getPlayerName(playerId) {
+    return this.gameState.players.find(p => p.id === playerId)?.name || 'Unknown';
+  }
 } 
