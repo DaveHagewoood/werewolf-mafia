@@ -434,6 +434,12 @@ function broadcastMasterGameState(room, roomId) {
   };
 
   console.log(`Broadcasting master game state to room ${roomId}`);
+  console.log(`BROADCAST DEBUG - Players in master state:`, masterState.players.map(p => ({
+    id: p.id,
+    name: p.name,
+    alive: p.alive,
+    role: p.role?.name
+  })));
   
   // Send comprehensive state to all clients
   io.to(roomId).emit('game-state-update', masterState);
@@ -514,7 +520,10 @@ function startEliminationCountdown(room, targetId, roomId) {
     
     room.eliminationCountdown.timeLeft = remaining
     
+    console.log(`COUNTDOWN DEBUG - Time remaining: ${remaining} seconds for player ${targetPlayer?.name}`);
+    
     if (remaining <= 0) {
+      console.log(`COUNTDOWN DEBUG - Time expired! Eliminating player ${targetPlayer?.name} (${targetId})`);
       clearInterval(countdownInterval)
       eliminatePlayer(room, targetId, roomId)
     } else {
@@ -532,13 +541,32 @@ function eliminatePlayer(room, playerId, roomId) {
   const eliminatedPlayer = room.players.find(p => p.id === playerId)
   const eliminatedRole = room.playerRoles.get(playerId)
   
+  console.log(`ELIMINATION DEBUG - Attempting to eliminate player:`, {
+    playerId,
+    playerName: eliminatedPlayer?.name,
+    playerRole: eliminatedRole?.name,
+    currentAlivePlayers: Array.from(room.alivePlayers),
+    roomId
+  });
+  
   if (!eliminatedPlayer) {
     console.error(`Could not find player to eliminate: ${playerId}`)
     return
   }
   
   // Remove from alive players
+  console.log(`ELIMINATION DEBUG - Before deletion:`, {
+    alivePlayers: Array.from(room.alivePlayers),
+    isPlayerAlive: room.alivePlayers.has(playerId)
+  });
+  
   room.alivePlayers.delete(playerId)
+  
+  console.log(`ELIMINATION DEBUG - After deletion:`, {
+    alivePlayers: Array.from(room.alivePlayers),
+    isPlayerAlive: room.alivePlayers.has(playerId),
+    deleteSuccessful: !room.alivePlayers.has(playerId)
+  });
   
   console.log(`${eliminatedPlayer.name} (${eliminatedRole?.name}) was eliminated in room ${roomId}`)
   
@@ -548,6 +576,8 @@ function eliminatePlayer(room, playerId, roomId) {
     name: eliminatedPlayer.name,
     role: eliminatedRole
   }
+  
+  console.log(`ELIMINATION DEBUG - Set dayEliminatedPlayer:`, room.dayEliminatedPlayer);
   
   // Notify all clients about the elimination (legacy event)
   io.to(roomId).emit(SOCKET_EVENTS.PLAYER_ELIMINATED, {
@@ -570,6 +600,7 @@ function eliminatePlayer(room, playerId, roomId) {
   room.accusations.clear()
   
   // Broadcast enhanced state with elimination result
+  console.log(`ELIMINATION DEBUG - About to broadcast master game state`);
   broadcastMasterGameState(room, roomId)
   
   // Check for win conditions after elimination
@@ -1202,7 +1233,20 @@ io.on('connection', (socket) => {
 
     // Check for majority vote
     const majorityTarget = checkMajorityVote(room)
+    console.log(`VOTE DEBUG - Checking majority vote:`, {
+      aliveCount: room.alivePlayers.size,
+      majorityThreshold: Math.floor(room.alivePlayers.size / 2) + 1,
+      accusations: Array.from(room.accusations.entries()).map(([accusedId, accusers]) => ({
+        accusedId,
+        accusedName: room.players.find(p => p.id === accusedId)?.name,
+        voteCount: accusers.size,
+        voters: Array.from(accusers).map(voterId => room.players.find(p => p.id === voterId)?.name)
+      })),
+      majorityTarget
+    });
+    
     if (majorityTarget) {
+      console.log(`VOTE DEBUG - Majority vote detected! Starting elimination countdown for player ${majorityTarget}`);
       startEliminationCountdown(room, majorityTarget, socket.roomId)
     }
   })
