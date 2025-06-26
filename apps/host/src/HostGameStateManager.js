@@ -147,16 +147,106 @@ export class HostGameStateManager {
   }
 
   addPlayer(playerId, playerName, profileImage) {
-    const newPlayer = {
-      id: playerId,
-      name: playerName,
-      connected: true,
-      profileImage: profileImage
-    };
+    // Check if player with same name already exists (for reconnection during active games)
+    const existingPlayerIndex = this.gameState.players.findIndex(p => p.name === playerName);
+    
+    if (existingPlayerIndex !== -1 && this.gameState.gameState !== GAME_STATES.LOBBY) {
+      // Player reconnecting during active game - update their socket ID
+      const existingPlayer = this.gameState.players[existingPlayerIndex];
+      const oldPlayerId = existingPlayer.id;
+      const newPlayerId = playerId;
+      
+      console.log(`Player ${playerName} reconnecting: ${oldPlayerId} -> ${newPlayerId}`);
+      
+      // Update player's socket ID
+      const updatedPlayers = [...this.gameState.players];
+      updatedPlayers[existingPlayerIndex] = {
+        ...existingPlayer,
+        id: newPlayerId,
+        connected: true,
+        profileImage: profileImage
+      };
+      
+      // Update all game state maps/sets to use new socket ID
+      const newPlayerRoles = new Map(this.gameState.playerRoles);
+      const newPlayerReadiness = new Map(this.gameState.playerReadiness);
+      const newAlivePlayers = new Set(this.gameState.alivePlayers);
+      const newMafiaVotes = new Map(this.gameState.mafiaVotes);
+      const newAccusations = new Map(this.gameState.accusations);
+      const newHealActions = new Map(this.gameState.healActions);
+      const newInvestigationActions = new Map(this.gameState.investigationActions);
+      const newInvestigationResults = new Map(this.gameState.investigationResults);
+      
+      // Move data from old socket ID to new socket ID
+      if (newPlayerRoles.has(oldPlayerId)) {
+        newPlayerRoles.set(newPlayerId, newPlayerRoles.get(oldPlayerId));
+        newPlayerRoles.delete(oldPlayerId);
+      }
+      if (newPlayerReadiness.has(oldPlayerId)) {
+        newPlayerReadiness.set(newPlayerId, newPlayerReadiness.get(oldPlayerId));
+        newPlayerReadiness.delete(oldPlayerId);
+      }
+      if (newAlivePlayers.has(oldPlayerId)) {
+        newAlivePlayers.delete(oldPlayerId);
+        newAlivePlayers.add(newPlayerId);
+      }
+      if (newMafiaVotes.has(oldPlayerId)) {
+        newMafiaVotes.set(newPlayerId, newMafiaVotes.get(oldPlayerId));
+        newMafiaVotes.delete(oldPlayerId);
+      }
+      if (newHealActions.has(oldPlayerId)) {
+        newHealActions.set(newPlayerId, newHealActions.get(oldPlayerId));
+        newHealActions.delete(oldPlayerId);
+      }
+      if (newInvestigationActions.has(oldPlayerId)) {
+        newInvestigationActions.set(newPlayerId, newInvestigationActions.get(oldPlayerId));
+        newInvestigationActions.delete(oldPlayerId);
+      }
+      if (newInvestigationResults.has(oldPlayerId)) {
+        newInvestigationResults.set(newPlayerId, newInvestigationResults.get(oldPlayerId));
+        newInvestigationResults.delete(oldPlayerId);
+      }
+      
+      // Update accusations (both as accuser and accused)
+      newAccusations.forEach((accusers, accusedId) => {
+        if (accusers.has(oldPlayerId)) {
+          accusers.delete(oldPlayerId);
+          accusers.add(newPlayerId);
+        }
+      });
+      if (newAccusations.has(oldPlayerId)) {
+        newAccusations.set(newPlayerId, newAccusations.get(oldPlayerId));
+        newAccusations.delete(oldPlayerId);
+      }
+      
+      this.updateGameState({
+        players: updatedPlayers,
+        playerRoles: newPlayerRoles,
+        playerReadiness: newPlayerReadiness,
+        alivePlayers: newAlivePlayers,
+        mafiaVotes: newMafiaVotes,
+        accusations: newAccusations,
+        healActions: newHealActions,
+        investigationActions: newInvestigationActions,
+        investigationResults: newInvestigationResults
+      });
+      
+      console.log(`✅ Reconnection successful for ${playerName}: alive=${newAlivePlayers.has(newPlayerId)}`);
+    } else {
+      // New player joining or player joining lobby - create new player
+      const newPlayer = {
+        id: playerId,
+        name: playerName,
+        connected: true,
+        profileImage: profileImage
+      };
 
-    this.updateGameState({
-      players: [...this.gameState.players, newPlayer]
-    });
+      this.updateGameState({
+        players: [...this.gameState.players, newPlayer]
+      });
+      
+      console.log(`✅ New player added: ${playerName}`);
+    }
   }
 
   removePlayer(playerId) {
