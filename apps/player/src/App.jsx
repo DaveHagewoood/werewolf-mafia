@@ -360,6 +360,21 @@ function JoinRoom() {
             
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
+            
+            // CONSISTENCY FIX: Set eliminationInfo for dead players from enhanced state
+            if (!currentPlayer.alive) {
+              setEliminationInfo({
+                id: currentPlayer.id,
+                name: currentPlayer.name,
+                role: currentPlayer.role
+              });
+              console.log('Dead player detected in night phase, setting eliminationInfo:', {
+                id: currentPlayer.id,
+                name: currentPlayer.name,
+                role: currentPlayer.role?.name
+              });
+            }
+            
             setEliminatedPlayer(masterState.eliminatedPlayer);
             
             // Set available targets based on role
@@ -433,6 +448,21 @@ function JoinRoom() {
           if (currentPlayer) {
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
+            
+            // CRITICAL FIX: Set eliminationInfo for dead players from enhanced state
+            if (!currentPlayer.alive) {
+              setEliminationInfo({
+                id: currentPlayer.id,
+                name: currentPlayer.name,
+                role: currentPlayer.role
+              });
+              console.log('Dead player detected in day phase, setting eliminationInfo:', {
+                id: currentPlayer.id,
+                name: currentPlayer.name,
+                role: currentPlayer.role?.name
+              });
+            }
+            
             setAccusations(masterState.accusations);
             setEliminationCountdown(masterState.eliminationCountdown);
             
