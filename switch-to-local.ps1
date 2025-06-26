@@ -2,15 +2,23 @@ Write-Host "Switching to LOCAL TESTING mode..." -ForegroundColor Green
 
 # Update server CORS
 $serverFile = "apps/server/index.js"
-(Get-Content $serverFile) -replace 'https://werewolf-mafia-host\.onrender\.com', 'http://localhost:3000' -replace 'https://werewolf-mafia-player\.onrender\.com', 'http://localhost:3001' | Set-Content $serverFile
+$content = Get-Content $serverFile
+$content = $content -replace 'https://werewolf-mafia-host\.onrender\.com', 'http://localhost:3000'
+$content = $content -replace 'https://werewolf-mafia-player\.onrender\.com', 'http://localhost:3001'
+$content | Set-Content $serverFile
 
 # Update player app
 $playerFile = "apps/player/src/App.jsx"
-(Get-Content $playerFile) -replace 'https://werewolf-mafia-server\.onrender\.com', 'http://localhost:3002' | Set-Content $playerFile
+$content = Get-Content $playerFile
+$content = $content -replace 'https://werewolf-mafia-server\.onrender\.com', 'http://localhost:3002'
+$content | Set-Content $playerFile
 
 # Update host app  
 $hostFile = "apps/host/src/App.jsx"
-(Get-Content $hostFile) -replace 'https://werewolf-mafia-server\.onrender\.com', 'http://localhost:3002' -replace 'https://werewolf-mafia-player\.onrender\.com', 'http://localhost:3001' | Set-Content $hostFile
+$content = Get-Content $hostFile
+$content = $content -replace 'https://werewolf-mafia-server\.onrender\.com', 'http://localhost:3002'
+$content = $content -replace 'https://werewolf-mafia-player\.onrender\.com', 'http://localhost:3001'
+$content | Set-Content $hostFile
 
 Write-Host "✅ URLs switched to localhost" -ForegroundColor Green
 Write-Host "Server: http://localhost:3002" -ForegroundColor Yellow

@@ -296,14 +296,18 @@ function JoinRoom() {
     if (!socket) return;
 
     const handleGameStateUpdate = (masterState) => {
-      console.log('🔍 CLIENT DEBUG - Game state update received');
-      console.log('🔍 CLIENT DEBUG - Current playerId:', playerId);
-      console.log('🔍 CLIENT DEBUG - Current playerName:', playerName);
-      console.log('🔍 CLIENT DEBUG - Players in state:', masterState.players?.map(p => ({
-        id: p.id,
-        name: p.name,
-        alive: p.alive
-      })));
+      console.log('🎮 GAME STATE UPDATE:', masterState.gameState);
+      console.log('📊 PLAYER STATUS - Current Player:', playerId, playerName);
+      
+      // Show all players and their alive/dead status
+      if (masterState.players) {
+        console.log('📊 ALL PLAYERS STATUS:');
+        masterState.players.forEach(p => {
+          const status = p.alive ? '✅ ALIVE' : '💀 DEAD';
+          const isCurrent = p.id === playerId || p.name === playerName;
+          console.log(`  ${isCurrent ? '👤 YOU' : '   '} ${p.name} (${p.id}): ${status}`);
+        });
+      }
       
       // If we don't have a playerId yet, try to find ourselves in the player list
       let currentPlayer = null;
@@ -323,9 +327,8 @@ function JoinRoom() {
       }
       
       if (!currentPlayer) {
-        console.log('🚨 CLIENT DEBUG - Current player NOT FOUND in state!');
-        console.log('🚨 CLIENT DEBUG - playerId:', playerId, 'playerName:', playerName);
-        console.log('🚨 CLIENT DEBUG - Available players:', masterState.players?.map(p => `${p.name}(${p.id})`));
+        console.log('🚨 PLAYER NOT FOUND in game state!');
+        console.log('🚨 Expected: playerId =', playerId, ', playerName =', playerName);
         // Still update basic state even if we can't find current player
         setGameState(masterState.gameState);
         setGamePaused(masterState.gamePaused);
@@ -333,11 +336,10 @@ function JoinRoom() {
         return;
       }
       
-      console.log('✅ CLIENT DEBUG - Current player found:', {
-        id: currentPlayer.id,
+      console.log('👤 CURRENT PLAYER STATUS:', {
         name: currentPlayer.name,
-        alive: currentPlayer.alive,
-        role: currentPlayer.role?.name
+        alive: currentPlayer.alive ? '✅ ALIVE' : '💀 DEAD',
+        role: currentPlayer.role?.name || 'Unknown'
       });
       
       // Update basic state
@@ -445,11 +447,9 @@ function JoinRoom() {
           }
           break;
           
-        case GAME_STATES.DAY_PHASE:
+                  case GAME_STATES.DAY_PHASE:
           if (currentPlayer) {
-            console.log('🔍 DAY_PHASE DEBUG - Processing player state:');
-            console.log('🔍 DAY_PHASE DEBUG - currentPlayer.alive:', currentPlayer.alive);
-            console.log('🔍 DAY_PHASE DEBUG - Setting isEliminated to:', !currentPlayer.alive);
+            console.log('📅 DAY PHASE - Player alive status:', currentPlayer.alive ? '✅ ALIVE' : '💀 DEAD');
             
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
@@ -462,9 +462,9 @@ function JoinRoom() {
                 role: currentPlayer.role
               };
               setEliminationInfo(elimInfo);
-              console.log('🔍 DAY_PHASE DEBUG - Set eliminationInfo for dead player:', elimInfo);
+              console.log('💀 Setting elimination info for dead player:', currentPlayer.name);
             } else {
-              console.log('🔍 DAY_PHASE DEBUG - Player is alive, clearing eliminationInfo');
+              console.log('✅ Player is alive, clearing elimination info');
               setEliminationInfo(null);
             }
             
@@ -882,11 +882,6 @@ function JoinRoom() {
   }
 
   // Show night phase screen
-  console.log('UI MAIN DEBUG - gameState:', gameState);
-  console.log('UI MAIN DEBUG - GAME_STATES.NIGHT_PHASE:', GAME_STATES.NIGHT_PHASE);
-  console.log('UI MAIN DEBUG - gameState === GAME_STATES.NIGHT_PHASE:', gameState === GAME_STATES.NIGHT_PHASE);
-  console.log('UI MAIN DEBUG - playerRole:', playerRole);
-  console.log('UI MAIN DEBUG - night phase condition result:', gameState === GAME_STATES.NIGHT_PHASE && playerRole);
   
   if (gameState === GAME_STATES.NIGHT_PHASE && playerRole) {
     // Mafia voting interface - check if this player is evil (Mafia/Werewolf)

@@ -1298,11 +1298,7 @@ io.on('connection', (socket) => {
     // Initialize connection tracking
     const reconnectToken = initializePlayerConnection(socket.id, roomId, playerName.trim())
 
-    console.log(`Player ${playerName} joined room ${roomId}`)
-
-    console.log(`🔍 JOIN DEBUG - Player ${playerName} joined room ${roomId}`);
-    console.log(`🔍 JOIN DEBUG - Socket ID: ${socket.id}`);
-    console.log(`🔍 JOIN DEBUG - Room players:`, room.players.length);
+    console.log(`Player ${playerName} joined room ${roomId}`);
 
     // Confirm join to the player with reconnect token
     socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 

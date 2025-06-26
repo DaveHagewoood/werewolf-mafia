@@ -61,15 +61,29 @@
 - Use feature flags if needed for gradual rollout
 - Test each change thoroughly before removing old code
 
+## Development Environment Rules
+
+### Rule 4: PowerShell Command Syntax
+**Environment**: User is using PowerShell as their shell environment.
+
+**Command Syntax Requirements**:
+- PowerShell does NOT support bash-style `&&` command chaining
+- Use separate commands or PowerShell-specific syntax (`;` or separate calls)
+- When providing terminal commands, structure them for PowerShell compatibility
+
+**Examples**:
+- ❌ Incorrect: `cd apps/server && npm start`
+- ✅ Correct: `cd apps/server; npm start` or separate commands
+
 ## Development Workflow Rules
 
-### Rule 4: Small, Incremental Changes
+### Rule 5: Small, Incremental Changes
 - Make one small change at a time
 - Test thoroughly after each change
 - Document what was changed and why
 - Update progress tracking documents
 
-### Rule 5: Comprehensive Documentation
+### Rule 6: Comprehensive Documentation
 - Update implementation plans when changes are made
 - Document architectural decisions and rationale
 - Keep progress summaries current
@@ -77,12 +91,12 @@
 
 ## Code Quality Rules
 
-### Rule 6: Server-Side Logic Centralization
+### Rule 7: Server-Side Logic Centralization
 - All game state calculations should happen server-side
 - Clients should not perform game logic calculations
 - Use helper functions for complex state derivations
 
-### Rule 7: Error Handling and Logging
+### Rule 8: Error Handling and Logging
 - Add comprehensive error handling for all state changes
 - Use descriptive console logging for debugging
 - Include context in error messages
