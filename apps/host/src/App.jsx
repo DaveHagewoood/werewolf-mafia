@@ -29,8 +29,8 @@ function GameLobby() {
   const [hostGameStateManager, setHostGameStateManager] = useState(null)
 
   // Environment-based URLs
-  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
-  const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafia-player.onrender.com'
+  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
+const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001'
 
   // Preload images
   useEffect(() => {

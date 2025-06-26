@@ -2,34 +2,40 @@
 
 ## Testing & Development Rules
 
-### ❌ Rule 1: Do Not Test Locally
-**Why**: The application URLs are hard-coded for deployment environments, which can cause conflicts and issues when testing locally.
+### ✅ Rule 1: Use Local Testing for Development 
+**Why**: Local testing provides faster iteration cycles for debugging and development.
 
-**Impact**:
-- Hard-coded URLs may point to production/staging servers
-- Local testing may interfere with live deployments
-- Socket connections may attempt to connect to wrong endpoints
-- Authentication and routing may not work as expected locally
+**Benefits**:
+- Immediate feedback without deployment delays
+- Direct access to server console logs
+- Ability to use breakpoints and real-time debugging
+- Faster development workflow
 
-**What to do instead**:
-- Use deployed development/staging environments for testing
-- Test changes through deployment pipeline via Render.com
-- Use console logging and state inspection for debugging
-- Verify syntax and logic through code review before deployment
+**Requirements**:
+- Update URLs to localhost before local testing
+- Use deployment testing for final validation
+- Be aware of URL configuration differences
+
+**Local Testing Process**:
+1. **Update URLs**: Switch to localhost endpoints in all apps
+2. **Start Local Servers**: Run host, player, and server apps locally
+3. **Test Changes**: Debug and iterate quickly
+4. **Switch Back**: Update URLs to production before deployment
+5. **Deploy & Validate**: Final testing on Render.com
 
 **Exceptions**:
-- Syntax checking with `node -c filename.js` is safe
-- Running isolated unit tests that don't start servers
-- Code analysis and static testing
+- Use deployment testing for production validation
+- Use deployed environment when debugging deployment-specific issues
 
 ### ✅ Preferred Testing Approach
-1. **Syntax Validation**: Use `node -c` to check syntax
-2. **Code Review**: Review logic and implementation  
-3. **Git Push**: Push changes to main branch
-4. **Auto-Deploy**: Render.com automatically deploys from git push
-5. **Test on Render**: Test functionality in deployed Render.com environment
-6. **Monitor Logs**: Use Render.com server logs and state inspection for debugging
-7. **Incremental Changes**: Make small changes to minimize deployment risk
+1. **Local Development**: Use localhost URLs for fast iteration
+2. **Syntax Validation**: Use `node -c` to check syntax
+3. **Local Testing**: Test functionality with local servers running
+4. **Code Review**: Review logic and implementation  
+5. **Switch URLs**: Update to production URLs before deployment
+6. **Git Push**: Push changes to main branch
+7. **Auto-Deploy**: Render.com automatically deploys from git push
+8. **Final Validation**: Test functionality in deployed Render.com environment
 
 ### 🚀 Deployment Process
 **Platform**: Render.com
