@@ -381,12 +381,9 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
       }
       
       // Update other state from master state
-      if (data.eliminatedPlayer) {
-        setEliminatedPlayer(data.eliminatedPlayer)
-      }
-      if (data.savedPlayer) {
-        setSavedPlayer(data.savedPlayer)
-      }
+      // Only set elimination data if it exists, otherwise clear it
+      setEliminatedPlayer(data.eliminatedPlayer || null)
+      setSavedPlayer(data.savedPlayer || null)
       if (data.dayEliminatedPlayer) {
         setDayEliminatedPlayer(data.dayEliminatedPlayer)
       }
@@ -404,9 +401,14 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         const accusationsObj = {}
         data.accusations.forEach(([accusedId, accusers]) => {
           const accusedPlayer = data.players?.find(p => p.id === accusedId)
+          // Convert accuser IDs to names
+          const accuserNames = accusers.map(accuserId => {
+            const accuserPlayer = data.players?.find(p => p.id === accuserId)
+            return accuserPlayer?.name || 'Unknown'
+          })
           accusationsObj[accusedId] = {
             name: accusedPlayer?.name || 'Unknown',
-            accusers: accusers,
+            accusers: accuserNames,
             voteCount: accusers.length
           }
         })
@@ -669,7 +671,9 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               {gameEndData.winner === 'mafia' ? '🔥' : '🏆'}
             </div>
             <h2>
-              {gameEndData.winner === 'mafia' ? 'Mafia Victory!' : 'Villagers Victory!'}
+              {gameEndData.winner === 'mafia' ? 
+                (selectedGameType === 'mafia' ? 'Mafia Victory!' : 'Werewolf Victory!') : 
+                'Villagers Victory!'}
             </h2>
             <p className="win-condition">{gameEndData.winCondition}</p>
           </div>
@@ -711,7 +715,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 <span className="stat-value">{gameEndData.allPlayers.length}</span>
               </div>
               <div className="stat">
-                <span className="stat-label">Mafia Players:</span>
+                <span className="stat-label">{selectedGameType === 'mafia' ? 'Mafia' : 'Werewolf'} Players:</span>
                 <span className="stat-value">
                   {gameEndData.allPlayers.filter(p => p.role.alignment === 'evil').length}
                 </span>
@@ -797,9 +801,9 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                       <h3>Current Accusations</h3>
                       {Object.entries(accusations).map(([accusedId, accusationData]) => (
                         <div key={accusedId} className="accusation-summary">
-                          <span className="accused">{accusationData.name}</span>
-                          <span className="accusers">accused by: {accusationData.accusers.join(', ')}</span>
-                          <span className="vote-count">({accusationData.voteCount} votes)</span>
+                          <span className="accusation-text">
+                            {accusationData.accusers.join(', ')} accuses {accusationData.name} - {accusationData.voteCount} Votes
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -850,7 +854,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         <div className="night-content">
           <div className="night-icon">🌙</div>
           <h2>Night Phase</h2>
-          <p>The town sleeps while the Mafia makes their move...</p>
+          <p>The town sleeps while the {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} make their move...</p>
           
           {eliminatedPlayer || savedPlayer ? (
             <div className="night-result">
@@ -858,7 +862,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 <div className="elimination-notice">
                   <h3>Night Action Complete</h3>
                   <p>
-                    <strong>{eliminatedPlayer.name}</strong> was eliminated by the Mafia.
+                    <strong>{eliminatedPlayer.name}</strong> was eliminated by the {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'}.
                   </p>
                 </div>
               )}
@@ -867,7 +871,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 <div className="save-notice">
                   <h3>A Life Saved!</h3>
                   <p>
-                    The Doctor successfully saved someone from certain death!
+                    The {selectedGameType === 'mafia' ? 'Doctor' : 'Healer'} successfully saved someone from certain death!
                   </p>
                 </div>
               )}
@@ -875,7 +879,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               {!eliminatedPlayer && savedPlayer && (
                 <div className="no-elimination-notice">
                   <h3>No One Was Killed</h3>
-                  <p>The Mafia's plan was thwarted by excellent medical intervention!</p>
+                  <p>The {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} plan was thwarted by excellent medical intervention!</p>
                 </div>
               )}
               
@@ -886,7 +890,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           ) : (
             <div className="night-progress">
               <div className="night-spinner"></div>
-              <p>Mafia is selecting their target...</p>
+              <p>{selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} selecting their target...</p>
               
               {/* Show game pause status or disconnected players during night phase */}
               {players.some(p => !p.connected) && (

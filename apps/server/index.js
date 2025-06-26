@@ -604,10 +604,14 @@ function startNextNightPhase(room, roomId) {
   room.seerInvestigatedPlayerId = null
   room.mafiaVotesLocked = false
   
+  // Clear previous night's elimination results for new night phase
+  room.eliminatedPlayer = null
+  room.savedPlayer = null
+  
   console.log(`Next night phase started in room ${roomId}`)
   
-  // All night phase data is now sent via master state updates
-  // No need for individual events - players get everything they need from the master state
+  // Broadcast updated master state with cleared elimination data
+  broadcastMasterGameState(room, roomId)
 }
 
 // Helper function to check win conditions

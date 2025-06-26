@@ -468,7 +468,27 @@ function JoinRoom() {
               setEliminationInfo(null);
             }
             
-            setAccusations(masterState.accusations);
+            // Convert accusations array back to object for UI (same as host)
+            if (masterState.accusations) {
+              const accusationsObj = {}
+              masterState.accusations.forEach(([accusedId, accusers]) => {
+                const accusedPlayer = masterState.players?.find(p => p.id === accusedId)
+                // Convert accuser IDs to names
+                const accuserNames = accusers.map(accuserId => {
+                  const accuserPlayer = masterState.players?.find(p => p.id === accuserId)
+                  return accuserPlayer?.name || 'Unknown'
+                })
+                accusationsObj[accusedId] = {
+                  name: accusedPlayer?.name || 'Unknown',
+                  accusers: accuserNames,
+                  voteCount: accusers.length
+                }
+              })
+              setAccusations(accusationsObj)
+            } else {
+              setAccusations({})
+            }
+            
             setEliminationCountdown(masterState.eliminationCountdown);
             
             // Set day phase targets (all alive players for voting)
@@ -867,9 +887,9 @@ function JoinRoom() {
                   <h3>Current Accusations</h3>
                   {Object.entries(accusations).map(([accusedId, accusationData]) => (
                     <div key={accusedId} className="accusation-item">
-                      <span className="accused-name">{accusationData.name}:</span>
-                      <span className="accusers">{accusationData.accusers.join(', ')}</span>
-                      <span className="vote-count">({accusationData.voteCount} votes)</span>
+                      <span className="accusation-text">
+                        {accusationData.accusers.join(', ')} accuses {accusationData.name} - {accusationData.voteCount} Votes
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -1125,7 +1145,7 @@ function JoinRoom() {
                   <p>Select one player to learn their true alignment:</p>
                   
                   <div className="investigate-list">
-                    {investigateTargets.map((target) => (
+                    {investigateTargets.filter(target => target.id !== playerId).map((target) => (
                       <button
                         key={target.id}
                         className={`investigate-btn ${selectedInvestigation === target.id ? 'selected' : ''}`}
