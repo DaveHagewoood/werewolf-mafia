@@ -353,25 +353,15 @@ function JoinRoom() {
           
         case GAME_STATES.NIGHT_PHASE:
           if (currentPlayer) {
-            console.log('NIGHT_PHASE: Setting player role and targets');
-            console.log('Current player role:', currentPlayer.role);
-            console.log('Available targets in master state:', masterState.availableTargets);
-            console.log('NIGHT_PHASE - setting playerRole to:', currentPlayer.role);
-            
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
             
-            // CONSISTENCY FIX: Set eliminationInfo for dead players from enhanced state
+            // Set eliminationInfo for dead players from enhanced state
             if (!currentPlayer.alive) {
               setEliminationInfo({
                 id: currentPlayer.id,
                 name: currentPlayer.name,
                 role: currentPlayer.role
-              });
-              console.log('Dead player detected in night phase, setting eliminationInfo:', {
-                id: currentPlayer.id,
-                name: currentPlayer.name,
-                role: currentPlayer.role?.name
               });
             }
             
@@ -446,30 +436,16 @@ function JoinRoom() {
           
         case GAME_STATES.DAY_PHASE:
           if (currentPlayer) {
-            console.log('DAY_PHASE DEBUG - currentPlayer:', {
-              id: currentPlayer.id,
-              name: currentPlayer.name,
-              alive: currentPlayer.alive,
-              role: currentPlayer.role?.name
-            });
-            
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
             
-            console.log('DAY_PHASE DEBUG - Setting isEliminated to:', !currentPlayer.alive);
-            
-            // CRITICAL FIX: Set eliminationInfo for dead players from enhanced state
+            // Set eliminationInfo for dead players from enhanced state
             if (!currentPlayer.alive) {
-              const elimInfo = {
+              setEliminationInfo({
                 id: currentPlayer.id,
                 name: currentPlayer.name,
                 role: currentPlayer.role
-              };
-              setEliminationInfo(elimInfo);
-              console.log('DAY_PHASE DEBUG - Dead player detected, setting eliminationInfo:', elimInfo);
-              console.log('DAY_PHASE DEBUG - eliminationInfo should now be set for death screen');
-            } else {
-              console.log('DAY_PHASE DEBUG - Player is alive, not setting eliminationInfo');
+              });
             }
             
             setAccusations(masterState.accusations);
@@ -478,7 +454,6 @@ function JoinRoom() {
             // Set day phase targets (all alive players for voting)
             const alivePlayers = masterState.players.filter(p => p.alive);
             setDayPhaseTargets(alivePlayers);
-            console.log('Setting day phase targets:', alivePlayers.map(p => p.name));
           }
           break;
           
@@ -738,11 +713,7 @@ function JoinRoom() {
   };
 
   // Show eliminated player screen if this player is dead
-  console.log('DEATH SCREEN CHECK - isEliminated:', isEliminated, 'eliminationInfo:', eliminationInfo);
-  console.log('DEATH SCREEN CHECK - condition result:', isEliminated && eliminationInfo);
-  
   if (isEliminated && eliminationInfo) {
-    console.log('DEATH SCREEN - Showing death screen for eliminated player');
     return (
       <div className="eliminated-container">
         <div className="eliminated-content">
@@ -799,14 +770,7 @@ function JoinRoom() {
   }
 
   // Show day phase screen
-  console.log('DAY PHASE SCREEN CHECK - gameState:', gameState, 'GAME_STATES.DAY_PHASE:', GAME_STATES.DAY_PHASE);
-  console.log('DAY PHASE SCREEN CHECK - playerRole:', playerRole);
-  console.log('DAY PHASE SCREEN CHECK - isEliminated:', isEliminated);
-  console.log('DAY PHASE SCREEN CHECK - condition result:', gameState === GAME_STATES.DAY_PHASE && playerRole);
-  
   if (gameState === GAME_STATES.DAY_PHASE && playerRole) {
-    console.log('DAY PHASE SCREEN - About to show voting screen (this should NOT happen for dead players)');
-    console.log('DAY PHASE SCREEN - isEliminated:', isEliminated, 'eliminationInfo:', eliminationInfo);
     
     // Filter out self, but show all players if filtering results in empty list (fallback)
     const votableTargets = dayPhaseTargets.filter(player => player.id !== playerId)
