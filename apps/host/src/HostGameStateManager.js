@@ -90,7 +90,10 @@ export class HostGameStateManager {
       eliminatedPlayer: this.gameState.eliminatedPlayer,
       savedPlayer: this.gameState.savedPlayer,
       dayEliminatedPlayer: this.gameState.dayEliminatedPlayer,
-      accusations: Array.from(this.gameState.accusations.entries()),
+      accusations: Array.from(this.gameState.accusations.entries()).map(([accusedId, accusers]) => [
+        accusedId, 
+        Array.from(accusers) // Convert Set to Array for serialization
+      ]),
       eliminationCountdown: this.gameState.eliminationCountdown,
       winner: this.gameState.winner,
       winCondition: this.gameState.winCondition,
