@@ -296,10 +296,14 @@ function JoinRoom() {
     if (!socket) return;
 
     const handleGameStateUpdate = (masterState) => {
-      console.log('=== MASTER GAME STATE UPDATE ===');
-      console.log('Master game state received by player:', masterState);
-      console.log('Current playerId:', playerId);
-      console.log('Current playerName:', playerName);
+      console.log('🔍 CLIENT DEBUG - Game state update received');
+      console.log('🔍 CLIENT DEBUG - Current playerId:', playerId);
+      console.log('🔍 CLIENT DEBUG - Current playerName:', playerName);
+      console.log('🔍 CLIENT DEBUG - Players in state:', masterState.players?.map(p => ({
+        id: p.id,
+        name: p.name,
+        alive: p.alive
+      })));
       
       // If we don't have a playerId yet, try to find ourselves in the player list
       let currentPlayer = null;
@@ -319,7 +323,9 @@ function JoinRoom() {
       }
       
       if (!currentPlayer) {
-        console.log('Current player not found in master state, playerId:', playerId, 'playerName:', playerName, 'available players:', masterState.players?.map(p => `${p.name}(${p.id})`));
+        console.log('🚨 CLIENT DEBUG - Current player NOT FOUND in state!');
+        console.log('🚨 CLIENT DEBUG - playerId:', playerId, 'playerName:', playerName);
+        console.log('🚨 CLIENT DEBUG - Available players:', masterState.players?.map(p => `${p.name}(${p.id})`));
         // Still update basic state even if we can't find current player
         setGameState(masterState.gameState);
         setGamePaused(masterState.gamePaused);
@@ -327,7 +333,12 @@ function JoinRoom() {
         return;
       }
       
-      console.log('Current player found:', currentPlayer);
+      console.log('✅ CLIENT DEBUG - Current player found:', {
+        id: currentPlayer.id,
+        name: currentPlayer.name,
+        alive: currentPlayer.alive,
+        role: currentPlayer.role?.name
+      });
       
       // Update basic state
       setGameState(masterState.gameState);
@@ -436,16 +447,25 @@ function JoinRoom() {
           
         case GAME_STATES.DAY_PHASE:
           if (currentPlayer) {
+            console.log('🔍 DAY_PHASE DEBUG - Processing player state:');
+            console.log('🔍 DAY_PHASE DEBUG - currentPlayer.alive:', currentPlayer.alive);
+            console.log('🔍 DAY_PHASE DEBUG - Setting isEliminated to:', !currentPlayer.alive);
+            
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
             
             // Set eliminationInfo for dead players from enhanced state
             if (!currentPlayer.alive) {
-              setEliminationInfo({
+              const elimInfo = {
                 id: currentPlayer.id,
                 name: currentPlayer.name,
                 role: currentPlayer.role
-              });
+              };
+              setEliminationInfo(elimInfo);
+              console.log('🔍 DAY_PHASE DEBUG - Set eliminationInfo for dead player:', elimInfo);
+            } else {
+              console.log('🔍 DAY_PHASE DEBUG - Player is alive, clearing eliminationInfo');
+              setEliminationInfo(null);
             }
             
             setAccusations(masterState.accusations);

@@ -433,7 +433,13 @@ function broadcastMasterGameState(room, roomId) {
     investigationResults: room.investigationResults ? Array.from(room.investigationResults.entries()) : []
   };
 
-  console.log(`Broadcasting master game state to room ${roomId}`);
+  console.log(`🔍 BROADCAST DEBUG - Broadcasting master game state to room ${roomId}`);
+  console.log(`🔍 BROADCAST DEBUG - alivePlayers set:`, Array.from(room.alivePlayers));
+  console.log(`🔍 BROADCAST DEBUG - Players in masterState:`, masterState.players.map(p => ({
+    id: p.id,
+    name: p.name, 
+    alive: p.alive
+  })));
   
   // Send comprehensive state to all clients
   io.to(roomId).emit('game-state-update', masterState);
@@ -1296,70 +1302,9 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Check if player already exists - HANDLE REFRESH DURING ACTIVE GAME
+    // Check if player already exists
     const existingPlayer = room.players.find(p => p.name.toLowerCase() === playerName.toLowerCase())
-    
-    // If game is active and player exists, this is likely a refresh - restore their state
-    if (existingPlayer && room.gameState !== GAME_STATES.LOBBY) {
-      console.log(`Player ${playerName} rejoining active game in room ${roomId} - restoring state`)
-      
-      // Update the existing player's socket ID and connection
-      const oldSocketId = existingPlayer.id
-      existingPlayer.id = socket.id
-      existingPlayer.connected = true
-      
-      // Update all game state references from old socket ID to new socket ID
-      if (room.playerRoles.has(oldSocketId)) {
-        room.playerRoles.set(socket.id, room.playerRoles.get(oldSocketId))
-        room.playerRoles.delete(oldSocketId)
-      }
-      if (room.playerReadiness.has(oldSocketId)) {
-        room.playerReadiness.set(socket.id, room.playerReadiness.get(oldSocketId))
-        room.playerReadiness.delete(oldSocketId)
-      }
-      if (room.alivePlayers.has(oldSocketId)) {
-        room.alivePlayers.delete(oldSocketId)
-        room.alivePlayers.add(socket.id)
-        console.log(`Restored alive status for ${playerName}`)
-      }
-      if (room.mafiaVotes.has(oldSocketId)) {
-        room.mafiaVotes.set(socket.id, room.mafiaVotes.get(oldSocketId))
-        room.mafiaVotes.delete(oldSocketId)
-      }
-      
-      // Update accusations
-      room.accusations.forEach((accusers, accusedId) => {
-        if (accusers.has(oldSocketId)) {
-          accusers.delete(oldSocketId)
-          accusers.add(socket.id)
-        }
-      })
-      if (room.accusations.has(oldSocketId)) {
-        room.accusations.set(socket.id, room.accusations.get(oldSocketId))
-        room.accusations.delete(oldSocketId)
-      }
-      
-      socket.join(roomId)
-      socket.roomId = roomId
-      socket.playerName = playerName.trim()
-      socket.isHost = false
-      
-      console.log(`Player ${playerName} state restored - alive: ${room.alivePlayers.has(socket.id)}`)
-      
-      // Send success response
-      socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
-        success: true, 
-        playerId: socket.id,
-        playerName: playerName.trim(),
-        reconnectToken: null
-      })
-      
-      // Broadcast updated state
-      broadcastMasterGameState(room, roomId)
-      
-      return
-    } else if (existingPlayer) {
-      // Lobby case - name already taken
+    if (existingPlayer) {
       socket.emit('error', { message: 'Player name already taken' })
       return
     }
@@ -1401,6 +1346,11 @@ io.on('connection', (socket) => {
 
     console.log(`Player ${playerName} joined room ${roomId}`)
 
+    console.log(`🔍 JOIN DEBUG - Player ${playerName} joined room ${roomId}`);
+    console.log(`🔍 JOIN DEBUG - Socket ID: ${socket.id}`);
+    console.log(`🔍 JOIN DEBUG - Room game state: ${room.gameState}`);
+    console.log(`🔍 JOIN DEBUG - alivePlayers before join:`, Array.from(room.alivePlayers));
+
     // Confirm join to the player with reconnect token
     socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
       success: true, 
@@ -1408,6 +1358,12 @@ io.on('connection', (socket) => {
       playerName: playerName.trim(),
       reconnectToken: reconnectToken
     })
+
+    // If this is an active game, also send current game state immediately
+    if (room.gameState !== GAME_STATES.LOBBY) {
+      console.log(`🔍 JOIN DEBUG - Sending current game state to ${playerName} (${socket.id})`);
+      broadcastMasterGameState(room, roomId);
+    }
 
     // Forward player join to host for host-authoritative architecture
     const hostSocket = io.sockets.sockets.get(room.host)
