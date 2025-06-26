@@ -1137,7 +1137,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  // Handle Day Phase Voting/Accusations (ENHANCED STATE INTEGRATION - FIXED)
+  // Forward Day Phase Voting/Accusations to host (RELAY ARCHITECTURE)
   socket.on(SOCKET_EVENTS.PLAYER_ACCUSE, (data) => {
     if (socket.isHost) {
       socket.emit('error', { message: 'Host cannot vote' })
@@ -1155,61 +1155,15 @@ io.on('connection', (socket) => {
       return
     }
 
-    if (room.gameState !== GAME_STATES.DAY_PHASE) {
-      socket.emit('error', { message: 'Can only vote during day phase' })
-      return
-    }
-
-    const playerId = socket.id
-    const { targetId } = data
-
-    // Check if player is alive
-    if (!room.alivePlayers.has(playerId)) {
-      socket.emit('error', { message: 'Dead players cannot vote' })
-      return
-    }
-
-    // Handle vote logic
-    if (targetId === null) {
-      // Remove accusation
-      room.accusations.forEach((accusers, accusedId) => {
-        accusers.delete(playerId)
-        if (accusers.size === 0) {
-          room.accusations.delete(accusedId)
-        }
+    // Forward action to host - let host handle all game logic
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      hostSocket.emit('player-action', {
+        type: 'PLAYER_ACCUSE',
+        playerId: socket.id,
+        playerName: socket.playerName,
+        data: data
       })
-    } else {
-      // Validate target
-      if (!room.alivePlayers.has(targetId)) {
-        socket.emit('error', { message: 'Cannot vote for dead or non-existent player' })
-        return
-      }
-
-      // Remove any existing accusation by this player
-      room.accusations.forEach((accusers, accusedId) => {
-        accusers.delete(playerId)
-        if (accusers.size === 0) {
-          room.accusations.delete(accusedId)
-        }
-      })
-
-      // Add new accusation
-      if (!room.accusations.has(targetId)) {
-        room.accusations.set(targetId, new Set())
-      }
-      room.accusations.get(targetId).add(playerId)
-    }
-
-    // CRITICAL FIX: Broadcast enhanced state updates immediately
-    broadcastAccusations(room, socket.roomId);
-    
-    // ENHANCED STATE FIX: Also broadcast master game state to all clients  
-    broadcastMasterGameState(room, socket.roomId);
-
-    // Check for majority vote
-    const majorityTarget = checkMajorityVote(room)
-    if (majorityTarget) {
-      startEliminationCountdown(room, majorityTarget, socket.roomId)
     }
   })
 
@@ -1348,8 +1302,7 @@ io.on('connection', (socket) => {
 
     console.log(`🔍 JOIN DEBUG - Player ${playerName} joined room ${roomId}`);
     console.log(`🔍 JOIN DEBUG - Socket ID: ${socket.id}`);
-    console.log(`🔍 JOIN DEBUG - Room game state: ${room.gameState}`);
-    console.log(`🔍 JOIN DEBUG - alivePlayers before join:`, Array.from(room.alivePlayers));
+    console.log(`🔍 JOIN DEBUG - Room players:`, room.players.length);
 
     // Confirm join to the player with reconnect token
     socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
@@ -1358,12 +1311,6 @@ io.on('connection', (socket) => {
       playerName: playerName.trim(),
       reconnectToken: reconnectToken
     })
-
-    // If this is an active game, also send current game state immediately
-    if (room.gameState !== GAME_STATES.LOBBY) {
-      console.log(`🔍 JOIN DEBUG - Sending current game state to ${playerName} (${socket.id})`);
-      broadcastMasterGameState(room, roomId);
-    }
 
     // Forward player join to host for host-authoritative architecture
     const hostSocket = io.sockets.sockets.get(room.host)
