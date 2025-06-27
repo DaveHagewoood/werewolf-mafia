@@ -45,6 +45,7 @@ const io = new Server(httpServer, {
   }
 })
 
+
 // Store game rooms in memory (simplified for relay server)
 const gameRooms = new Map()
 
@@ -1573,11 +1574,19 @@ io.on('connection', (socket) => {
     if (player) {
       console.log(`Player ${player.name} disconnected from room ${socket.roomId}`);
       
-      // For relay server, just remove from players list and let host handle disconnections
-      const updatedPlayers = room.players.filter(p => p.id !== player.id);
-      room.players = updatedPlayers;
-      
-      console.log(`Player ${player.name} removed from room ${socket.roomId}`);
+      // Check if this is a lobby disconnection or game-phase disconnection
+      if (room.gameState === GAME_STATES.LOBBY) {
+        // In lobby: immediately remove player and broadcast update
+        console.log(`Lobby disconnection - removing ${player.name} immediately`);
+        removePlayerFromGame(room, socket.id, socket.roomId);
+        
+        // Clean up connection tracking for lobby players
+        playerConnections.delete(socket.id);
+      } else {
+        // For active game phases, use existing disconnection handling
+        console.log(`Game-phase disconnection for ${player.name} - will attempt reconnection`);
+        updatePlayerConnection(socket.id, false);
+      }
     } else {
       console.log(`Disconnected client ${socket.id} was not found in room ${socket.roomId} players`);
     }
