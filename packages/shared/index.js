@@ -258,7 +258,9 @@ export const GAME_STATES = {
   STARTING: 'starting',
   ROLE_ASSIGNMENT: 'role-assignment',
   NIGHT_PHASE: 'night-phase',
+  NIGHT_RESOLVED: 'night-resolved',
   DAY_PHASE: 'day-phase',
+  DAY_RESOLVED: 'day-resolved',
   IN_PROGRESS: 'in-progress',
   ENDED: 'ended'
 }

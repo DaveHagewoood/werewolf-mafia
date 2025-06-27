@@ -759,4 +759,65 @@ body .reconnect-message {
     padding: 0.8rem;
     margin: 1rem 0;
   }
+}
+
+/* ===== Phase Resolved Styles ===== */
+.night-resolved-container,
+.day-resolved-container {
+  background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+}
+
+.night-resolved-content,
+.day-resolved-content {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 2rem;
+  margin: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.resolution-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.elimination-result,
+.save-result,
+.no-elimination-result {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  text-align: center;
+  max-width: 500px;
+}
+
+.waiting-for-host {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 2rem;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  text-align: center;
+  max-width: 400px;
+}
+
+.waiting-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  animation: spin 2s linear infinite;
+}
+
+.waiting-for-host h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.4rem;
+  color: #e2e8f0;
+}
+
+.waiting-for-host p {
+  margin: 0;
+  font-size: 1rem;
+  color: #cbd5e0;
+  opacity: 0.9;
 } 

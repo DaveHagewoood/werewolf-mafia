@@ -1012,6 +1012,101 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
     )
   }
 
+  // Show night resolved screen (waiting for host to continue)
+  if (gameState === GAME_STATES.NIGHT_RESOLVED) {
+    return wrapWithConnectionStatus(
+      <div className="night-resolved-container">
+        <div className="night-resolved-header">
+          <h1>Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="night-resolved-content">
+          <div className="night-icon">🌙</div>
+          <h2>Night Phase Complete</h2>
+          
+          {eliminatedPlayer && (
+            <div className="elimination-notice">
+              <h3>Night Action Complete</h3>
+              <p>
+                <strong>{eliminatedPlayer.name}</strong> was eliminated by the {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'}.
+              </p>
+            </div>
+          )}
+          
+          {savedPlayer && (
+            <div className="save-notice">
+              <h3>A Life Saved!</h3>
+              <p>
+                The {selectedGameType === 'mafia' ? 'Doctor' : 'Healer'} successfully saved someone from certain death!
+              </p>
+            </div>
+          )}
+          
+          {!eliminatedPlayer && savedPlayer && (
+            <div className="no-elimination-notice">
+              <h3>No One Was Killed</h3>
+              <p>The {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} plan was thwarted by excellent medical intervention!</p>
+            </div>
+          )}
+          
+          <div className="host-continue-section">
+            <p className="continue-instruction">
+              ✋ <strong>Host:</strong> Click Continue when everyone has seen the results and you're ready to start the day phase.
+            </p>
+            <button 
+              className="continue-button"
+              onClick={() => hostGameStateManager.continueToNextPhase()}
+            >
+              Continue to Day Phase ☀️
+            </button>
+          </div>
+          {renderPauseOverlay()}
+        </div>
+      </div>
+    )
+  }
+
+  // Show day resolved screen (waiting for host to continue)
+  if (gameState === GAME_STATES.DAY_RESOLVED) {
+    return wrapWithConnectionStatus(
+      <div className="day-resolved-container">
+        <div className="day-resolved-header">
+          <h1>Werewolf Mafia</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="day-resolved-content">
+          <div className="day-icon">☀️</div>
+          <h2>Day Phase Complete</h2>
+          
+          {dayEliminatedPlayer && (
+            <div className="elimination-notice">
+              <h3>Player Eliminated</h3>
+              <p>
+                <strong>{dayEliminatedPlayer.name}</strong> was eliminated by majority vote.
+              </p>
+              <p className="mystery-text">Their role remains a mystery...</p>
+            </div>
+          )}
+          
+          <div className="host-continue-section">
+            <p className="continue-instruction">
+              ✋ <strong>Host:</strong> Click Continue when everyone has processed the elimination and you're ready to start the night phase.
+            </p>
+            <button 
+              className="continue-button"
+              onClick={() => hostGameStateManager.continueToNextPhase()}
+            >
+              Continue to Night Phase 🌙
+            </button>
+          </div>
+          {renderPauseOverlay()}
+        </div>
+      </div>
+    )
+  }
+
   // Default lobby view
   return wrapWithConnectionStatus(
     <div className="lobby-container">

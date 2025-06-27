@@ -180,4 +180,205 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+/* ===== Base Container Styles ===== */
+.lobby-container,
+.waiting-container,
+.night-container,
+.day-container,
+.game-end-container,
+.night-resolved-container,
+.day-resolved-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%);
+  display: flex;
+  flex-direction: column;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.lobby-header,
+.waiting-header,
+.night-header,
+.day-header,
+.game-end-header,
+.night-resolved-header,
+.day-resolved-header {
+  text-align: center;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lobby-content,
+.waiting-content,
+.night-content,
+.day-content,
+.game-end-content,
+.night-resolved-content,
+.day-resolved-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Header styling */
+.lobby-header h1,
+.waiting-header h1,
+.night-header h1,
+.day-header h1,
+.game-end-header h1,
+.night-resolved-header h1,
+.day-resolved-header h1 {
+  font-size: 3rem;
+  margin: 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.lobby-header h2,
+.waiting-header h2,
+.night-header h2,
+.day-header h2,
+.game-end-header h2,
+.night-resolved-header h2,
+.day-resolved-header h2 {
+  font-size: 1.5rem;
+  margin: 0.5rem 0 0 0;
+  opacity: 0.9;
+}
+
+/* ===== Phase Resolved Styles ===== */
+
+.host-continue-section {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-top: 2rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.continue-instruction {
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  color: #e5e5e5;
+}
+
+.continue-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+}
+
+.continue-button:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+}
+
+.continue-button:active {
+  transform: translateY(0);
+}
+
+/* ===== Phase Icons and Common Elements ===== */
+.night-icon,
+.day-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.elimination-notice,
+.save-notice,
+.no-elimination-notice {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.elimination-notice h3,
+.save-notice h3,
+.no-elimination-notice h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.4rem;
+}
+
+.elimination-notice p,
+.save-notice p,
+.no-elimination-notice p {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.mystery-text {
+  font-style: italic;
+  opacity: 0.8;
+  margin-top: 0.5rem !important;
+}
+
+/* ===== Spinner and Loading Elements ===== */
+.night-spinner,
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  margin: 0 auto 1rem auto;
+  animation: spin 1s linear infinite;
+}
+
+/* ===== Button Styles ===== */
+.start-game-btn,
+.auto-fill-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+  margin: 0.5rem;
+}
+
+.start-game-btn:hover,
+.auto-fill-btn:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+}
+
+.start-game-btn.disabled {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.start-game-btn.disabled:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: none;
+  box-shadow: none;
 } 

@@ -100,6 +100,7 @@ export class HostGameStateManager {
         Array.from(accusers) // Convert Set to Array for serialization
       ]),
       eliminationCountdown: this.gameState.eliminationCountdown,
+      waitingForHostContinue: this.gameState.waitingForHostContinue || false,
       winner: this.gameState.winner,
       winCondition: this.gameState.winCondition,
       
@@ -573,10 +574,13 @@ export class HostGameStateManager {
       }
     }
 
-    // Start day phase after a delay
-    setTimeout(() => {
-      this.startDayPhase();
-    }, 3000);
+    // Wait for host confirmation before starting day phase
+    this.updateGameState({
+      gameState: GAME_STATES.NIGHT_RESOLVED,
+      waitingForHostContinue: true
+    });
+    
+    console.log('Night phase resolved - waiting for host to continue to day phase');
   }
 
   startDayPhase() {
@@ -790,13 +794,35 @@ export class HostGameStateManager {
       return; // Game ended
     }
     
-    // Start next night phase after 3 seconds
-    setTimeout(() => {
-      this.startNightPhase();
-    }, 3000);
+    // Wait for host confirmation before starting next night phase
+    this.updateGameState({
+      gameState: GAME_STATES.DAY_RESOLVED,
+      waitingForHostContinue: true
+    });
+    
+    console.log('Day phase resolved - waiting for host to continue to night phase');
   }
   
   getPlayerName(playerId) {
     return this.gameState.players.find(p => p.id === playerId)?.name || 'Unknown';
+  }
+
+  // Manual phase progression methods
+  continueToNextPhase() {
+    if (this.gameState.gameState === GAME_STATES.NIGHT_RESOLVED) {
+      console.log('Host continuing from night resolved to day phase');
+      this.updateGameState({
+        waitingForHostContinue: false
+      });
+      this.startDayPhase();
+    } else if (this.gameState.gameState === GAME_STATES.DAY_RESOLVED) {
+      console.log('Host continuing from day resolved to night phase');
+      this.updateGameState({
+        waitingForHostContinue: false
+      });
+      this.startNightPhase();
+    } else {
+      console.log('Host tried to continue but not in a resolved state');
+    }
   }
 } 

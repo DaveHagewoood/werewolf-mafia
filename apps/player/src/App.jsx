@@ -30,6 +30,8 @@ function JoinRoom() {
   const [selectedTarget, setSelectedTarget] = useState(null)
   const [hasVoted, setHasVoted] = useState(false)
   const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
+  const [savedPlayer, setSavedPlayer] = useState(null)
+  const [dayEliminatedPlayer, setDayEliminatedPlayer] = useState(null)
   const [mafiaVotes, setMafiaVotes] = useState({}) // { playerId: { name, target, targetName } }
   const [consensusTimer, setConsensusTimer] = useState(null) // { targetId, targetName, timeLeft }
   const [mafiaVotesLocked, setMafiaVotesLocked] = useState(false) // Whether Mafia votes are locked
@@ -497,6 +499,43 @@ function JoinRoom() {
           }
           break;
           
+        case GAME_STATES.NIGHT_RESOLVED:
+          if (currentPlayer) {
+            console.log('🌙 NIGHT RESOLVED - Setting player role and elimination status');
+            setPlayerRole(currentPlayer.role);
+            setIsEliminated(!currentPlayer.alive);
+            setEliminatedPlayer(masterState.eliminatedPlayer);
+            setSavedPlayer(masterState.savedPlayer);
+            
+            // Set eliminationInfo for dead players
+            if (!currentPlayer.alive) {
+              setEliminationInfo({
+                id: currentPlayer.id,
+                name: currentPlayer.name,
+                role: currentPlayer.role
+              });
+            }
+          }
+          break;
+          
+        case GAME_STATES.DAY_RESOLVED:
+          if (currentPlayer) {
+            console.log('☀️ DAY RESOLVED - Setting player role and elimination status');
+            setPlayerRole(currentPlayer.role);
+            setIsEliminated(!currentPlayer.alive);
+            setDayEliminatedPlayer(masterState.dayEliminatedPlayer);
+            
+            // Set eliminationInfo for dead players
+            if (!currentPlayer.alive) {
+              setEliminationInfo({
+                id: currentPlayer.id,
+                name: currentPlayer.name,
+                role: currentPlayer.role
+              });
+            }
+          }
+          break;
+          
         case GAME_STATES.ENDED:
           setGameEndData(masterState);
           break;
@@ -894,6 +933,85 @@ function JoinRoom() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show night resolved screen (waiting for host to continue)
+  if (gameState === GAME_STATES.NIGHT_RESOLVED && playerRole) {
+    return wrapWithPauseOverlay(
+      <div className="night-container">
+        <div className="night-resolved-container">
+          <div className="night-resolved-content">
+            <div className="night-header">
+              <div className="night-icon">🌙</div>
+              <h1>Night Phase Complete</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
+
+            <div className="resolution-section">
+              {eliminatedPlayer && (
+                <div className="elimination-result">
+                  <h3>Night Action Complete</h3>
+                  <p><strong>{eliminatedPlayer.name}</strong> was eliminated during the night.</p>
+                </div>
+              )}
+              
+              {savedPlayer && (
+                <div className="save-result">
+                  <h3>A Life Saved!</h3>
+                  <p>Someone was saved from certain death!</p>
+                </div>
+              )}
+              
+              {!eliminatedPlayer && savedPlayer && (
+                <div className="no-elimination-result">
+                  <h3>No One Was Killed</h3>
+                  <p>The night passed peacefully...</p>
+                </div>
+              )}
+
+              <div className="waiting-for-host">
+                <div className="waiting-icon">⏳</div>
+                <h3>Waiting for Host</h3>
+                <p>The host will continue to the day phase when everyone is ready.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show day resolved screen (waiting for host to continue)
+  if (gameState === GAME_STATES.DAY_RESOLVED && playerRole) {
+    return wrapWithPauseOverlay(
+      <div className="day-container">
+        <div className="day-resolved-container">
+          <div className="day-resolved-content">
+            <div className="day-header">
+              <div className="day-icon">☀️</div>
+              <h1>Day Phase Complete</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
+
+            <div className="resolution-section">
+              {dayEliminatedPlayer && (
+                <div className="elimination-result">
+                  <h3>Player Eliminated</h3>
+                  <p><strong>{dayEliminatedPlayer.name}</strong> was eliminated by majority vote.</p>
+                  <p className="mystery-text">Their role remains a mystery...</p>
+                </div>
+              )}
+
+              <div className="waiting-for-host">
+                <div className="waiting-icon">⏳</div>
+                <h3>Waiting for Host</h3>
+                <p>The host will continue to the night phase when everyone is ready.</p>
+              </div>
             </div>
           </div>
         </div>
