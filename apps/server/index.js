@@ -20,11 +20,11 @@ const port = process.env.PORT || 3002
 // Configure CORS for both development and production
 const allowedOrigins = [
   // Development URLs (LOCAL TESTING MODE)
-  "https://werewolf-mafia-host.onrender.com", // Host Dev URL
-  "https://werewolf-mafia-player.onrender.com", // Player Dev URL
+  "http://localhost:3000", // Host Dev URL
+  "http://localhost:3001", // Player Dev URL
   // Production URLs (Render.com) - DISABLED FOR LOCAL TESTING
-  // "https://werewolf-mafia-host.onrender.com",
-  // "https://werewolf-mafia-player.onrender.com"
+  // "http://localhost:3000",
+  // "http://localhost:3001"
 ]
 
 // Add production URLs from environment variables (if different from default Render URLs)
@@ -309,8 +309,7 @@ function startDayPhase(room, roomId) {
     alivePlayers: room.players.filter(player => room.alivePlayers.has(player.id))
   })
   
-  // Broadcast comprehensive enhanced state for day phase
-  broadcastMasterGameState(room, roomId)
+  // NOTE: Removed broadcastMasterGameState - host will broadcast state in pure host-authoritative model
   
   console.log(`Day phase started in room ${roomId}`)
 }
@@ -338,113 +337,8 @@ function broadcastAccusations(room, roomId) {
   io.to(roomId).emit(SOCKET_EVENTS.ACCUSATIONS_UPDATE, { accusations: accusationData })
 }
 
-// NEW: Helper function to broadcast comprehensive master game state
-function broadcastMasterGameState(room, roomId) {
-  // Generate comprehensive master state (similar to GameStateManager logic)
-  const masterState = {
-    gameState: room.gameState,
-    gameType: roomGameTypes.get(roomId),
-    gamePaused: room.gamePaused || false,
-    pauseReason: room.pauseReason || null,
-    
-    // Enhanced players with comprehensive info
-    players: room.players.map(p => {
-      const role = room.playerRoles.get(p.id);
-      const isAlive = room.alivePlayers.has(p.id);
-      const hasHealed = room.healActions && room.healActions.has(p.id);
-      const hasInvestigated = room.investigationActions && room.investigationActions.has(p.id);
-      const hasVoted = room.mafiaVotes && room.mafiaVotes.has(p.id);
-      
-      // Calculate actionStatus based on game phase and role
-      let actionStatus = 'WAITING_FOR_ACTION';
-      let hasActed = false;
-      
-      if (!isAlive) {
-        actionStatus = 'ELIMINATED';
-      } else if (room.gameState === GAME_STATES.NIGHT_PHASE && role) {
-        if (role.alignment === 'evil' && hasVoted) {
-          actionStatus = 'COMPLETED';
-          hasActed = true;
-        } else if ((role.name === 'Doctor' || role.name === 'Healer') && hasHealed) {
-          actionStatus = 'COMPLETED'; 
-          hasActed = true;
-        } else if ((role.name === 'Seer' || role.name === 'Detective') && hasInvestigated) {
-          actionStatus = 'COMPLETED';
-          hasActed = true;
-        }
-      }
-      
-      // Day phase accusations
-      let hasAccused = false;
-      if (room.gameState === GAME_STATES.DAY_PHASE) {
-        room.accusations.forEach((accusers) => {
-          if (accusers.has(p.id)) {
-            hasAccused = true;
-          }
-        });
-      }
-      
-      return {
-        id: p.id,
-        name: p.name,
-        connected: p.connected,
-        role: role,
-        isReady: room.playerReadiness ? room.playerReadiness.get(p.id) || false : false,
-        alive: isAlive,
-        disconnectionInfo: p.disconnectionInfo || null,
-        
-        // Enhanced action status information
-        actionStatus: actionStatus,
-        hasActed: hasActed || hasAccused,
-        
-        // Role-specific capability flags
-        canVote: isAlive && room.gameState === GAME_STATES.DAY_PHASE,
-        canHeal: isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
-                role && (role.name === 'Doctor' || role.name === 'Healer') && !hasHealed,
-        canInvestigate: isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
-                       role && (role.name === 'Seer' || role.name === 'Detective') && !hasInvestigated,
-        canMafiaVote: isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
-                     role && role.alignment === 'evil' && !hasVoted,
-        
-        // Individual action status
-        isHealed: room.healActions && Array.from(room.healActions.values()).includes(p.id),
-        investigationResult: room.investigationResults && room.investigationResults.get(p.id) || null
-      };
-    }),
-    
-    // Phase-specific data
-    eliminatedPlayer: room.eliminatedPlayer || null,
-    savedPlayer: room.savedPlayer || null,
-    dayEliminatedPlayer: room.dayEliminatedPlayer || null,
-    accusations: formatAccusationsForClients(room),
-    eliminationCountdown: room.eliminationCountdown ? {
-      targetId: room.eliminationCountdown.targetId,
-      targetName: room.eliminationCountdown.targetName,
-      timeLeft: room.eliminationCountdown.timeLeft
-    } : null,
-    winner: room.winner || null,
-    winCondition: room.winCondition || null,
-    
-    // Night phase actions
-    mafiaVotes: room.mafiaVotes ? Array.from(room.mafiaVotes.entries()) : [],
-    mafiaVotesLocked: room.mafiaVotesLocked || false,
-    consensusTimer: room.consensusTimer || null,
-    healActions: room.healActions ? Array.from(room.healActions.entries()) : [],
-    investigationActions: room.investigationActions ? Array.from(room.investigationActions.entries()) : [],
-    investigationResults: room.investigationResults ? Array.from(room.investigationResults.entries()) : []
-  };
-
-  console.log(`🔍 BROADCAST DEBUG - Broadcasting master game state to room ${roomId}`);
-  console.log(`🔍 BROADCAST DEBUG - alivePlayers set:`, Array.from(room.alivePlayers));
-  console.log(`🔍 BROADCAST DEBUG - Players in masterState:`, masterState.players.map(p => ({
-    id: p.id,
-    name: p.name, 
-    alive: p.alive
-  })));
-  
-  // Send comprehensive state to all clients
-  io.to(roomId).emit('game-state-update', masterState);
-}
+// NOTE: Removed broadcastMasterGameState() function - pure host-authoritative architecture
+// Host now broadcasts state directly to players via HostGameStateManager
 
 // Helper function to format accusations for client compatibility
 function formatAccusationsForClients(room) {
@@ -506,8 +400,7 @@ function startEliminationCountdown(room, targetId, roomId) {
     duration: GAME_CONFIG.ELIMINATION_COUNTDOWN_TIME
   })
   
-  // Broadcast enhanced state with countdown info
-  broadcastMasterGameState(room, roomId)
+  // NOTE: Removed broadcastMasterGameState - host will broadcast state in pure host-authoritative model
   
   // Start countdown timer with periodic updates
   const countdownInterval = setInterval(() => {
@@ -525,8 +418,7 @@ function startEliminationCountdown(room, targetId, roomId) {
       clearInterval(countdownInterval)
       eliminatePlayer(room, targetId, roomId)
     } else {
-      // Broadcast updated countdown every second
-      broadcastMasterGameState(room, roomId)
+      // NOTE: Removed broadcastMasterGameState - host will broadcast state in pure host-authoritative model
     }
   }, 1000)
   
@@ -576,8 +468,7 @@ function eliminatePlayer(room, playerId, roomId) {
   // Reset accusations
   room.accusations.clear()
   
-  // Broadcast enhanced state with elimination result
-  broadcastMasterGameState(room, roomId)
+  // NOTE: Removed broadcastMasterGameState - host will broadcast state in pure host-authoritative model
   
   // Check for win conditions after elimination
   const gameEnded = checkWinConditions(room, roomId)
@@ -611,8 +502,7 @@ function startNextNightPhase(room, roomId) {
   
   console.log(`Next night phase started in room ${roomId}`)
   
-  // Broadcast updated master state with cleared elimination data
-  broadcastMasterGameState(room, roomId)
+  // NOTE: Removed broadcastMasterGameState - host will broadcast state in pure host-authoritative model
 }
 
 // Helper function to check win conditions
@@ -1038,8 +928,16 @@ io.on('connection', (socket) => {
       return
     }
     
-    // Relay state to ALL sockets in the room (including the host for UI updates)
-    io.to(roomId).emit('game-state-update', gameState)
+    // Relay state to PLAYERS ONLY (not host) - pure host-authoritative architecture
+    const room = getRoom(roomId)
+    if (room) {
+      room.players.forEach(player => {
+        const playerSocket = io.sockets.sockets.get(player.id)
+        if (playerSocket && playerSocket.id !== socket.id) { // Don't send to host
+          playerSocket.emit('game-state-update', gameState)
+        }
+      })
+    }
   })
 
   // Host sending individual message to specific player

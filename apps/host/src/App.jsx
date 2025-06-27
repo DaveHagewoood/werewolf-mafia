@@ -30,8 +30,8 @@ function GameLobby() {
   const [hostGameStateManager, setHostGameStateManager] = useState(null)
 
   // Environment-based URLs
-  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
-const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafia-player.onrender.com'
+  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
+const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001'
 
   // Preload images
   useEffect(() => {
@@ -106,7 +106,75 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
       hostSocket.emit('host-room', { roomId })
       
       // Initialize host game state manager
-      const gameStateManager = new HostGameStateManager(hostSocket, roomId)
+      // Create callback to update React state when HostGameStateManager state changes
+      const handleStateChange = (newGameState) => {
+        console.log('HostGameStateManager state changed:', newGameState.gameState);
+        
+        // Update React state from HostGameStateManager state
+        setGameState(newGameState.gameState);
+        setPlayers(newGameState.players);
+        setSelectedGameType(newGameState.gameType);
+        
+        // Update phase-specific state
+        if (newGameState.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+          const readinessData = newGameState.players.map(p => ({
+            id: p.id,
+            name: p.name,
+            ready: newGameState.playerReadiness.get(p.id) || false,
+            connected: p.connected,
+            disconnectionInfo: p.disconnectionInfo
+          }));
+          setPlayerReadiness(readinessData);
+        }
+        
+        // Update lobby state
+        if (newGameState.gameState === GAME_STATES.LOBBY) {
+          setCanStartGame(newGameState.players.length >= GAME_CONFIG.MIN_PLAYERS);
+        }
+        
+        // Update game-specific state
+        if (newGameState.eliminatedPlayer !== undefined) {
+          setEliminatedPlayer(newGameState.eliminatedPlayer);
+        }
+        if (newGameState.savedPlayer !== undefined) {
+          setSavedPlayer(newGameState.savedPlayer);
+        }
+        if (newGameState.dayEliminatedPlayer !== undefined) {
+          setDayEliminatedPlayer(newGameState.dayEliminatedPlayer);
+        }
+        if (newGameState.accusations !== undefined) {
+          // Convert accusations from HostGameStateManager format to UI format
+          const accusationsObj = {};
+          newGameState.accusations.forEach((accusers, accusedId) => {
+            const accusedPlayer = newGameState.players.find(p => p.id === accusedId);
+            const accuserNames = Array.from(accusers).map(accuserId => {
+              const accuserPlayer = newGameState.players.find(p => p.id === accuserId);
+              return accuserPlayer?.name || 'Unknown';
+            });
+            accusationsObj[accusedId] = {
+              name: accusedPlayer?.name || 'Unknown',
+              accusers: accuserNames,
+              voteCount: accusers.size
+            };
+          });
+          setAccusations(accusationsObj);
+        }
+        if (newGameState.eliminationCountdown !== undefined) {
+          setEliminationCountdown(newGameState.eliminationCountdown);
+        }
+        if (newGameState.winner !== undefined) {
+          if (newGameState.winner) {
+            setGameEndData({
+              winner: newGameState.winner,
+              winCondition: newGameState.winCondition,
+              alivePlayers: newGameState.players.filter(p => newGameState.alivePlayers.has(p.id)),
+              allPlayers: newGameState.players
+            });
+          }
+        }
+      };
+      
+      const gameStateManager = new HostGameStateManager(hostSocket, roomId, handleStateChange)
       setHostGameStateManager(gameStateManager)
       console.log('HostGameStateManager initialized')
       
@@ -258,91 +326,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
       })
     })
 
-    // Listen for player updates
-    hostSocket.on(SOCKET_EVENTS.PLAYERS_UPDATE, (data) => {
-      setPlayers(data.players)
-      setCanStartGame(data.canStart)
-    })
-
-    // Listen for readiness updates during role assignment
-    hostSocket.on(SOCKET_EVENTS.READINESS_UPDATE, (data) => {
-      setPlayerReadiness(data.players)
-    })
-
-    // Listen for night phase start
-    hostSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, (data) => {
-      setGameState(GAME_STATES.NIGHT_PHASE)
-      setEliminatedPlayer(null) // Reset for new night
-      setSavedPlayer(null) // Reset saved player for new night
-      setMessage(null) // Clear any old messages
-      console.log('Night phase started!')
-    })
-
-    // Listen for night resolution
-    hostSocket.on(SOCKET_EVENTS.NIGHT_RESOLUTION, (data) => {
-      console.log('Night resolution:', data)
-      setEliminatedPlayer(data.killedPlayer)
-      setSavedPlayer(data.savedPlayer)
-      
-      // After 3 seconds, start day phase (placeholder)
-      setTimeout(() => {
-        console.log('Starting day phase placeholder...')
-        // TODO: Implement day phase
-      }, 3000)
-    })
-
-    // Listen for day phase start
-    hostSocket.on(SOCKET_EVENTS.START_DAY_PHASE, (data) => {
-      setGameState(GAME_STATES.DAY_PHASE)
-      setAccusations({})
-      setEliminationCountdown(null)
-      setDayEliminatedPlayer(null)
-      setMessage(null) // Clear any old messages
-      console.log('Day phase started!')
-    })
-
-    // Listen for accusation updates
-    hostSocket.on(SOCKET_EVENTS.ACCUSATIONS_UPDATE, (data) => {
-      setAccusations(data.accusations)
-      console.log('Accusations updated:', data.accusations)
-    })
-
-    // Listen for elimination countdown
-    hostSocket.on(SOCKET_EVENTS.ELIMINATION_COUNTDOWN, (data) => {
-      setEliminationCountdown({
-        targetId: data.targetId,
-        targetName: data.targetName,
-        timeLeft: Math.floor(data.duration / 1000)
-      })
-      console.log('Elimination countdown started for:', data.targetName)
-    })
-
-    // Listen for countdown cancelled
-    hostSocket.on(SOCKET_EVENTS.COUNTDOWN_CANCELLED, () => {
-      setEliminationCountdown(null)
-      console.log('Elimination countdown cancelled')
-    })
-
-    // Listen for player elimination
-    hostSocket.on(SOCKET_EVENTS.PLAYER_ELIMINATED, (data) => {
-      console.log('Player eliminated during day:', data.eliminatedPlayer)
-      setDayEliminatedPlayer(data.eliminatedPlayer)
-      setEliminationCountdown(null)
-      setAccusations({})
-    })
-
-    // Listen for night action completion (legacy event)
-    hostSocket.on(SOCKET_EVENTS.NIGHT_ACTION_COMPLETE, (data) => {
-      console.log('Night action completed (legacy):', data.eliminatedPlayer)
-      setEliminatedPlayer(data.eliminatedPlayer)
-    })
-
-    // Listen for game end
-    hostSocket.on(SOCKET_EVENTS.GAME_END, (data) => {
-      console.log('Game ended:', data)
-      setGameEndData(data)
-      setGameState(GAME_STATES.ENDED)
-    })
+    // NOTE: Removed state-related event listeners - host gets state from HostGameStateManager callback
+    // This implements pure host-authoritative architecture where host is single source of truth
 
     // Listen for game type selected - update state and clear any error messages
     hostSocket.on(SOCKET_EVENTS.GAME_TYPE_SELECTED, (gameType) => {
@@ -352,79 +337,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
       setMessage(null) // Clear any error messages
     })
 
-    // Listen for master game state updates (truly host-authoritative system)
-    hostSocket.on('game-state-update', (data) => {
-      console.log('Master game state received by host:', data)
-      
-      // Host renders from the same master state as players
-      if (data.gameState) {
-        setGameState(data.gameState)
-      }
-      
-      if (data.players) {
-        setPlayers(data.players)
-        
-        // Set canStartGame based on player count and game state
-        const canStart = data.players.length >= GAME_CONFIG.MIN_PLAYERS && data.gameState === GAME_STATES.LOBBY
-        setCanStartGame(canStart)
-        
-        // For role assignment, extract playerReadiness from players
-        if (data.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-          const readinessData = data.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            ready: p.isReady,
-            connected: p.connected,
-            disconnectionInfo: p.disconnectionInfo
-          }))
-          setPlayerReadiness(readinessData)
-        }
-      }
-      
-      // Update other state from master state
-      // Only set elimination data if it exists, otherwise clear it
-      setEliminatedPlayer(data.eliminatedPlayer || null)
-      setSavedPlayer(data.savedPlayer || null)
-      if (data.dayEliminatedPlayer) {
-        setDayEliminatedPlayer(data.dayEliminatedPlayer)
-      }
-      if (data.winner) {
-        setGameEndData({
-          winner: data.winner,
-          winCondition: data.winCondition,
-          alivePlayers: data.players?.filter(p => p.alive) || [],
-          allPlayers: data.players || []
-        })
-      }
-      
-      // Convert accusations array back to object for UI
-      if (data.accusations) {
-        const accusationsObj = {}
-        data.accusations.forEach(([accusedId, accusers]) => {
-          const accusedPlayer = data.players?.find(p => p.id === accusedId)
-          // Convert accuser IDs to names
-          const accuserNames = accusers.map(accuserId => {
-            const accuserPlayer = data.players?.find(p => p.id === accuserId)
-            return accuserPlayer?.name || 'Unknown'
-          })
-          accusationsObj[accusedId] = {
-            name: accusedPlayer?.name || 'Unknown',
-            accusers: accuserNames,
-            voteCount: accusers.length
-          }
-        })
-        setAccusations(accusationsObj)
-      }
-      
-      if (data.eliminationCountdown) {
-        setEliminationCountdown(data.eliminationCountdown)
-      }
-      
-      if (data.gamePaused !== undefined) {
-        setGamePaused(data.gamePaused)
-        setPauseReason(data.pauseReason || '')
-      }
-    })
+    // NOTE: Removed game-state-update listener - host should not receive state from server
+    // Host is now the single source of truth and broadcasts state via HostGameStateManager
 
     // Listen for game pause/resume events
     hostSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
@@ -479,47 +393,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
     }
   }, [eliminationCountdown])
 
-  // Update disconnection timers during role assignment
-  useEffect(() => {
-    if (gameState === GAME_STATES.ROLE_ASSIGNMENT && playerReadiness.some(p => !p.connected)) {
-      const timer = setInterval(() => {
-        // Request updated readiness data from server to get fresh timers
-        if (socket && roomId) {
-          socket.emit('request-readiness-update', { roomId })
-        }
-      }, 1000)
-      
-      return () => clearInterval(timer)
-    }
-  }, [gameState, playerReadiness, socket, roomId])
-
-  // Update disconnection timers during active gameplay phases
-  useEffect(() => {
-    let timer
-    
-    if ((gameState === GAME_STATES.NIGHT_PHASE || gameState === GAME_STATES.DAY_PHASE)) {
-      // Check if any players are disconnected
-      const hasDisconnectedPlayers = players.some(p => !p.connected)
-      
-      if (hasDisconnectedPlayers) {
-        console.log('Starting timer updates for disconnected players during', gameState)
-        timer = setInterval(() => {
-          // Request updated player data from server to get fresh timers
-          if (socket && roomId) {
-            console.log('Requesting player update for timer refresh')
-            socket.emit('request-player-update', { roomId })
-          }
-        }, 1000)
-      }
-    }
-    
-    return () => {
-      if (timer) {
-        console.log('Clearing disconnection timer updates')
-        clearInterval(timer)
-      }
-    }
-  }, [gameState, players.map(p => p.connected).join(','), socket, roomId]) // Use connection status as dependency
+  // NOTE: Removed disconnection timer update effects - host gets all state from HostGameStateManager
+  // Server handles connection management and host receives updates via player-action events
 
   const handleStartGame = () => {
     if (canStartGame && socket && hostGameStateManager) {

@@ -1,9 +1,10 @@
 import { SOCKET_EVENTS, GameConnectionState, GAME_STATES, GAME_CONFIG, assignRoles, GAME_TYPES, ROLE_SETS } from '@werewolf-mafia/shared';
 
 export class HostGameStateManager {
-  constructor(socket, roomId) {
+  constructor(socket, roomId, onStateChange = null) {
     this.socket = socket;
     this.roomId = roomId;
+    this.onStateChange = onStateChange;
     
     // Initialize timer handles for countdown management
     this.consensusTimerHandle = null;
@@ -55,6 +56,12 @@ export class HostGameStateManager {
 
     // Broadcast updated state to players via server
     this.broadcastGameState();
+    
+    // Notify host's React components of state change
+    if (this.onStateChange) {
+      this.onStateChange(this.gameState);
+    }
+    
     return true;
   }
 

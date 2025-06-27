@@ -86,7 +86,7 @@ function JoinRoom() {
     checkWebPSupport().then(setSupportsWebP)
     
     // Environment-based server URL
-    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
     
     // Connect to Socket.IO server
     const newSocket = io(SERVER_URL, {
