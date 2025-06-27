@@ -4,6 +4,7 @@ import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
 import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport } from '@werewolf-mafia/shared'
 import { HostGameStateManager } from './HostGameStateManager'
+import './App.css'
 
 function GameLobby() {
   const [roomId, setRoomId] = useState(generateRoomId())
@@ -1015,13 +1016,13 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
   // Show night resolved screen (waiting for host to continue)
   if (gameState === GAME_STATES.NIGHT_RESOLVED) {
     return wrapWithConnectionStatus(
-      <div className="night-resolved-container">
-        <div className="night-resolved-header">
+      <div className="night-container">
+        <div className="night-header">
           <h1>Werewolf Mafia</h1>
           <h2>Room Code: {roomId}</h2>
         </div>
         
-        <div className="night-resolved-content">
+        <div className="night-content">
           <div className="night-icon">🌙</div>
           <h2>Night Phase Complete</h2>
           
@@ -1070,13 +1071,13 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
   // Show day resolved screen (waiting for host to continue)
   if (gameState === GAME_STATES.DAY_RESOLVED) {
     return wrapWithConnectionStatus(
-      <div className="day-resolved-container">
-        <div className="day-resolved-header">
+      <div className="day-container">
+        <div className="day-header">
           <h1>Werewolf Mafia</h1>
           <h2>Room Code: {roomId}</h2>
         </div>
         
-        <div className="day-resolved-content">
+        <div className="day-content">
           <div className="day-icon">☀️</div>
           <h2>Day Phase Complete</h2>
           
