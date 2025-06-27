@@ -56,7 +56,7 @@ const roomGameTypes = new Map()
 const playerConnections = new Map() // playerId -> { lastHeartbeat, reconnectTimer }
 
 // Store reconnect tokens for player reconnection
-const reconnectTokens = new Map() // token -> { playerId, roomId, playerName, expiry }
+const reconnectTokens = new Map() // token -> { playerId, roomId, playerName, createdAt }
 
 // Start listening on the configured port
 httpServer.listen(port, '0.0.0.0', (err) => {
@@ -962,6 +962,24 @@ io.on('connection', (socket) => {
     }
   })
 
+  // Host syncing critical game state for proper disconnect handling
+  socket.on('host-sync-game-phase', (data) => {
+    const { roomId, gamePhase, players } = data
+    console.log(`Host syncing game phase for room ${roomId}: ${gamePhase}`)
+    
+    if (!socket.isHost) {
+      socket.emit('error', { message: 'Only host can sync game state' })
+      return
+    }
+    
+    // Update server's room state with critical info for disconnect handling
+    const room = getRoom(roomId)
+    if (room) {
+      room.gameState = gamePhase
+      console.log(`✅ Server updated room ${roomId} state to: ${gamePhase}`)
+    }
+  })
+
   // Host sending individual message to specific player
   socket.on('host-send-to-player', (data) => {
     const { roomId, playerId, event, data: eventData } = data
@@ -1192,9 +1210,71 @@ io.on('connection', (socket) => {
       return
     }
 
-    // Check if player already exists
+    // IMMUTABLE PLAYER LIST RULE: Once game starts, no new players can join
+    if (room.gameState !== GAME_STATES.LOBBY) {
+      console.log(`🚫 Game in progress (${room.gameState}) - checking if ${playerName} can reconnect`)
+      
+      // Find existing player with exact name match
+      const existingPlayer = room.players.find(p => p.name.toLowerCase() === playerName.toLowerCase())
+      
+      if (!existingPlayer) {
+        // NEW PLAYER attempting to join active game - REJECT
+        console.log(`❌ New player "${playerName}" attempted to join active game - REJECTED`)
+        socket.emit('error', { 
+          message: 'Game already in progress. Only existing players can reconnect.',
+          gameInProgress: true
+        })
+        return
+      }
+      
+      // EXISTING PLAYER found - check if they're actually disconnected
+      console.log(`   Player "${playerName}" connection status: connected=${existingPlayer.connected}`)
+      if (existingPlayer.connected !== false) {
+        // Player is currently connected - REJECT takeover attempt
+        console.log(`❌ Player "${playerName}" is already connected - REJECTING takeover attempt`)
+        socket.emit('error', { 
+          message: 'That player is already connected to the game.',
+          playerAlreadyConnected: true
+        })
+        return
+      }
+      
+      // DISCONNECTED PLAYER attempting to reconnect - ALLOW
+      console.log(`✅ Disconnected player "${playerName}" attempting to reconnect (was disconnected: ${existingPlayer.connected === false})`)
+      
+      // Generate a reconnect token for this existing disconnected player
+      const reconnectToken = `reconnect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      reconnectTokens.set(reconnectToken, {
+        playerId: existingPlayer.id,
+        playerName: playerName.trim(),
+        roomId: roomId,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + (5 * 60 * 1000) // 5 minutes
+      })
+      
+      // Clean up expired tokens
+      setTimeout(() => {
+        reconnectTokens.delete(reconnectToken)
+        console.log(`🧹 Cleaned up expired reconnect token for ${playerName}`)
+      }, 5 * 60 * 1000)
+      
+      console.log(`Generated reconnect token for ${playerName}: ${reconnectToken.substring(0, 16)}...`)
+      
+      // Send reconnect token to player so they can use PLAYER_RECONNECT flow
+      socket.emit(SOCKET_EVENTS.PLAYER_JOINED, {
+        success: true,
+        playerId: existingPlayer.id,
+        playerName: playerName.trim(),
+        reconnectToken: reconnectToken,
+        isReconnection: true
+      })
+      return
+    }
+    
+    // LOBBY STATE: Check for name collisions in lobby
     const existingPlayer = room.players.find(p => p.name.toLowerCase() === playerName.toLowerCase())
     if (existingPlayer) {
+      // In lobby, name collision is an error
       socket.emit('error', { message: 'Player name already taken' })
       return
     }
@@ -1232,16 +1312,15 @@ io.on('connection', (socket) => {
     socket.isHost = false
 
     // Initialize connection tracking
-    const reconnectToken = initializePlayerConnection(socket.id, roomId, playerName.trim())
+    initializePlayerConnection(socket.id, roomId, playerName.trim())
 
     console.log(`Player ${playerName} joined room ${roomId}`);
 
-    // Confirm join to the player with reconnect token
+    // Confirm join to the player (no reconnect token needed for new joins)
     socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
       success: true, 
       playerId: socket.id,
-      playerName: playerName.trim(),
-      reconnectToken: reconnectToken
+      playerName: playerName.trim()
     })
 
     // Forward player join to host for host-authoritative architecture
@@ -1298,17 +1377,21 @@ io.on('connection', (socket) => {
     }
   })
   
-  // Handle player reconnection attempts
+  // Handle player reconnection attempts (token-based)
   socket.on(SOCKET_EVENTS.PLAYER_RECONNECT, (data) => {
     const { reconnectToken, roomId } = data
     
-    console.log(`Reconnection attempt: token=${reconnectToken?.substring(0, 8)}..., roomId=${roomId}`)
+    console.log(`🔄 Reconnection attempt: token=${reconnectToken?.substring(0, 8)}..., roomId=${roomId}`)
     
     // Validate reconnect token
     const tokenData = reconnectTokens.get(reconnectToken)
-    if (!tokenData || tokenData.roomId !== roomId) {
-      console.log(`Invalid reconnect token: tokenData=${!!tokenData}, roomMatch=${tokenData?.roomId === roomId}`)
-      socket.emit('error', { message: 'Invalid reconnect token - please refresh and rejoin' })
+    if (!tokenData || tokenData.roomId !== roomId || Date.now() > tokenData.expiresAt) {
+      console.log(`❌ Invalid/expired reconnect token: tokenData=${!!tokenData}, roomMatch=${tokenData?.roomId === roomId}, expired=${tokenData ? Date.now() > tokenData.expiresAt : 'N/A'}`)
+      // Clean up expired token
+      if (tokenData && Date.now() > tokenData.expiresAt) {
+        reconnectTokens.delete(reconnectToken)
+      }
+      socket.emit('error', { message: 'That name belongs to someone else or they already reconnected' })
       return
     }
     
@@ -1316,12 +1399,12 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.id === tokenData.playerId)
     
     if (!player) {
-      console.log(`Player not found: playerId=${tokenData.playerId}, players in room=${room.players.map(p => p.id)}`)
-      socket.emit('error', { message: 'Player not found in room - please refresh and rejoin' })
+      console.log(`❌ Player not found: playerId=${tokenData.playerId}`)
+      socket.emit('error', { message: 'That name belongs to someone else or they already reconnected' })
       return
     }
     
-    console.log(`Reconnecting player ${player.name} (${tokenData.playerId} -> ${socket.id}) in room ${roomId}, current game state: ${room.gameState}`)
+    console.log(`✅ Reconnecting player ${player.name} (${tokenData.playerId} -> ${socket.id})`)
     
     // Update socket connection
     const oldSocketId = tokenData.playerId
@@ -1329,36 +1412,6 @@ io.on('connection', (socket) => {
     
     // Update player ID to new socket ID
     player.id = newSocketId
-    
-    // Update room data structures
-    if (room.playerRoles.has(oldSocketId)) {
-      room.playerRoles.set(newSocketId, room.playerRoles.get(oldSocketId))
-      room.playerRoles.delete(oldSocketId)
-    }
-    if (room.playerReadiness.has(oldSocketId)) {
-      room.playerReadiness.set(newSocketId, room.playerReadiness.get(oldSocketId))
-      room.playerReadiness.delete(oldSocketId)
-    }
-    if (room.alivePlayers.has(oldSocketId)) {
-      room.alivePlayers.delete(oldSocketId)
-      room.alivePlayers.add(newSocketId)
-    }
-    if (room.mafiaVotes.has(oldSocketId)) {
-      room.mafiaVotes.set(newSocketId, room.mafiaVotes.get(oldSocketId))
-      room.mafiaVotes.delete(oldSocketId)
-    }
-    
-    // Update accusations
-    room.accusations.forEach((accusers, accusedId) => {
-      if (accusers.has(oldSocketId)) {
-        accusers.delete(oldSocketId)
-        accusers.add(newSocketId)
-      }
-    })
-    if (room.accusations.has(oldSocketId)) {
-      room.accusations.set(newSocketId, room.accusations.get(oldSocketId))
-      room.accusations.delete(oldSocketId)
-    }
     
     // Update connection tracking
     const connectionData = playerConnections.get(oldSocketId)
@@ -1386,10 +1439,9 @@ io.on('connection', (socket) => {
     // Mark as connected
     updatePlayerConnection(newSocketId, true)
     
-    console.log(`Player ${player.name} reconnected to room ${roomId} (${oldSocketId} -> ${newSocketId})`)
+    console.log(`🎉 Player ${player.name} reconnected successfully: ${oldSocketId} -> ${newSocketId}`)
     
-    // For pure host-authoritative architecture, only send basic reconnection success
-    // Host will broadcast complete game state to the player
+    // Send reconnection success
     socket.emit(SOCKET_EVENTS.PLAYER_RECONNECTED, {
       success: true,
       playerId: newSocketId,
@@ -1407,7 +1459,9 @@ io.on('connection', (socket) => {
         playerName: player.name,
         data: { 
           reason: 'active_game_reconnect',
-          gameState: room.gameState
+          gameState: room.gameState,
+          oldPlayerId: oldSocketId,
+          newPlayerId: newSocketId
         }
       })
     }
@@ -1495,6 +1549,10 @@ io.on('connection', (socket) => {
             }
           });
         }
+        
+        // Mark player as disconnected in server's room structure
+        player.connected = false;
+        console.log(`🔌 Marked ${player.name} as disconnected in server room structure`);
         
         // Update connection status but let host handle pause decisions
         updatePlayerConnection(socket.id, false);

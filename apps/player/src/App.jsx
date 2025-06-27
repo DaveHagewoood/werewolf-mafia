@@ -64,7 +64,8 @@ function JoinRoom() {
   const [pauseReason, setPauseReason] = useState('');
 
   // New state for reconnection attempts
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0)
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
@@ -137,9 +138,10 @@ function JoinRoom() {
 
     // Get room info when component loads
     if (roomId) {
-      newSocket.on('connect', () => {
-        newSocket.emit(SOCKET_EVENTS.GET_ROOM_INFO, { roomId })
-      })
+              newSocket.on('connect', () => {
+          console.log('Socket connected, requesting room info')
+          newSocket.emit(SOCKET_EVENTS.GET_ROOM_INFO, { roomId })
+        })
     }
 
     // Handle heartbeat
@@ -208,25 +210,43 @@ function JoinRoom() {
     newSocket.on(SOCKET_EVENTS.PLAYER_JOINED, (data) => {
       console.log('=== PLAYER_JOINED EVENT RECEIVED ===')
       console.log('Full event data received:', JSON.stringify(data, null, 2))
-      console.log('data.playerId type:', typeof data.playerId, 'value:', data.playerId)
-      console.log('data.playerName type:', typeof data.playerName, 'value:', data.playerName)
-      console.log('data.success:', data.success)
-      console.log('data.reconnectToken:', data.reconnectToken ? 'present' : 'missing')
       
-      if (!data.playerId) {
-        console.error('ERROR: playerId is missing from PLAYER_JOINED event!', data)
-      }
-      if (!data.playerName) {
-        console.error('ERROR: playerName is missing from PLAYER_JOINED event!', data)
+      if (!data.playerId || !data.playerName) {
+        console.error('ERROR: Missing required data in PLAYER_JOINED event!', data)
+        return
       }
       
+      // Check if this is a reconnection attempt
+      if (data.reconnectToken && data.isReconnection && !isReconnecting) {
+        console.log('🔄 RECONNECTION DETECTED - using reconnect token')
+        console.log('📤 Sending PLAYER_RECONNECT with token:', data.reconnectToken.substring(0, 16) + '...')
+        
+        setIsReconnecting(true)
+        setPlayerId(data.playerId)
+        setPlayerName(data.playerName)
+        setIsJoining(false)
+        
+        // Immediately send reconnect with the token
+        newSocket.emit(SOCKET_EVENTS.PLAYER_RECONNECT, {
+          reconnectToken: data.reconnectToken,
+          roomId: roomId
+        })
+        
+        // Set waiting state for reconnection process
+        setIsWaiting(true)
+        setMessage({ type: 'info', text: 'Reconnecting to game...' })
+        console.log('🔄 Reconnection process initiated')
+        return
+      }
+      
+      // Normal player join
       setPlayerId(data.playerId)
       setPlayerName(data.playerName)
       setIsJoining(false)
       setIsWaiting(true)
-      setMessage(null) // Clear any old messages
+      setMessage(null)
+      
       console.log('=== PLAYER_JOINED PROCESSING COMPLETE ===')
-      console.log('State after setting - playerId:', data.playerId, 'playerName:', data.playerName)
     })
 
     // Listen for game start (legacy - now handled by role assignment)
@@ -251,6 +271,27 @@ function JoinRoom() {
       setError(null);
       setMessage({ type: 'success', text: 'Game resumed!' });
       setTimeout(() => setMessage(null), 3000);
+    });
+
+
+
+    // Handle reconnection success
+    newSocket.on(SOCKET_EVENTS.PLAYER_RECONNECTED, (data) => {
+      console.log('🎉 RECONNECTION SUCCESSFUL:', data);
+      setConnectionState(PlayerConnectionState.CONNECTED);
+      setReconnectAttempts(0);
+      setIsReconnecting(false);
+      setIsWaiting(true); // Stay in waiting state to receive game state
+      setError(null);
+      setMessage({ type: 'success', text: 'Successfully reconnected to game!' });
+      setTimeout(() => setMessage(null), 3000);
+      
+      // Update player state from reconnection
+      if (data.playerId && data.playerName) {
+        setPlayerId(data.playerId)
+        setPlayerName(data.playerName)
+        console.log('✅ Updated player state from reconnection:', data.playerId)
+      }
     });
 
     newSocket.on('disconnect', (reason) => {
@@ -281,9 +322,23 @@ function JoinRoom() {
 
     // Handle errors
     newSocket.on('error', (data) => {
-      setError(data.message);
+      console.log('❌ Error received from server:', data);
+      
+      // Provide specific error messages for different scenarios
+      if (data.gameInProgress) {
+        setError('Game is already in progress. Only existing players can reconnect.');
+      } else if (data.playerAlreadyConnected) {
+        setError('That player is already connected. Please choose a different name or wait for them to disconnect.');
+      } else {
+        setError(data.message);
+      }
+      
       if (isJoining) {
         setIsJoining(false);
+      }
+      if (isReconnecting) {
+        setIsReconnecting(false);
+        setIsWaiting(false);
       }
     });
 
@@ -1457,6 +1512,8 @@ function JoinRoom() {
                 onClick={() => {
                   setError('')
                   setIsWaiting(false)
+                  setIsReconnecting(false)
+                  setIsJoining(false)
                 }}
               >
                 Try Again

@@ -245,7 +245,14 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               break
               
             case 'PLAYER_RECONNECT':
-              gameStateManager.handlePlayerReconnect(action.playerId, action.playerName)
+              console.log(`🔄 Host handling PLAYER_RECONNECT: ${action.playerName}`)
+              console.log(`   New ID: ${action.playerId}`)
+              console.log(`   Old ID: ${action.data?.oldPlayerId}`)
+              gameStateManager.handlePlayerReconnect(
+                action.playerId, 
+                action.playerName, 
+                action.data?.oldPlayerId
+              )
               break
               
             default:
