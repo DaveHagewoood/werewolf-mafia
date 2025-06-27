@@ -4,6 +4,11 @@ export class HostGameStateManager {
   constructor(socket, roomId) {
     this.socket = socket;
     this.roomId = roomId;
+    
+    // Initialize timer handles for countdown management
+    this.consensusTimerHandle = null;
+    this.eliminationTimer = null;
+    
     this.gameState = {
       connectionState: GameConnectionState.ACTIVE,
       gameState: GAME_STATES.LOBBY,
@@ -352,6 +357,11 @@ export class HostGameStateManager {
   }
 
   startNightPhase() {
+    // Check for inevitable victory before starting night phase
+    if (this.checkInevitableVictory()) {
+      return; // Game ended due to inevitable victory
+    }
+    
     this.updateGameState({
       gameState: GAME_STATES.NIGHT_PHASE,
       mafiaVotes: new Map(),
@@ -392,6 +402,13 @@ export class HostGameStateManager {
 
     let updates = { mafiaVotes: newMafiaVotes };
 
+    // Clear existing consensus timer if any
+    if (this.consensusTimerHandle) {
+      clearTimeout(this.consensusTimerHandle);
+      this.consensusTimerHandle = null;
+      updates.consensusTimer = null;
+    }
+
     // Check for consensus
     const consensusTarget = this.checkMafiaVoteConsensus(newMafiaVotes);
     if (consensusTarget) {
@@ -404,8 +421,9 @@ export class HostGameStateManager {
         timeLeft: Math.floor(GAME_CONFIG.MAFIA_VOTE_CONSENSUS_TIME / 1000)
       };
       
-      // Start consensus timer
-      setTimeout(() => {
+      // Start consensus timer and store handle
+      this.consensusTimerHandle = setTimeout(() => {
+        this.consensusTimerHandle = null;
         this.updateGameState({
           mafiaVotesLocked: true,
           consensusTimer: null
@@ -604,6 +622,30 @@ export class HostGameStateManager {
     return false;
   }
 
+  checkInevitableVictory() {
+    const alivePlayers = this.getAlivePlayers();
+    const aliveRoles = alivePlayers.map(player => this.gameState.playerRoles.get(player.id));
+    
+    const aliveMafia = aliveRoles.filter(role => role.alignment === 'evil').length;
+    const aliveGood = aliveRoles.filter(role => role.alignment === 'good').length;
+    
+    console.log(`🔍 Checking inevitable victory: ${aliveMafia} werewolves, ${aliveGood} villagers`);
+    
+    // If werewolves have parity or superiority entering night phase, they win immediately
+    // During night phase, werewolves can kill and achieve/maintain parity
+    if (aliveMafia >= aliveGood && aliveMafia > 0) {
+      console.log(`🎯 INEVITABLE VICTORY: Werewolves have parity/superiority (${aliveMafia} vs ${aliveGood}) entering night phase`);
+      this.updateGameState({
+        gameState: GAME_STATES.ENDED,
+        winner: 'mafia',
+        winCondition: 'Werewolves achieved parity - victory is inevitable'
+      });
+      return true;
+    }
+    
+    return false; // No inevitable victory, continue game
+  }
+
   // Day Phase Voting Logic
   processDayVote(playerId, targetId) {
     console.log(`🗳️ Player ${playerId} voting for ${targetId || 'no target'}`);
@@ -668,6 +710,18 @@ export class HostGameStateManager {
         this.startEliminationCountdown(accusedId);
         return;
       }
+    }
+    
+    // No majority found - cancel existing countdown if any
+    if (this.gameState.eliminationCountdown) {
+      console.log(`❌ MAJORITY LOST! Cancelling elimination countdown`);
+      if (this.eliminationTimer) {
+        clearInterval(this.eliminationTimer);
+        this.eliminationTimer = null;
+      }
+      this.updateGameState({
+        eliminationCountdown: null
+      });
     }
     
     console.log('⏳ No consensus yet, voting continues...');
