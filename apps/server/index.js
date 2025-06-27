@@ -20,8 +20,8 @@ const port = process.env.PORT || 3002
 // Configure CORS for both development and production
 const allowedOrigins = [
   // Development URLs (LOCAL TESTING MODE)
-  "http://localhost:3000", // Host Dev URL
-  "http://localhost:3001", // Player Dev URL
+  "https://werewolf-mafia-host.onrender.com", // Host Dev URL
+  "https://werewolf-mafia-player.onrender.com", // Player Dev URL
   // Production URLs (Render.com) - DISABLED FOR LOCAL TESTING
   // "https://werewolf-mafia-host.onrender.com",
   // "https://werewolf-mafia-player.onrender.com"
