@@ -346,13 +346,16 @@ export class HostGameStateManager {
     
     console.log(`Player ${playerId} is ready in room ${this.roomId}`);
     
-    // Check if all players are ready
-    const allReady = this.gameState.players.every(player => {
+    // Check if all CONNECTED players are ready (ignore disconnected players)
+    const connectedPlayers = this.gameState.players.filter(player => player.connected !== false);
+    const allConnectedReady = connectedPlayers.every(player => {
       return newReadiness.get(player.id) === true;
     });
     
-    if (allReady) {
-      console.log(`All players ready in room ${this.roomId}, starting night phase`);
+    console.log(`Role assignment progress: ${connectedPlayers.filter(p => newReadiness.get(p.id)).length}/${connectedPlayers.length} connected players ready`);
+    
+    if (allConnectedReady) {
+      console.log(`All connected players ready in room ${this.roomId}, starting night phase`);
       this.startNightPhase();
     }
   }

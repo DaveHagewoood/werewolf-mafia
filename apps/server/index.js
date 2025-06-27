@@ -804,6 +804,11 @@ function updatePlayerConnection(playerId, isConnected) {
       connection.reconnectTimer = null;
     }
     connection.lastHeartbeat = Date.now();
+    
+    // Notify host of player reconnection during role assignment
+    if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+      broadcastReadinessUpdate(room.id);
+    }
     return;
   }
 
@@ -822,6 +827,11 @@ function updatePlayerConnection(playerId, isConnected) {
   connection.reconnectTimer = setTimeout(() => {
     handlePlayerTimeout(playerId);
   }, CONNECTION_CONFIG.RECONNECT_TIMEOUT);
+
+  // Notify host of player connection status change
+  if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+    broadcastReadinessUpdate(room.id);
+  }
 
   // Update game state for active phases
   checkGameStateAfterConnectionChange(room.id);
