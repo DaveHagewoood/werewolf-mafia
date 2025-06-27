@@ -859,17 +859,27 @@ function removePlayerFromGame(room, playerId, roomId) {
   // Remove from players array
   room.players = room.players.filter(p => p.id !== playerId);
   
-  // Clean up any player data
-  room.playerReadiness.delete(playerId);
-  room.playerRoles.delete(playerId);
-  room.alivePlayers.delete(playerId);
-  room.mafiaVotes.delete(playerId);
+  // Clean up any player data - safely handle undefined properties (lobby rooms don't have all game state)
+  if (room.playerReadiness) {
+    room.playerReadiness.delete(playerId);
+  }
+  if (room.playerRoles) {
+    room.playerRoles.delete(playerId);
+  }
+  if (room.alivePlayers) {
+    room.alivePlayers.delete(playerId);
+  }
+  if (room.mafiaVotes) {
+    room.mafiaVotes.delete(playerId);
+  }
   
-  // Clean up accusations
-  room.accusations.delete(playerId);
-  room.accusations.forEach(accusers => {
-    accusers.delete(playerId);
-  });
+  // Clean up accusations - safely handle undefined
+  if (room.accusations) {
+    room.accusations.delete(playerId);
+    room.accusations.forEach(accusers => {
+      accusers.delete(playerId);
+    });
+  }
   
   // Clean up connection tracking
   playerConnections.delete(playerId);
@@ -1485,11 +1495,22 @@ io.on('connection', (socket) => {
       
       // Check if this is a lobby disconnection or game-phase disconnection
       if (room.gameState === GAME_STATES.LOBBY) {
-        // In lobby: immediately remove player and broadcast update
-        console.log(`Lobby disconnection - removing ${player.name} immediately`);
-        removePlayerFromGame(room, socket.id, socket.roomId);
+        // In lobby: forward disconnection to host for pure host-authoritative architecture
+        console.log(`Lobby disconnection - notifying host about ${player.name}`);
         
-        // Clean up connection tracking for lobby players
+        // Forward disconnection to host as player action
+        const hostSocket = io.sockets.sockets.get(room.host);
+        if (hostSocket) {
+          hostSocket.emit('player-action', {
+            type: 'PLAYER_DISCONNECT',
+            playerId: socket.id,
+            playerName: player.name,
+            data: { reason: 'lobby_disconnect' }
+          });
+        }
+        
+        // Remove from server's room structure (but let host handle state updates)
+        room.players = room.players.filter(p => p.id !== socket.id);
         playerConnections.delete(socket.id);
       } else {
         // For active game phases, use existing disconnection handling

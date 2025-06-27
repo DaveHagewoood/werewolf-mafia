@@ -208,6 +208,10 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               gameStateManager.processDayVote(action.playerId, action.data.targetId)
               break
               
+            case 'PLAYER_DISCONNECT':
+              gameStateManager.removePlayer(action.playerId)
+              break
+              
             default:
               console.log('Unknown player action type:', action.type)
           }
