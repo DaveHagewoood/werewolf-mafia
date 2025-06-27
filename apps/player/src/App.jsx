@@ -537,8 +537,15 @@ function JoinRoom() {
           break;
           
         case GAME_STATES.ENDED:
-          // Don't overwrite gameEndData - it should already be set by GAME_END event
-          // which has the correct structure with alivePlayers and allPlayers
+          // Create gameEndData from masterState (similar to how host does it)
+          if (masterState.winner) {
+            setGameEndData({
+              winner: masterState.winner,
+              winCondition: masterState.winCondition,
+              alivePlayers: masterState.players?.filter(p => p.alive) || [],
+              allPlayers: masterState.players || []
+            });
+          }
           break;
       }
     };
