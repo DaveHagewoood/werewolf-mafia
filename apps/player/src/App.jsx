@@ -537,7 +537,8 @@ function JoinRoom() {
           break;
           
         case GAME_STATES.ENDED:
-          setGameEndData(masterState);
+          // Don't overwrite gameEndData - it should already be set by GAME_END event
+          // which has the correct structure with alivePlayers and allPlayers
           break;
       }
     };
