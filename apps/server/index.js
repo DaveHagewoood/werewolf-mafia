@@ -1005,7 +1005,8 @@ io.on('connection', (socket) => {
         id: roomId,
         host: null,
         players: [],
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        gameState: GAME_STATES.LOBBY
       }
       gameRooms.set(roomId, room)
     }
