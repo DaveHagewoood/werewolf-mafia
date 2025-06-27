@@ -172,6 +172,29 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
             });
           }
         }
+        
+        // Handle pause/resume state changes
+        if (newGameState.gamePaused !== undefined) {
+          console.log(`🔄 Host UI updating pause state: ${newGameState.gamePaused}, reason: ${newGameState.pauseReason}`);
+          setGamePaused(newGameState.gamePaused);
+          setPauseReason(newGameState.pauseReason || '');
+          
+          // Show pause/resume messages
+          if (newGameState.gamePaused && newGameState.pauseReason) {
+            console.log(`⏸️ Setting pause message: ${newGameState.pauseReason}`);
+            setMessage({ 
+              type: 'warning', 
+              text: newGameState.pauseReason 
+            });
+          } else if (!newGameState.gamePaused && !newGameState.pauseReason) {
+            console.log(`▶️ Setting resume message`);
+            setMessage({ 
+              type: 'success', 
+              text: 'Game resumed - all players reconnected!' 
+            });
+            setTimeout(() => setMessage(null), 3000);
+          }
+        }
       };
       
       const gameStateManager = new HostGameStateManager(hostSocket, roomId, handleStateChange)
@@ -209,7 +232,20 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               break
               
             case 'PLAYER_DISCONNECT':
-              gameStateManager.removePlayer(action.playerId)
+              console.log(`🎯 Host received PLAYER_DISCONNECT: ${action.playerName}, reason: ${action.data.reason}`);
+              if (action.data.reason === 'lobby_disconnect') {
+                // Lobby disconnections - remove player completely
+                console.log(`📤 Removing player from lobby: ${action.playerName}`);
+                gameStateManager.removePlayer(action.playerId)
+              } else {
+                // Active game disconnections - pause and wait for reconnect
+                console.log(`⏸️ Handling active game disconnect: ${action.playerName} during ${action.data.gameState}`);
+                gameStateManager.handlePlayerDisconnect(action.playerId, action.playerName, action.data.gameState)
+              }
+              break
+              
+            case 'PLAYER_RECONNECT':
+              gameStateManager.handlePlayerReconnect(action.playerId, action.playerName)
               break
               
             default:
@@ -344,24 +380,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
     // NOTE: Removed game-state-update listener - host should not receive state from server
     // Host is now the single source of truth and broadcasts state via HostGameStateManager
 
-    // Listen for game pause/resume events
-    hostSocket.on(SOCKET_EVENTS.GAME_PAUSED, (data) => {
-      console.log('Game paused:', data.reason)
-      setGamePaused(true)
-      setPauseReason(data.reason)
-      setMessage({ 
-        type: 'warning', 
-        text: `Game paused: ${data.reason}. ${data.connectedPlayers}/${data.totalPlayers} players connected.` 
-      })
-    })
-
-    hostSocket.on(SOCKET_EVENTS.GAME_RESUMED, () => {
-      console.log('Game resumed')
-      setGamePaused(false)
-      setPauseReason('')
-      setMessage({ type: 'success', text: 'Game resumed! All players reconnected.' })
-      setTimeout(() => setMessage(null), 3000)
-    })
+    // NOTE: Removed server pause/resume listeners - host now controls pause/resume via HostGameStateManager
+    // Pure host-authoritative architecture where host manages all game state including pause/resume
 
     // Listen for player disconnections
     hostSocket.on(SOCKET_EVENTS.PLAYER_DISCONNECTED, (data) => {

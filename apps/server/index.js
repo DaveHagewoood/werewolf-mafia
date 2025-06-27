@@ -695,9 +695,23 @@ function updatePlayerConnection(playerId, isConnected) {
     }
     connection.lastHeartbeat = Date.now();
     
-    // Notify host of player reconnection during role assignment
+    // Notify host of player reconnection
     if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
       broadcastReadinessUpdate(room.id);
+    } else if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
+      // For active game phases, notify host of reconnection
+      const hostSocket = io.sockets.sockets.get(room.host);
+      if (hostSocket) {
+        hostSocket.emit('player-action', {
+          type: 'PLAYER_RECONNECT',
+          playerId: playerId,
+          playerName: player.name,
+          data: { 
+            reason: 'active_game_reconnect',
+            gameState: room.gameState
+          }
+        });
+      }
     }
     return;
   }
@@ -723,8 +737,7 @@ function updatePlayerConnection(playerId, isConnected) {
     broadcastReadinessUpdate(room.id);
   }
 
-  // Update game state for active phases
-  checkGameStateAfterConnectionChange(room.id);
+  // NOTE: Removed checkGameStateAfterConnectionChange() - host now controls pause/resume in pure host-authoritative architecture
 }
 
 function handlePlayerTimeout(playerId) {
@@ -757,8 +770,7 @@ function handlePlayerTimeout(playerId) {
     permanent: true
   });
   
-  // Check if game should end due to disconnections
-  checkGameStateAfterConnectionChange(room.id);
+  // NOTE: Removed checkGameStateAfterConnectionChange() - host now controls pause/resume decisions
 }
 
 function isPlayerConnectionAlive(playerId) {
@@ -1376,73 +1388,27 @@ io.on('connection', (socket) => {
     
     console.log(`Player ${player.name} reconnected to room ${roomId} (${oldSocketId} -> ${newSocketId})`)
     
-    // Send reconnection success with current game state
-    const gameState = {
-      gameState: room.gameState,
+    // For pure host-authoritative architecture, only send basic reconnection success
+    // Host will broadcast complete game state to the player
+    socket.emit(SOCKET_EVENTS.PLAYER_RECONNECTED, {
+      success: true,
       playerId: newSocketId,
       playerName: player.name,
-      isEliminated: !room.alivePlayers.has(newSocketId),
-      reconnectToken: reconnectToken
-    }
+      reconnectToken: reconnectToken,
+      message: 'Reconnected successfully - receiving game state from host...'
+    })
     
-    // Add role information if game is active
-    if (room.gameState !== GAME_STATES.LOBBY) {
-      gameState.role = room.playerRoles.get(newSocketId)
-    }
-    
-    console.log(`Sending reconnection data to ${player.name}:`, gameState)
-    socket.emit(SOCKET_EVENTS.PLAYER_RECONNECTED, gameState)
-    
-    // Send current game state data based on phase
-    if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-      // For role assignment, send the role information again
-      const role = room.playerRoles.get(newSocketId)
-      if (role) {
-        socket.emit(SOCKET_EVENTS.ROLE_ASSIGNED, {
-          role: role,
-          playerName: player.name
-        })
-        console.log(`Re-sent role ${role.name} to reconnected player ${player.name}`)
-      }
-      
-      // Send current readiness state to the reconnecting player
-      const isReady = room.playerReadiness.get(newSocketId) || false
-      socket.emit('readiness-state', { isReady })
-      console.log(`Restored readiness state for ${player.name}: ${isReady}`)
-      
-      broadcastReadinessUpdate(roomId)
-    } else if (room.gameState === GAME_STATES.NIGHT_PHASE) {
-      // Send appropriate night phase data
-      const role = room.playerRoles.get(newSocketId)
-      if (role?.alignment === 'evil') {
-        const aliveNonMafiaPlayers = getAliveNonMafiaPlayers(room)
-        socket.emit(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, {
-          targets: aliveNonMafiaPlayers.map(p => ({ id: p.id, name: p.name }))
-        })
-        broadcastMafiaVotes(room)
-      } else if (role?.name === 'Doctor' || role?.name === 'Protector') {
-        const allAlivePlayers = room.players.filter(p => room.alivePlayers.has(p.id))
-        socket.emit(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, {
-          targets: allAlivePlayers.map(p => ({ id: p.id, name: p.name }))
-        })
-      } else if (role?.name === 'Seer' || role?.name === 'Investigator') {
-        const allAlivePlayers = room.players.filter(p => room.alivePlayers.has(p.id) && p.id !== newSocketId)
-        socket.emit(SOCKET_EVENTS.BEGIN_SEER_ACTION, {
-          targets: allAlivePlayers.map(p => ({ id: p.id, name: p.name }))
-        })
-      }
-    } else if (room.gameState === GAME_STATES.DAY_PHASE) {
-      const alivePlayers = room.players.filter(p => room.alivePlayers.has(p.id))
-      socket.emit(SOCKET_EVENTS.START_DAY_PHASE, { alivePlayers })
-      broadcastAccusations(room, roomId)
-    }
-    
-    // Send game paused status if applicable
-    if (room.gamePaused) {
-      socket.emit(SOCKET_EVENTS.GAME_PAUSED, {
-        reason: room.pauseReason,
-        connectedPlayers: room.players.filter(p => p.connected).length,
-        totalPlayers: room.players.length
+    // Notify host of the reconnection so it can send proper state
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket && room.gameState !== GAME_STATES.LOBBY) {
+      hostSocket.emit('player-action', {
+        type: 'PLAYER_RECONNECT',
+        playerId: newSocketId,
+        playerName: player.name,
+        data: { 
+          reason: 'active_game_reconnect',
+          gameState: room.gameState
+        }
       })
     }
   })
@@ -1513,8 +1479,24 @@ io.on('connection', (socket) => {
         room.players = room.players.filter(p => p.id !== socket.id);
         playerConnections.delete(socket.id);
       } else {
-        // For active game phases, use existing disconnection handling
-        console.log(`Game-phase disconnection for ${player.name} - will attempt reconnection`);
+        // For active game phases, forward disconnection to host for pure host-authoritative architecture
+        console.log(`Game-phase disconnection for ${player.name} - notifying host`);
+        
+        // Forward disconnection to host as player action
+        const hostSocket = io.sockets.sockets.get(room.host);
+        if (hostSocket) {
+          hostSocket.emit('player-action', {
+            type: 'PLAYER_DISCONNECT',
+            playerId: socket.id,
+            playerName: player.name,
+            data: { 
+              reason: 'active_game_disconnect',
+              gameState: room.gameState
+            }
+          });
+        }
+        
+        // Update connection status but let host handle pause decisions
         updatePlayerConnection(socket.id, false);
       }
     } else {

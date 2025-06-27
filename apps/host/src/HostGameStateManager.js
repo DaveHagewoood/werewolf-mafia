@@ -23,6 +23,7 @@ export class HostGameStateManager {
       reconnectingPlayers: new Set(),
       gamePaused: false,
       pauseReason: null,
+      disconnectedPlayer: null,
       eliminatedPlayer: null,
       savedPlayer: null,
       eliminationCountdown: null,
@@ -285,6 +286,79 @@ export class HostGameStateManager {
       playerReadiness: newPlayerReadiness,
       alivePlayers: newAlivePlayers,
       mafiaVotes: newMafiaVotes
+    });
+  }
+
+  // Handle player disconnection during active gameplay
+  handlePlayerDisconnect(playerId, playerName, gamePhase) {
+    console.log(`🔌 Player ${playerName} disconnected during ${gamePhase}`);
+    console.log(`🔍 Current game state: ${this.gameState.gameState}`);
+    console.log(`🔍 Is active game phase: ${this.isActiveGamePhase()}`);
+    
+    // Check if this is an active game phase that requires pausing
+    if (this.isActiveGamePhase()) {
+      console.log(`✅ Active game phase detected - proceeding with pause`);
+      
+      // Mark player as disconnected
+      const updatedPlayers = this.gameState.players.map(p => 
+        p.id === playerId ? { ...p, connected: false } : p
+      );
+      
+      console.log(`🔄 Updating game state to paused...`);
+      this.updateGameState({
+        players: updatedPlayers,
+        gamePaused: true,
+        pauseReason: `Waiting for ${playerName} to reconnect...`,
+        disconnectedPlayer: { id: playerId, name: playerName }
+      });
+      
+      console.log(`⏸️ Game paused waiting for ${playerName} to reconnect`);
+      console.log(`🔍 Updated game state - paused: ${this.gameState.gamePaused}, reason: ${this.gameState.pauseReason}`);
+    } else {
+      console.log(`❌ Not an active game phase - no pause needed`);
+    }
+  }
+
+  // Handle player reconnection during active gameplay  
+  handlePlayerReconnect(playerId, playerName) {
+    console.log(`🔌 Player ${playerName} reconnected`);
+    
+    // Mark player as connected
+    const updatedPlayers = this.gameState.players.map(p => 
+      p.id === playerId ? { ...p, connected: true } : p
+    );
+    
+    // Check if we can resume the game
+    const allConnected = updatedPlayers.every(p => p.connected);
+    
+    this.updateGameState({
+      players: updatedPlayers,
+      gamePaused: !allConnected,
+      pauseReason: allConnected ? null : this.gameState.pauseReason,
+      disconnectedPlayer: allConnected ? null : this.gameState.disconnectedPlayer
+    });
+    
+    if (allConnected) {
+      console.log(`▶️ Game resumed - all players reconnected`);
+    }
+  }
+
+  // Check if current game state requires disconnection management
+  isActiveGamePhase() {
+    return this.gameState.gameState !== GAME_STATES.LOBBY && 
+           this.gameState.gameState !== GAME_STATES.ENDED;
+  }
+
+  // End game due to permanent disconnection
+  endGameDueToDisconnection(playerName) {
+    console.log(`🛑 Ending game due to permanent disconnection: ${playerName}`);
+    
+    this.updateGameState({
+      gameState: GAME_STATES.ENDED,
+      winner: null,
+      winCondition: `Game ended - ${playerName} could not reconnect`,
+      gamePaused: false,
+      pauseReason: null
     });
   }
 
