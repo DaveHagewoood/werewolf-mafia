@@ -509,35 +509,25 @@ body .reconnect-message {
 
 /* Eliminated Player Screen */
 .eliminated-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #2d3436 0%, #000000 100%);
-  padding: 2rem;
-  color: white;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .eliminated-content {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 3rem;
+  background: linear-gradient(135deg, #2d3436 0%, #000000 100%);
   border-radius: 1.5rem;
-  text-align: center;
-  max-width: 90%;
-  width: 600px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  color: white;
+  text-align: center;
+  padding: 2rem;
   animation: fadeIn 0.5s ease;
 }
 
 .eliminated-header {
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .death-icon {
@@ -567,7 +557,7 @@ body .reconnect-message {
 }
 
 .player-info {
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .player-info h2 {
