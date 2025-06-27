@@ -20,11 +20,11 @@ const port = process.env.PORT || 3002
 // Configure CORS for both development and production
 const allowedOrigins = [
   // Development URLs (LOCAL TESTING MODE)
-  "http://localhost:3000", // Host Dev URL
-  "http://localhost:3001", // Player Dev URL
+  "https://werewolf-mafia-host.onrender.com", // Host Dev URL
+  "https://werewolf-mafia-player.onrender.com", // Player Dev URL
   // Production URLs (Render.com) - DISABLED FOR LOCAL TESTING
-  // "http://localhost:3000",
-  // "http://localhost:3001"
+  // "https://werewolf-mafia-host.onrender.com",
+  // "https://werewolf-mafia-player.onrender.com"
 ]
 
 // Add production URLs from environment variables (if different from default Render URLs)
@@ -629,38 +629,23 @@ function broadcastPlayersUpdate(roomId) {
 }
 
 // Helper function to broadcast readiness updates to host
+// NOTE: In pure host-authoritative architecture, server doesn't manage readiness state
 function broadcastReadinessUpdate(roomId) {
   const room = getRoom(roomId)
-  const now = Date.now()
+  if (!room) return
   
-  const readinessData = room.players.map(player => {
-    const connectionData = playerConnections.get(player.id)
-    let disconnectionInfo = null
-    
-    if (!player.connected && connectionData && connectionData.disconnectedAt) {
-      const disconnectedFor = now - connectionData.disconnectedAt
-      const timeLeft = Math.max(0, CONNECTION_CONFIG.RECONNECT_GRACE_PERIOD - disconnectedFor)
-      
-      disconnectionInfo = {
-        disconnectedFor: Math.floor(disconnectedFor / 1000),
-        timeLeft: Math.floor(timeLeft / 1000),
-        hasExpired: timeLeft <= 0
-      }
-    }
-    
-    return {
-      id: player.id,
-      name: player.name,
-      ready: room.playerReadiness.get(player.id) || false,
-      connected: player.connected,
-      disconnectionInfo: disconnectionInfo
-    }
-  })
+  console.log(`⚠️ WARNING: broadcastReadinessUpdate called but server doesn't manage readiness state in pure host-authoritative architecture`)
+  console.log(`Room ${roomId} - This should be handled by the host`)
   
-  // Send to host only
+  // In pure host-authoritative architecture, the server doesn't have playerReadiness
+  // The host manages all readiness state and broadcasts it directly
+  // This function should not be called, but we're keeping it safe to prevent crashes
+  
+  // Just notify the host that something changed, but don't try to access readiness data
   const hostSocket = io.sockets.sockets.get(room.host)
   if (hostSocket) {
-    hostSocket.emit(SOCKET_EVENTS.READINESS_UPDATE, { players: readinessData })
+    console.log(`Notifying host that players may have changed for room ${roomId}`)
+    // The host should handle its own readiness updates
   }
 }
 
@@ -695,10 +680,8 @@ function updatePlayerConnection(playerId, isConnected) {
     }
     connection.lastHeartbeat = Date.now();
     
-    // Notify host of player reconnection
-    if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-      broadcastReadinessUpdate(room.id);
-    } else if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
+    // Notify host of player reconnection for any non-lobby, non-ended phase
+    if (room.gameState !== GAME_STATES.LOBBY && room.gameState !== GAME_STATES.ENDED) {
       // For active game phases, notify host of reconnection
       const hostSocket = io.sockets.sockets.get(room.host);
       if (hostSocket) {
@@ -732,11 +715,7 @@ function updatePlayerConnection(playerId, isConnected) {
     handlePlayerTimeout(playerId);
   }, CONNECTION_CONFIG.RECONNECT_TIMEOUT);
 
-  // Notify host of player connection status change
-  if (room.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
-    broadcastReadinessUpdate(room.id);
-  }
-
+  // NOTE: Removed broadcastReadinessUpdate() - host now controls readiness state in pure host-authoritative architecture
   // NOTE: Removed checkGameStateAfterConnectionChange() - host now controls pause/resume in pure host-authoritative architecture
 }
 
@@ -1468,15 +1447,17 @@ io.on('connection', (socket) => {
   })
   
   // Host requests updated readiness data (for live timer updates)
+  // NOTE: Removed in pure host-authoritative architecture - host manages its own readiness state
   socket.on('request-readiness-update', (data) => {
     if (!socket.isHost) {
       return // Only hosts can request this
     }
     
-    const { roomId } = data
-    if (roomId) {
-      broadcastReadinessUpdate(roomId)
-    }
+    console.log(`⚠️ WARNING: request-readiness-update called but server doesn't manage readiness in pure host-authoritative architecture`)
+    console.log(`Host should manage its own readiness state and updates`)
+    
+    // In pure host-authoritative architecture, the host manages all readiness state
+    // The server doesn't need to broadcast readiness updates
   })
 
   // Host requests updated player data (for live timer updates during gameplay)

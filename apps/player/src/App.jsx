@@ -87,7 +87,7 @@ function JoinRoom() {
     checkWebPSupport().then(setSupportsWebP)
     
     // Environment-based server URL
-    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
     
     // Connect to Socket.IO server
     const newSocket = io(SERVER_URL, {
@@ -186,10 +186,22 @@ function JoinRoom() {
 
     // Listen for room info
     newSocket.on(SOCKET_EVENTS.ROOM_INFO, (data) => {
-      console.log('Room info received:', data)
+      console.log('📋 Room info received:', {
+        gameType: data.gameType,
+        availableImages: data.availableImages?.length || 0,
+        defaultImage: data.defaultImage
+      })
+      
       setGameType(data.gameType)
       setAvailableImages(data.availableImages)
       setCurrentProfileImage(data.defaultImage)
+      
+      // Clear any loading errors now that we have the data
+      if (error && error.includes('Loading character images')) {
+        setError(null)
+      }
+      
+      console.log('✅ Profile selection ready with', data.availableImages?.length || 0, 'images')
       
       // If this was an auto-join, automatically join now
       const urlParams = new URLSearchParams(window.location.search)
@@ -197,6 +209,7 @@ function JoinRoom() {
       const shouldAutoJoin = urlParams.get('autoJoin') === 'true'
       
       if (shouldAutoJoin && autoJoinPlayerName && !isJoining) {
+        console.log('🚀 Auto-joining with', autoJoinPlayerName)
         setIsJoining(true)
         newSocket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
           roomId: roomId,
@@ -225,6 +238,9 @@ function JoinRoom() {
         setPlayerId(data.playerId)
         setPlayerName(data.playerName)
         setIsJoining(false)
+        
+        // Clear the join form state since we're reconnecting
+        setError(null)
         
         // Immediately send reconnect with the token
         newSocket.emit(SOCKET_EVENTS.PLAYER_RECONNECT, {
@@ -666,6 +682,12 @@ function JoinRoom() {
       return
     }
 
+    // Check if we have available images loaded
+    if (!availableImages || availableImages.length === 0) {
+      setError('Loading character images... Please wait a moment and try again.')
+      return
+    }
+
     if (!currentProfileImage) {
       setError('Please select a character image')
       return
@@ -683,6 +705,7 @@ function JoinRoom() {
     console.log('playerName:', playerName.trim())
     console.log('roomId:', roomId)
     console.log('profileImage:', currentProfileImage)
+    console.log('availableImages:', availableImages?.length || 0, 'images')
     console.log('socket connected:', socket.connected)
     console.log('socket id:', socket.id)
 
@@ -1578,54 +1601,66 @@ function JoinRoom() {
                 />
               </div>
 
-              {gameType && availableImages.length > 0 && (
-                <div className="form-group character-selection">
-                  <label>Choose Your Character</label>
-                  
-                  {/* Current Selection Preview */}
-                  {currentProfileImage && (
-                    <div className="current-selection">
-                      <div className="current-avatar">
-                        <img 
-                          src={getProfileImageUrl(gameType, currentProfileImage, supportsWebP)} 
-                          alt="Current selection"
-                          className="selected-profile-image"
-                          onError={(e) => {
-                            if (supportsWebP && e.target.src.includes('.webp')) {
-                              e.target.src = getProfileImageUrl(gameType, currentProfileImage, false)
-                            }
-                          }}
-                        />
+              {/* Character Selection */}
+              <div className="form-group character-selection">
+                <label>Choose Your Character</label>
+                
+                {gameType && availableImages.length > 0 ? (
+                  <>
+                    {/* Current Selection Preview */}
+                    {currentProfileImage && (
+                      <div className="current-selection">
+                        <div className="current-avatar">
+                          <img 
+                            src={getProfileImageUrl(gameType, currentProfileImage, supportsWebP)} 
+                            alt="Current selection"
+                            className="selected-profile-image"
+                            onError={(e) => {
+                              if (supportsWebP && e.target.src.includes('.webp')) {
+                                e.target.src = getProfileImageUrl(gameType, currentProfileImage, false)
+                              }
+                            }}
+                          />
+                        </div>
+                        <p className="selection-name">
+                          {currentProfileImage?.replace(/\.(jpg|jpeg|png|gif)$/i, '').replace(/_/g, ' ')}
+                        </p>
                       </div>
-                      <p className="selection-name">
-                        {currentProfileImage?.replace(/\.(jpg|jpeg|png|gif)$/i, '').replace(/_/g, ' ')}
-                      </p>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Character Grid */}
-                  <div className="profile-grid">
-                    {availableImages.map(imageName => (
-                      <div 
-                        key={imageName}
-                        className={`profile-option ${currentProfileImage === imageName ? 'selected' : ''}`}
-                        onClick={() => setCurrentProfileImage(imageName)}
-                      >
-                        <img 
-                          src={getProfileImageUrl(gameType, imageName, supportsWebP)} 
-                          alt={`Character ${imageName}`}
-                          className="profile-option-image"
-                          onError={(e) => {
-                            if (supportsWebP && e.target.src.includes('.webp')) {
-                              e.target.src = getProfileImageUrl(gameType, imageName, false)
-                            }
-                          }}
-                        />
-                      </div>
-                    ))}
+                    {/* Character Grid */}
+                    <div className="profile-grid">
+                      {availableImages.map(imageName => (
+                        <div 
+                          key={imageName}
+                          className={`profile-option ${currentProfileImage === imageName ? 'selected' : ''}`}
+                          onClick={() => setCurrentProfileImage(imageName)}
+                        >
+                          <img 
+                            src={getProfileImageUrl(gameType, imageName, supportsWebP)} 
+                            alt={`Character ${imageName}`}
+                            className="profile-option-image"
+                            onError={(e) => {
+                              if (supportsWebP && e.target.src.includes('.webp')) {
+                                e.target.src = getProfileImageUrl(gameType, imageName, false)
+                              }
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="profile-loading">
+                    <div className="spinner"></div>
+                    <p>Loading character images...</p>
+                    <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+                      Game Type: {gameType || 'Loading...'}<br />
+                      Available Images: {availableImages?.length || 0}
+                    </p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
               
               {error && <div className="error-message">{error}</div>}
               

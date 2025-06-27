@@ -1,78 +1,112 @@
-# Werewolf Mafia Game Documentation
+# Werewolf Mafia Game - Documentation
 
-Welcome to the documentation for the Werewolf Mafia multiplayer game project.
+## Architecture Status: Pure Host-Authoritative ✅
 
-## 📁 Documentation Index
+This project implements a **pure host-authoritative architecture** where:
+- **Host** is the single source of truth for all game state
+- **Server** acts as a pure relay for communications
+- **Players** receive state updates only from host (via server relay)
+- **No circular state loops** or backwards flow from server to host
 
-### Architecture & Design
-- **[State-Based Architecture](./STATE_BASED_ARCHITECTURE.md)** - Comprehensive documentation of the state-based architecture implementation, including design goals, progress, and technical details.
-- **[Pure State Implementation Plan](./PURE_STATE_IMPLEMENTATION_PLAN.md)** - Step-by-step plan for implementing pure state-based architecture with incremental changes.
+## Quick Start
 
-### Technical Reference
-- **[API Reference](./API_REFERENCE.md)** - Complete reference for server events, client events, and state structures.
+### Local Development (Recommended)
+```bash
+# Terminal 1 - Server
+cd apps/server && npm start
 
-### Development
-- **[Project Rules](../.cursor/rules/PROJECT_RULES.md)** - Essential development rules and guidelines (READ FIRST!)
-- **[Testing Guide](./TESTING_GUIDE.md)** - Testing strategies, test cases, and quality assurance procedures.
-- **[Deployment Guide](./DEPLOYMENT_GUIDE.md)** - Step-by-step deployment instructions for different environments.
+# Terminal 2 - Host
+cd apps/host && npm run dev
 
-## 🎯 Project Overview
+# Terminal 3 - Player
+cd apps/player && npm run dev
+```
 
-The Werewolf Mafia game is a multiplayer social deduction game built with:
-- **Frontend**: React + Vite for both host and player applications
-- **Backend**: Node.js + Socket.IO for real-time communication
-- **Architecture**: State-based system with centralized game state management
+**URLs:**
+- **Server**: `localhost:3002`
+- **Host**: `localhost:3000`  
+- **Player**: `localhost:3001`
 
-## 🏗️ Architecture Summary
+## Recent Fixes ✅
 
-The game uses a **state-based architecture** where:
-- **Host App**: Authoritative game controller with full state visibility
-- **Player Apps**: Viewing clients that receive state updates
-- **Server**: Centralized GameStateManager handling all state transitions
-- **Communication**: Real-time WebSocket connections via Socket.IO
+### Disconnection/Reconnection System
+- **Lobby Disconnections**: Players are immediately removed when they disconnect
+- **Active Game Disconnections**: Game pauses when players disconnect, resumes when they reconnect
+- **Refresh During Game**: Players can refresh their browser and reconnect seamlessly with full state
+- **Reconnection Tokens**: Automatic secure reconnection for existing players
 
-## 🚀 Quick Start
+### Connection Management
+- **"Try Again" Button**: Now works properly for reconnection attempts
+- **Infinite Loop Prevention**: Fixed reconnection loops that could occur
+- **State Synchronization**: Server knows current game phase for proper disconnect handling
 
-1. **Development Setup**: See `../DEV-SETUP.md`
-2. **Architecture Understanding**: Read `STATE_BASED_ARCHITECTURE.md`
-3. **API Integration**: Reference `API_REFERENCE.md`
-4. **Testing**: Follow `TESTING_GUIDE.md`
+## Game Rules
 
-## 📋 Current Status
+### Active Game Rule
+Once the game starts (role confirmation phase until player death/game end):
+- **If a player disconnects**: Game pauses immediately
+- **Player can reconnect**: Game resumes automatically when all players return
+- **Player can't return**: Host can end the game prematurely
+- **Seamless reconnection**: Players retain their role, alive status, and game progress
 
-### ✅ Completed
-- Enhanced GameStateManager implementation
-- State-based voting system
-- Host-player state synchronization
-- Reconnection handling improvements
+### Lobby Rule  
+- **Player disconnects in lobby**: Immediately removed from player list
+- **Host can start game**: Only when all players are connected and ready
 
-### 🔄 In Progress
-- Enhanced reconnection system with 90-second timeout
-- State persistence and recovery
-- Performance optimization
+## Documentation
 
-### 📅 Planned
-- Comprehensive test suite
-- Advanced reconnection features
-- Game analytics and logging
-- UI/UX improvements
+### Architecture & Implementation
+- **[Pure State Implementation Plan](./PURE_STATE_IMPLEMENTATION_PLAN.md)** - Technical implementation details
+- **[State-Based Architecture](./STATE_BASED_ARCHITECTURE.md)** - Architecture philosophy and design
+- **[Progress Summary](./PROGRESS_SUMMARY.md)** - Latest accomplishments and status
+- **[API Reference](./API_REFERENCE.md)** - Complete API documentation
 
-## 🤝 Contributing
+## Testing Disconnection Scenarios
 
-When contributing to this project:
-1. Update relevant documentation in this folder
-2. Follow the state-based architecture principles
-3. Ensure backward compatibility during transitions
-4. Add comprehensive error handling
+### Test 1: Lobby Disconnection
+1. Create game room (host)
+2. Have player join
+3. Player closes browser tab
+4. Verify player is immediately removed from lobby
+5. Host can start game with remaining players
 
-## 📞 Support
+### Test 2: Active Game Reconnection
+1. Start game and progress to night phase
+2. Player refreshes browser during night phase
+3. Verify game pauses with "Player disconnected" message
+4. Player rejoins same room with same name
+5. Verify player reconnects with correct role and alive status
+6. Verify game resumes automatically
 
-For technical questions or issues:
-1. Check the relevant documentation file
-2. Review the architecture documentation
-3. Examine the test cases for examples
+### Test 3: Multiple Disconnections
+1. Start game with 4+ players
+2. Have 2 players disconnect simultaneously
+3. Verify game pauses
+4. Have players reconnect one by one
+5. Verify game resumes when all players return
+
+## Current Status
+
+✅ **Production Ready**: Pure host-authoritative architecture implemented
+✅ **Disconnection System**: Complete lobby and active game disconnect handling  
+✅ **Reconnection System**: Seamless reconnection with state preservation
+✅ **Local Development**: Optimized for fast iteration cycles
+✅ **Documentation**: Comprehensive architecture and implementation docs
+
+## Architecture Benefits
+
+### For Developers
+- **Single Source of Truth**: Host controls all game logic
+- **Simple Debugging**: No circular state loops to debug
+- **Predictable Flow**: Host → Server → Players (one direction)
+- **Fast Iteration**: Local development setup
+
+### For Players
+- **Reliable Reconnection**: Can refresh browser without losing progress
+- **Fair Gameplay**: Host controls prevent cheating
+- **Immediate Feedback**: Lobby disconnections handled instantly
+- **Game Continuity**: Active games pause/resume properly
 
 ---
 
-**Last Updated**: [Current Date]
-**Maintained By**: Development Team 
+**Next Steps**: Continue with final testing and performance optimization. 

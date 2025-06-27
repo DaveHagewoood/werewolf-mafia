@@ -296,6 +296,23 @@ export class HostGameStateManager {
     });
   }
 
+  // Helper method to generate pause reason based on current disconnected players
+  generatePauseReason(players) {
+    const disconnectedPlayers = players.filter(p => p.connected === false);
+    
+    if (disconnectedPlayers.length === 0) {
+      return null;
+    } else if (disconnectedPlayers.length === 1) {
+      return `Waiting for ${disconnectedPlayers[0].name} to reconnect...`;
+    } else if (disconnectedPlayers.length === 2) {
+      return `Waiting for ${disconnectedPlayers[0].name} and ${disconnectedPlayers[1].name} to reconnect...`;
+    } else {
+      const names = disconnectedPlayers.map(p => p.name);
+      const lastPlayer = names.pop();
+      return `Waiting for ${names.join(', ')}, and ${lastPlayer} to reconnect...`;
+    }
+  }
+
   // Handle player disconnection during active gameplay
   handlePlayerDisconnect(playerId, playerName, gamePhase) {
     console.log(`🔌 Player ${playerName} disconnected during ${gamePhase}`);
@@ -313,15 +330,18 @@ export class HostGameStateManager {
       
       console.log(`🔌 Marked ${playerName} as disconnected in host game state`);
       
+      // Generate pause reason that includes all disconnected players
+      const pauseReason = this.generatePauseReason(updatedPlayers);
+      
       console.log(`🔄 Updating game state to paused...`);
       this.updateGameState({
         players: updatedPlayers,
         gamePaused: true,
-        pauseReason: `Waiting for ${playerName} to reconnect...`,
+        pauseReason: pauseReason,
         disconnectedPlayer: { id: playerId, name: playerName }
       });
       
-      console.log(`⏸️ Game paused waiting for ${playerName} to reconnect`);
+      console.log(`⏸️ Game paused: ${pauseReason}`);
       console.log(`🔍 Updated game state - paused: ${this.gameState.gamePaused}, reason: ${this.gameState.pauseReason}`);
     } else {
       console.log(`❌ Not an active game phase - no pause needed`);
@@ -426,13 +446,16 @@ export class HostGameStateManager {
     const allConnected = updatedPlayers.every(p => p.connected);
     
     updates.gamePaused = !allConnected;
-    updates.pauseReason = allConnected ? null : this.gameState.pauseReason;
+    // Update pause reason to reflect current state of disconnected players
+    updates.pauseReason = allConnected ? null : this.generatePauseReason(updatedPlayers);
     updates.disconnectedPlayer = allConnected ? null : this.gameState.disconnectedPlayer;
     
     this.updateGameState(updates);
     
     if (allConnected) {
       console.log(`▶️ Game resumed - all players reconnected`);
+    } else {
+      console.log(`⏸️ Game still paused: ${updates.pauseReason}`);
     }
     
     console.log(`✅ Player ${playerName} successfully reconnected and game state updated`);
