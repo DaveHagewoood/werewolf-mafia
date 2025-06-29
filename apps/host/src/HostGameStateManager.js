@@ -607,15 +607,15 @@ export class HostGameStateManager {
     const targetPlayer = this.gameState.players.find(p => p.id === targetId);
     const targetRole = this.gameState.playerRoles.get(targetId);
     
-    let resultMessage;
-    if (targetRole?.alignment === 'evil') {
-      resultMessage = `${targetPlayer?.name} appears to be aligned with evil.`;
-    } else {
-      resultMessage = `${targetPlayer?.name} appears innocent... for now.`;
-    }
+    // Store structured result instead of just a string message
+    const resultData = {
+      targetId: targetId,
+      targetName: targetPlayer?.name || 'Unknown',
+      alignment: targetRole?.alignment || 'unknown'
+    };
     
     const currentResults = new Map(this.gameState.investigationResults);
-    currentResults.set(playerId, resultMessage);
+    currentResults.set(playerId, resultData);
     
     const currentInvestigationActions = new Map(this.gameState.investigationActions);
     currentInvestigationActions.set(playerId, targetId);

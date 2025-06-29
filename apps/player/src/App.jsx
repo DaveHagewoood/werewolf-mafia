@@ -2222,7 +2222,7 @@ function SessionPlayer() {
   }
 
   const handleSeerInvestigate = (targetId) => {
-    if (!socket) return
+    if (!socket || selectedInvestigation) return // Prevent multiple investigations
     
     console.log('🔍 Seer investigate:', targetId)
     socket.emit(SOCKET_EVENTS.SEER_INVESTIGATE, { targetId })
@@ -2648,6 +2648,7 @@ function SessionPlayer() {
                       key={target.id}
                       className={`target-btn ${selectedInvestigation === target.id ? 'selected' : ''}`}
                       onClick={() => handleSeerInvestigate(target.id)}
+                      disabled={!!selectedInvestigation}
                     >
                       <span className="target-name">{target.name}</span>
                       {selectedInvestigation === target.id && <span className="vote-indicator">✓ Investigating</span>}
@@ -2655,10 +2656,10 @@ function SessionPlayer() {
                   ))}
                 </div>
 
-                {selectedInvestigation && (
+                {selectedInvestigation && !investigationResult && (
                   <div className="investigate-confirmation">
                     <p>🔍 You are investigating <strong>{investigateTargets.find(t => t.id === selectedInvestigation)?.name}</strong></p>
-                    <small>You will learn their alignment when the night ends.</small>
+                    <small>Your mystical vision is revealing their true nature...</small>
                   </div>
                 )}
 
@@ -2671,6 +2672,7 @@ function SessionPlayer() {
                         {investigationResult.alignment === 'good' ? 'Villagers 😇' : 'Evil Forces 😈'}
                       </span>
                     </p>
+                    <small>Your investigation is complete for this night.</small>
                   </div>
                 )}
               </div>
