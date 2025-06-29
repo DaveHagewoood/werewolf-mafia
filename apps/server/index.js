@@ -12,7 +12,9 @@ import {
   PROFILE_IMAGES, 
   getProfileImageUrl, 
   assignRoles, 
-  CONNECTION_CONFIG
+  generateSessionToken,
+  isSessionTokenValid,
+  SESSION_CONFIG
 } from '@werewolf-mafia/shared'
 const httpServer = createServer()
 const port = process.env.PORT || 3002
@@ -20,12 +22,13 @@ const port = process.env.PORT || 3002
 // Configure CORS for both development and production
 const allowedOrigins = [
   // Development URLs (LOCAL TESTING MODE)
-  "https://werewolf-mafia-host.onrender.com", // Host Dev URL
-  "https://werewolf-mafia-player.onrender.com", // Player Dev URL
+  "http://localhost:3000", // Host Dev URL
+  "http://localhost:3001", // Player Dev URL
   // Production URLs (Render.com) - DISABLED FOR LOCAL TESTING
-  // "https://werewolf-mafia-host.onrender.com",
-  // "https://werewolf-mafia-player.onrender.com"
+  // "http://localhost:3000",
+  // "http://localhost:3001"
 ]
+
 
 // Add production URLs from environment variables (if different from default Render URLs)
 if (process.env.HOST_URL && !allowedOrigins.includes(process.env.HOST_URL)) {
@@ -52,11 +55,79 @@ const gameRooms = new Map()
 // Store game types for each room
 const roomGameTypes = new Map()
 
-// Store player connection data
-const playerConnections = new Map() // playerId -> { lastHeartbeat, reconnectTimer }
+// Store session data for players (NEW)
+const playerSessions = new Map() // sessionToken -> { playerId, roomId, playerName, createdAt }
+const socketSessions = new Map() // socketId -> sessionToken
 
-// Store reconnect tokens for player reconnection
-const reconnectTokens = new Map() // token -> { playerId, roomId, playerName, createdAt }
+// Session management utilities (NEW)
+function createPlayerSession(roomId, playerId, playerName) {
+  const sessionToken = generateSessionToken()
+  const sessionData = {
+    playerId,
+    roomId,
+    playerName,
+    createdAt: Date.now()
+  }
+  
+  playerSessions.set(sessionToken, sessionData)
+  console.log(`📝 Created session ${sessionToken.substring(0, 8)}... for ${playerName} in room ${roomId}`)
+  console.log(`📊 Total sessions in memory: ${playerSessions.size}`)
+  
+  return sessionToken
+}
+
+function authenticateSession(socket, sessionToken) {
+  console.log(`🔍 Authenticating session: ${sessionToken?.substring(0, 8)}...`)
+  console.log(`📊 Available sessions: ${playerSessions.size}`)
+  
+  const sessionData = playerSessions.get(sessionToken)
+  
+  if (!sessionData) {
+    console.log(`❌ Session token not found in memory: ${sessionToken?.substring(0, 8)}...`)
+    return false
+  }
+  
+  if (!isSessionTokenValid(sessionData)) {
+    console.log(`❌ Session token expired: ${sessionToken?.substring(0, 8)}...`)
+    console.log(`   Created: ${new Date(sessionData.createdAt)}, Age: ${Date.now() - sessionData.createdAt}ms`)
+    return false
+  }
+  
+  console.log(`✅ Session data found: ${sessionData.playerName} in room ${sessionData.roomId}`)
+  
+  // Update socket mapping
+  socketSessions.set(socket.id, sessionToken)
+  
+  // Update session with new socket ID
+  const oldPlayerId = sessionData.playerId
+  sessionData.playerId = socket.id
+  playerSessions.set(sessionToken, sessionData)
+  
+  console.log(`✅ Session authenticated: ${sessionData.playerName} (${oldPlayerId} -> ${socket.id})`)
+  return sessionData
+}
+
+function cleanupExpiredSessions() {
+  const now = Date.now()
+  const expiredTokens = []
+  
+  playerSessions.forEach((sessionData, token) => {
+    if (!isSessionTokenValid(sessionData)) {
+      expiredTokens.push(token)
+    }
+  })
+  
+  expiredTokens.forEach(token => {
+    playerSessions.delete(token)
+  })
+  
+  if (expiredTokens.length > 0) {
+    console.log(`🧹 Cleaned up ${expiredTokens.length} expired sessions`)
+  }
+}
+
+// Run session cleanup every hour
+setInterval(cleanupExpiredSessions, 60 * 60 * 1000)
 
 // Start listening on the configured port
 httpServer.listen(port, '0.0.0.0', (err) => {
@@ -172,27 +243,7 @@ function checkMafiaVoteConsensusWithVotes(mafiaVotes, room) {
 }
 
 // Helper function to check night phase progression when players disconnect
-function checkNightPhaseProgression(room, roomId) {
-  console.log(`Checking night phase progression in room ${roomId}`)
-  
-  // Check connected players
-  const connectedPercentage = getConnectedPlayerPercentage(roomId)
-  const shouldPause = connectedPercentage < CONNECTION_CONFIG.MIN_CONNECTED_PERCENTAGE
-  
-  console.log(`Connected percentage: ${connectedPercentage}, should pause: ${shouldPause}`)
-  
-  if (shouldPause && !room.gamePaused) {
-    // Pause the game due to disconnections
-    pauseGame(roomId, 'Key players disconnected during night phase')
-    console.log(`Game paused in room ${roomId} due to night phase disconnections`)
-  } else if (!shouldPause && room.gamePaused) {
-    // Resume the game if enough players reconnected
-    resumeGame(roomId)
-    console.log(`Game resumed in room ${roomId} - players reconnected`)
-  }
-  
-  // Don't auto-skip actions - wait for players to reconnect or game to be invalidated
-}
+// DISABLED: Old connection management - replaced with session system
 
 // Helper function to check if night phase is complete
 function checkNightCompletion(room, roomId) {
@@ -922,7 +973,7 @@ io.on('connection', (socket) => {
   // Host broadcasting state to players
   socket.on('host-broadcast-state', (data) => {
     const { roomId, gameState } = data
-    console.log(`Host broadcasting state for room ${roomId}`)
+    console.log(`Host broadcasting state for room ${roomId}`, 'gameState:', gameState?.gameState)
     
     if (!socket.isHost) {
       socket.emit('error', { message: 'Only host can broadcast state' })
@@ -935,9 +986,11 @@ io.on('connection', (socket) => {
       room.players.forEach(player => {
         const playerSocket = io.sockets.sockets.get(player.id)
         if (playerSocket && playerSocket.id !== socket.id) { // Don't send to host
-          playerSocket.emit('game-state-update', gameState)
+          console.log(`📡 Sending game state to ${player.name} (${player.id}):`, gameState?.gameState)
+          playerSocket.emit(SOCKET_EVENTS.GAME_STATE_UPDATE, gameState)
         }
       })
+      console.log(`✅ Broadcasted ${gameState?.gameState} to ${room.players.length} players`)
     }
   })
 
@@ -1221,31 +1274,10 @@ io.on('connection', (socket) => {
       // DISCONNECTED PLAYER attempting to reconnect - ALLOW
       console.log(`✅ Disconnected player "${playerName}" attempting to reconnect (was disconnected: ${existingPlayer.connected === false})`)
       
-      // Generate a reconnect token for this existing disconnected player
-      const reconnectToken = `reconnect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      reconnectTokens.set(reconnectToken, {
-        playerId: existingPlayer.id,
-        playerName: playerName.trim(),
-        roomId: roomId,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + (5 * 60 * 1000) // 5 minutes
-      })
-      
-      // Clean up expired tokens
-      setTimeout(() => {
-        reconnectTokens.delete(reconnectToken)
-        console.log(`🧹 Cleaned up expired reconnect token for ${playerName}`)
-      }, 5 * 60 * 1000)
-      
-      console.log(`Generated reconnect token for ${playerName}: ${reconnectToken.substring(0, 16)}...`)
-      
-      // Send reconnect token to player so they can use PLAYER_RECONNECT flow
-      socket.emit(SOCKET_EVENTS.PLAYER_JOINED, {
-        success: true,
-        playerId: existingPlayer.id,
-        playerName: playerName.trim(),
-        reconnectToken: reconnectToken,
-        isReconnection: true
+      // OLD RECONNECTION SYSTEM - DISABLED
+      socket.emit('error', { 
+        message: 'Reconnection not yet implemented in session system',
+        gameInProgress: true
       })
       return
     }
@@ -1274,32 +1306,44 @@ io.on('connection', (socket) => {
       return
     }
     
+    // Create session token for persistent URL
+    const sessionToken = createPlayerSession(roomId, socket.id, playerName.trim())
+    console.log(`🔑 Created session token for ${playerName}: ${sessionToken.substring(0, 8)}...`)
+    
     const newPlayer = {
       id: socket.id,
       name: playerName.trim(),
       connected: true,
       profileImage: profileImage,
-      profileImageSelected: true
+      profileImageSelected: true,
+      sessionToken: sessionToken // Store session token with player
     }
 
     // Add player to simple room structure
     room.players.push(newPlayer)
+    console.log(`👥 Added player to room. Room now has ${room.players.length} players`)
     
     socket.join(roomId)
     socket.roomId = roomId
     socket.playerName = playerName.trim()
     socket.isHost = false
 
-    // Initialize connection tracking
-    initializePlayerConnection(socket.id, roomId, playerName.trim())
+    // Store session mapping for this socket
+    socketSessions.set(socket.id, sessionToken)
+    console.log(`🔗 Stored socket session mapping: ${socket.id} -> ${sessionToken.substring(0, 8)}...`)
 
-    console.log(`Player ${playerName} joined room ${roomId}`);
+    console.log(`Player ${playerName} joined room ${roomId} with session ${sessionToken.substring(0, 8)}...`);
 
-    // Confirm join to the player (no reconnect token needed for new joins)
+    // Confirm join to the player with session URL
+    const playerUrl = `${process.env.PLAYER_URL || 'http://localhost:3001'}/room/${roomId}/player/${sessionToken}`
+    console.log(`📱 Sending session URL to player: ${playerUrl}`)
+    
     socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
       success: true, 
       playerId: socket.id,
-      playerName: playerName.trim()
+      playerName: playerName.trim(),
+      sessionToken: sessionToken,
+      sessionUrl: playerUrl
     })
 
     // Forward player join to host for host-authoritative architecture
@@ -1347,16 +1391,17 @@ io.on('connection', (socket) => {
 
   // ===================== CONNECTION MANAGEMENT HANDLERS =====================
   
-  // Handle heartbeat responses
-  socket.on(SOCKET_EVENTS.HEARTBEAT_RESPONSE, () => {
-    const playerId = socket.id
-    const connection = playerConnections.get(playerId)
-    if (connection) {
-      connection.lastHeartbeat = Date.now()
-    }
-  })
+  // Handle heartbeat responses (DISABLED - using session system)
+  // socket.on(SOCKET_EVENTS.HEARTBEAT_RESPONSE, () => {
+  //   const playerId = socket.id
+  //   const connection = playerConnections.get(playerId)
+  //   if (connection) {
+  //     connection.lastHeartbeat = Date.now()
+  //   }
+  // })
   
-  // Handle player reconnection attempts (token-based)
+  // Handle player reconnection attempts (token-based) (DISABLED - using session system)
+  /*
   socket.on(SOCKET_EVENTS.PLAYER_RECONNECT, (data) => {
     const { reconnectToken, roomId } = data
     
@@ -1445,6 +1490,7 @@ io.on('connection', (socket) => {
       })
     }
   })
+  */
   
   // Host requests updated readiness data (for live timer updates)
   // NOTE: Removed in pure host-authoritative architecture - host manages its own readiness state
@@ -1468,7 +1514,175 @@ io.on('connection', (socket) => {
     
     const { roomId } = data
     if (roomId) {
-      broadcastPlayersUpdate(roomId)
+      // broadcastPlayersUpdate(roomId) // DISABLED - using session system
+    }
+  })
+
+  // Session-based authentication when player visits their session URL
+  socket.on(SOCKET_EVENTS.SESSION_RECONNECT, (data) => {
+    const { sessionToken } = data
+    
+    console.log(`🔗 Session authentication attempt: ${sessionToken?.substring(0, 8)}...`)
+    
+    const sessionData = authenticateSession(socket, sessionToken)
+    if (!sessionData) {
+      console.log(`❌ Session authentication failed - invalid session data`)
+      socket.emit(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, {
+        status: 'invalid_session',
+        message: 'Session expired or invalid. Please join the game again.'
+      })
+      return
+    }
+    
+    const { roomId, playerName } = sessionData
+    console.log(`📋 Session data: roomId=${roomId}, playerName=${playerName}`)
+    
+    const room = getRoom(roomId)
+    if (!room) {
+      console.log(`❌ Room ${roomId} not found`)
+      socket.emit(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, {
+        status: 'invalid_session',
+        message: 'Game room no longer exists.'
+      })
+      return
+    }
+    
+    console.log(`🏠 Room ${roomId} found with ${room.players.length} players`)
+    
+    // Find player in room
+    const player = room.players.find(p => p.sessionToken === sessionToken)
+    if (!player) {
+      console.log(`❌ Player with session token not found in room - session invalid or expired`)
+      socket.emit(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, {
+        status: 'invalid_session',
+        message: 'Session invalid. Please join the game again.'
+      })
+      return
+    }
+    
+    console.log(`✅ Player found: ${player.name}`)
+    
+    // Update player with new socket ID and mark as authenticated
+    const oldSocketId = player.id
+    player.id = socket.id
+    player.connected = true
+    player.hasAuthenticatedViaSession = true // Mark as successfully authenticated via session
+    
+    // Update socket properties
+    socket.join(roomId)
+    socket.roomId = roomId
+    socket.playerName = playerName
+    socket.isHost = false
+    
+    console.log(`✅ Session authenticated: ${playerName} (${oldSocketId} -> ${socket.id})`)
+    
+    // Handle game-specific state updates only if not in lobby
+    let currentRole = null
+    let isAlive = true
+    
+    if (room.gameState !== GAME_STATES.LOBBY) {
+      // Only do complex socket ID mapping for active games
+      console.log(`🔄 Updating game state maps for active game`)
+      
+      if (room.playerRoles && room.playerRoles.has(oldSocketId)) {
+        currentRole = room.playerRoles.get(oldSocketId)
+        room.playerRoles.delete(oldSocketId)
+        room.playerRoles.set(socket.id, currentRole)
+      }
+      
+      if (room.alivePlayers && room.alivePlayers.has(oldSocketId)) {
+        room.alivePlayers.delete(oldSocketId)
+        room.alivePlayers.add(socket.id)
+        isAlive = true
+      }
+      
+      // Update other game maps...
+      ['playerReadiness', 'mafiaVotes'].forEach(mapName => {
+        if (room[mapName] && room[mapName].has(oldSocketId)) {
+          const value = room[mapName].get(oldSocketId)
+          room[mapName].delete(oldSocketId)
+          room[mapName].set(socket.id, value)
+        }
+      })
+      
+      if (room.accusations) {
+        const newAccusations = new Map()
+        room.accusations.forEach((accusers, accusedId) => {
+          const newAccusedId = accusedId === oldSocketId ? socket.id : accusedId
+          const newAccusers = new Set()
+          accusers.forEach(accuserId => {
+            newAccusers.add(accuserId === oldSocketId ? socket.id : accuserId)
+          })
+          newAccusations.set(newAccusedId, newAccusers)
+        })
+        room.accusations = newAccusations
+      }
+    }
+    
+    // Confirm authentication with current game state
+    socket.emit(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, {
+      status: 'authenticated',
+      playerId: socket.id,
+      playerName: playerName,
+      roomId: roomId,
+      gameState: room.gameState,
+      currentRole: currentRole,
+      isAlive: isAlive
+    })
+    
+    // Notify host of socket ID change for both lobby and game states
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      if (room.gameState === GAME_STATES.LOBBY) {
+        // For lobby authentication, send socket ID update so host can track the new socket ID
+        console.log(`📡 Lobby session authentication - notifying host of socket ID change ${playerName} (${oldSocketId} -> ${socket.id})`)
+        hostSocket.emit('player-action', {
+          type: 'PLAYER_SOCKET_UPDATE',
+          playerId: socket.id,
+          playerName: playerName,
+          data: { 
+            reason: 'lobby_session_authentication',
+            oldPlayerId: oldSocketId,
+            newPlayerId: socket.id,
+            sessionToken: sessionToken.substring(0, 8) + '...'
+          }
+        })
+      } else {
+        // Game reconnection notification with socket ID mapping
+        hostSocket.emit('player-action', {
+          type: 'PLAYER_RECONNECT',
+          playerId: socket.id,
+          playerName: playerName,
+          data: { 
+            reason: 'session_authentication',
+            oldPlayerId: oldSocketId,
+            newPlayerId: socket.id,
+            sessionToken: sessionToken.substring(0, 8) + '...'
+          }
+        })
+      }
+    }
+  })
+
+  // Player activity ping to maintain session
+  socket.on('player-activity-ping', () => {
+    // Simple ping response - just confirms the player is active
+    if (socket.roomId && socket.playerName) {
+      console.log(`📡 Activity ping from ${socket.playerName} in room ${socket.roomId}`)
+      
+      // Forward to host to update player activity
+      const room = getRoom(socket.roomId)
+      if (room) {
+        const hostSocket = io.sockets.sockets.get(room.host)
+        if (hostSocket) {
+          hostSocket.emit('player-action', {
+            type: 'PLAYER_ACTIVITY_PING',
+            playerId: socket.id,
+            playerName: socket.playerName,
+            data: { timestamp: Date.now() }
+          })
+        }
+      }
     }
   })
 
@@ -1496,23 +1710,57 @@ io.on('connection', (socket) => {
       
       // Check if this is a lobby disconnection or game-phase disconnection
       if (room.gameState === GAME_STATES.LOBBY) {
-        // In lobby: forward disconnection to host for pure host-authoritative architecture
-        console.log(`Lobby disconnection - notifying host about ${player.name}`);
-        
-        // Forward disconnection to host as player action
-        const hostSocket = io.sockets.sockets.get(room.host);
-        if (hostSocket) {
-          hostSocket.emit('player-action', {
-            type: 'PLAYER_DISCONNECT',
-            playerId: socket.id,
-            playerName: player.name,
-            data: { reason: 'lobby_disconnect' }
-          });
+        // SIMPLE LOBBY LOGIC: Always remove disconnected players immediately
+        // Exception: Give 2-second grace period for the initial join→session redirect
+        if (player.sessionToken && !player.hasAuthenticatedViaSession) {
+          console.log(`🔄 Initial join redirect - giving 2s grace period for ${player.name}`);
+          
+          // Brief grace period only for initial redirect after joining
+          setTimeout(() => {
+            const currentRoom = getRoom(socket.roomId);
+            const currentPlayer = currentRoom?.players.find(p => p.sessionToken === player.sessionToken);
+            
+            if (currentPlayer && !currentPlayer.hasAuthenticatedViaSession) {
+              console.log(`⏰ Initial redirect timeout for ${player.name} - removing from lobby`);
+              currentRoom.players = currentRoom.players.filter(p => p.sessionToken !== player.sessionToken);
+              // Invalidate session token
+              playerSessions.delete(player.sessionToken);
+              
+              // Notify host of removal
+              const hostSocket = io.sockets.sockets.get(currentRoom.host);
+              if (hostSocket) {
+                hostSocket.emit('player-action', {
+                  type: 'PLAYER_DISCONNECT',
+                  playerId: currentPlayer.id,
+                  playerName: currentPlayer.name,
+                  data: { reason: 'lobby_disconnect' }
+                });
+              }
+            }
+          }, 2000); // 2 second grace period only for initial redirect
+        } else {
+          console.log(`Lobby disconnection - immediately removing ${player.name}`);
+          
+          // Remove player and invalidate session token
+          room.players = room.players.filter(p => p.id !== socket.id);
+          if (player.sessionToken) {
+            playerSessions.delete(player.sessionToken);
+            console.log(`🗑️ Invalidated session token for ${player.name}`);
+          }
+          
+          // Notify host
+          const hostSocket = io.sockets.sockets.get(room.host);
+          if (hostSocket) {
+            hostSocket.emit('player-action', {
+              type: 'PLAYER_DISCONNECT',
+              playerId: socket.id,
+              playerName: player.name,
+              data: { reason: 'lobby_disconnect' }
+            });
+          }
+          
+          console.log(`📤 Removed ${player.name} from lobby. Room now has ${room.players.length} players`);
         }
-        
-        // Remove from server's room structure (but let host handle state updates)
-        room.players = room.players.filter(p => p.id !== socket.id);
-        playerConnections.delete(socket.id);
       } else {
         // For active game phases, forward disconnection to host for pure host-authoritative architecture
         console.log(`Game-phase disconnection for ${player.name} - notifying host`);
@@ -1535,8 +1783,8 @@ io.on('connection', (socket) => {
         player.connected = false;
         console.log(`🔌 Marked ${player.name} as disconnected in server room structure`);
         
-        // Update connection status but let host handle pause decisions
-        updatePlayerConnection(socket.id, false);
+        // Update connection status but let host handle pause decisions (DISABLED - using session system)
+        // updatePlayerConnection(socket.id, false);
       }
     } else {
       console.log(`Disconnected client ${socket.id} was not found in room ${socket.roomId} players`);
@@ -1545,4 +1793,4 @@ io.on('connection', (socket) => {
 }) 
 
 // Helper function to start night phase - removed for relay server
-// Night phase is now started by the host in host-authoritative architecture 
+// Night phase is now started by the host in host-authoritative architecture

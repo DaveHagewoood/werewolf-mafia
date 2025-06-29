@@ -34,47 +34,20 @@ export const SOCKET_EVENTS = {
   PROFILE_IMAGE_SELECTED: 'profile-image-selected',
   GET_ROOM_INFO: 'get-room-info',
   ROOM_INFO: 'room-info',
-  // Connection management
-  PLAYER_RECONNECT: 'player-reconnect',
-  PLAYER_RECONNECTED: 'player-reconnected',
-  PLAYER_DISCONNECTED: 'player-disconnected',
-  CONNECTION_STATUS: 'connection-status',
-  HEARTBEAT: 'heartbeat',
-  HEARTBEAT_RESPONSE: 'heartbeat-response',
-  GAME_PAUSED: 'game-paused',
-  GAME_RESUMED: 'game-resumed',
-  DISCONNECT: 'disconnect',
-  // Enhanced reconnection events
-  STATE_SYNC_REQUEST: 'state-sync-request',
-  STATE_SYNC_RESPONSE: 'state-sync-response',
-  RECONNECTION_FAILED: 'reconnection-failed',
-  CLIENT_PAUSED: 'client-paused',
-  VERSION_MISMATCH: 'version-mismatch',
+  // Session-based connection (NEW)
+  SESSION_JOIN: 'session-join',
+  SESSION_JOINED: 'session-joined',
+  SESSION_RECONNECT: 'session-reconnect',
+  CONNECTION_STATUS_UPDATE: 'connection-status-update',
   // State management
   GAME_STATE_UPDATE: 'game-state-update'
 }
 
-// Connection state enums
-export const PlayerConnectionState = {
+// Session-based connection states (NEW)
+export const ConnectionStatus = {
   CONNECTED: 'CONNECTED',
-  ATTEMPTING_RECONNECTION: 'ATTEMPTING_RECONNECTION',
-  PAUSED: 'PAUSED',
+  RECONNECTING: 'RECONNECTING', 
   DISCONNECTED: 'DISCONNECTED'
-};
-
-export const GameConnectionState = {
-  ACTIVE: 'ACTIVE',
-  PAUSED_RECONNECTING: 'PAUSED_RECONNECTING',
-  ENDED: 'ENDED'
-};
-
-// Reconnection protocol configuration
-export const RECONNECTION_CONFIG = {
-  maxAttempts: 5,
-  attemptDelay: 1000,
-  escalationFactor: 1.5,
-  maxDelay: 5000,
-  totalTimeout: 30000
 };
 
 export const GAME_CONFIG = {
@@ -82,16 +55,33 @@ export const GAME_CONFIG = {
   MAX_PLAYERS: 15,
   ROOM_ID_LENGTH: 4,
   MAFIA_VOTE_CONSENSUS_TIME: 5000, // 5 seconds in milliseconds
-  ELIMINATION_COUNTDOWN_TIME: 10000 // 10 seconds in milliseconds
+  ELIMINATION_COUNTDOWN_TIME: 10000, // 10 seconds in milliseconds
+  SESSION_TOKEN_LENGTH: 16
 }
 
-// Connection Configuration
-export const CONNECTION_CONFIG = {
-  RECONNECT_TIMEOUT: 15000, // 15 seconds in milliseconds
-  MIN_CONNECTED_PERCENTAGE: 0.75, // 75% of players must be connected
-  HEARTBEAT_INTERVAL: 5000, // 5 seconds in milliseconds
-  HEARTBEAT_TIMEOUT: 10000, // 10 seconds in milliseconds
-  CLEANUP_INTERVAL: 30000 // 30 seconds in milliseconds
+// Session Configuration (NEW)
+export const SESSION_CONFIG = {
+  TOKEN_EXPIRY_HOURS: 24, // Session tokens valid for 24 hours
+  RECONNECT_GRACE_PERIOD: 30000, // 30 seconds before showing disconnect UI
+  MAX_RECONNECT_ATTEMPTS: 3,
+  RECONNECT_INTERVAL: 2000 // 2 seconds between attempts
+}
+
+// Session Token Utilities (NEW)
+export function generateSessionToken() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  for (let i = 0; i < GAME_CONFIG.SESSION_TOKEN_LENGTH; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
+export function isSessionTokenValid(sessionData) {
+  if (!sessionData || !sessionData.createdAt) return false
+  const now = Date.now()
+  const expiryTime = sessionData.createdAt + (SESSION_CONFIG.TOKEN_EXPIRY_HOURS * 60 * 60 * 1000)
+  return now < expiryTime
 }
 
 // Game Types
@@ -277,8 +267,6 @@ export const getPlayerGameState = (room, playerId, helpers = {}) => {
     gameState: room.gameState,
     playerId: playerId,
     playerName: room.players.find(p => p.id === playerId)?.name,
-    gamePaused: room.gamePaused,
-    pauseReason: room.pauseReason,
     players: room.players.map(p => ({
       id: p.id,
       name: p.name,

@@ -1,28 +1,88 @@
-import { PlayerConnectionState, RECONNECTION_CONFIG, SOCKET_EVENTS } from '@werewolf-mafia/shared';
+import { ConnectionStatus, SESSION_CONFIG, SOCKET_EVENTS } from '@werewolf-mafia/shared';
 
-class ConnectionManager {
-  constructor(socket, onStateChange, onReconnectSuccess, onReconnectFailed) {
+class SessionConnectionManager {
+  constructor(socket, sessionToken, onStateChange, onGameStateUpdate) {
     this.socket = socket;
+    this.sessionToken = sessionToken;
     this.onStateChange = onStateChange;
-    this.onReconnectSuccess = onReconnectSuccess;
-    this.onReconnectFailed = onReconnectFailed;
+    this.onGameStateUpdate = onGameStateUpdate;
+    this.connectionStatus = ConnectionStatus.CONNECTED;
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
-    this.connectionState = PlayerConnectionState.CONNECTED;
+    this.graceTimer = null;
+    this.activityTimer = null;
+    this.hasInitiallyConnected = false;
     this.setupEventListeners();
+    this.startActivityPing();
   }
 
   setupEventListeners() {
     this.socket.on('disconnect', this.handleDisconnect.bind(this));
-    this.socket.on(SOCKET_EVENTS.PLAYER_RECONNECTED, this.handleReconnectSuccess.bind(this));
-    this.socket.on(SOCKET_EVENTS.RECONNECTION_FAILED, this.handleReconnectFailed.bind(this));
-    this.socket.on(SOCKET_EVENTS.VERSION_MISMATCH, this.handleVersionMismatch.bind(this));
+    this.socket.on('connect', this.handleConnect.bind(this));
+    this.socket.on(SOCKET_EVENTS.GAME_STATE_UPDATE, this.onGameStateUpdate);
+    this.socket.on(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, this.handleConnectionStatusUpdate.bind(this));
   }
 
   handleDisconnect(reason) {
-    console.log('Disconnected from server:', reason);
-    this.setConnectionState(PlayerConnectionState.ATTEMPTING_RECONNECTION);
+    console.log('Socket disconnected:', reason);
+    
+    // Only start reconnection if we had initially connected
+    if (!this.hasInitiallyConnected) {
+      console.log('Initial connection failed, not attempting reconnection');
+      this.setConnectionStatus(ConnectionStatus.DISCONNECTED);
+      return;
+    }
+    
+    // Start grace period before showing disconnected UI
+    this.setConnectionStatus(ConnectionStatus.RECONNECTING);
+    
+    this.graceTimer = setTimeout(() => {
+      if (this.connectionStatus === ConnectionStatus.RECONNECTING) {
+        this.setConnectionStatus(ConnectionStatus.DISCONNECTED);
+      }
+    }, SESSION_CONFIG.RECONNECT_GRACE_PERIOD);
+
     this.startReconnectionAttempts();
+  }
+
+  handleConnect() {
+    console.log('Socket connected - session token available:', !!this.sessionToken);
+    this.hasInitiallyConnected = true;
+    
+    // Clear timers
+    if (this.graceTimer) {
+      clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    // Always authenticate with session token if available (even if placeholder)
+    if (this.sessionToken && this.sessionToken !== 'placeholder-session-token') {
+      console.log('Authenticating with session token:', this.sessionToken.substring(0, 8) + '...');
+      this.socket.emit(SOCKET_EVENTS.SESSION_RECONNECT, {
+        sessionToken: this.sessionToken
+      });
+    } else {
+      console.log('No valid session token - regular connection mode');
+      this.setConnectionStatus(ConnectionStatus.CONNECTED);
+    }
+  }
+
+  // Update session token after initial join
+  updateSessionToken(newToken) {
+    console.log('Updating session token:', newToken ? newToken.substring(0, 8) + '...' : 'null');
+    this.sessionToken = newToken;
+    
+    // If we're connected and have a real token, authenticate now
+    if (this.socket.connected && newToken && newToken !== 'placeholder-session-token') {
+      console.log('Authenticating with updated session token');
+      this.socket.emit(SOCKET_EVENTS.SESSION_RECONNECT, {
+        sessionToken: newToken
+      });
+    }
   }
 
   startReconnectionAttempts() {
@@ -31,63 +91,60 @@ class ConnectionManager {
     }
 
     const attemptReconnect = () => {
-      if (this.reconnectAttempts >= RECONNECTION_CONFIG.maxAttempts) {
-        this.handleReconnectFailed('Max attempts reached');
+      if (this.reconnectAttempts >= SESSION_CONFIG.MAX_RECONNECT_ATTEMPTS) {
+        console.log('Max reconnection attempts reached');
         return;
       }
 
       this.reconnectAttempts++;
-      const delay = Math.min(
-        RECONNECTION_CONFIG.attemptDelay * Math.pow(RECONNECTION_CONFIG.escalationFactor, this.reconnectAttempts - 1),
-        RECONNECTION_CONFIG.maxDelay
-      );
-
-      console.log(`Attempting reconnection ${this.reconnectAttempts}/${RECONNECTION_CONFIG.maxAttempts} after ${delay}ms`);
+      console.log(`Reconnection attempt ${this.reconnectAttempts}/${SESSION_CONFIG.MAX_RECONNECT_ATTEMPTS}`);
 
       this.reconnectTimer = setTimeout(() => {
         if (this.socket.disconnected) {
           this.socket.connect();
-          attemptReconnect();
         }
-      }, delay);
+        attemptReconnect();
+      }, SESSION_CONFIG.RECONNECT_INTERVAL);
     };
 
     attemptReconnect();
   }
 
-  handleReconnectSuccess(gameState) {
-    console.log('Reconnection successful');
-    this.reconnectAttempts = 0;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+  handleConnectionStatusUpdate(data) {
+    console.log('Connection status update:', data);
+    
+    if (data.status === 'authenticated') {
+      this.reconnectAttempts = 0;
+      this.setConnectionStatus(ConnectionStatus.CONNECTED);
+    } else if (data.status === 'invalid_session') {
+      this.setConnectionStatus(ConnectionStatus.DISCONNECTED);
+      // Could trigger page refresh here
     }
-    this.setConnectionState(PlayerConnectionState.CONNECTED);
-    this.onReconnectSuccess(gameState);
   }
 
-  handleReconnectFailed(reason) {
-    console.log('Reconnection failed:', reason);
-    this.setConnectionState(PlayerConnectionState.PAUSED);
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+  setConnectionStatus(newStatus) {
+    if (this.connectionStatus !== newStatus) {
+      this.connectionStatus = newStatus;
+      this.onStateChange(newStatus);
     }
-    this.onReconnectFailed(reason);
   }
 
-  handleVersionMismatch(data) {
-    console.log('State version mismatch detected');
-    this.socket.emit(SOCKET_EVENTS.STATE_SYNC_REQUEST, {
-      currentVersion: data.clientVersion
-    });
+  // Send periodic activity ping to maintain connection status
+  startActivityPing() {
+    if (this.activityTimer) {
+      clearInterval(this.activityTimer);
+    }
+    
+    this.activityTimer = setInterval(() => {
+      if (this.socket.connected && this.connectionStatus === ConnectionStatus.CONNECTED) {
+        this.socket.emit('player-activity-ping');
+      }
+    }, 10000); // Ping every 10 seconds
   }
 
-  setConnectionState(newState) {
-    if (this.connectionState !== newState) {
-      this.connectionState = newState;
-      this.onStateChange(newState);
-    }
+  // Manual refresh trigger for users
+  refreshConnection() {
+    window.location.reload();
   }
 
   cleanup() {
@@ -95,8 +152,16 @@ class ConnectionManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.graceTimer) {
+      clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
+    if (this.activityTimer) {
+      clearInterval(this.activityTimer);
+      this.activityTimer = null;
+    }
     this.socket.removeAllListeners();
   }
 }
 
-export default ConnectionManager; 
+export default SessionConnectionManager; 

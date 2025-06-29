@@ -30,8 +30,8 @@ function GameLobby() {
   const [hostGameStateManager, setHostGameStateManager] = useState(null)
 
   // Environment-based URLs
-  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
-const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafia-player.onrender.com'
+  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
+const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001'
 
   // Preload images
   useEffect(() => {
@@ -231,28 +231,77 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
               gameStateManager.processDayVote(action.playerId, action.data.targetId)
               break
               
-            case 'PLAYER_DISCONNECT':
-              console.log(`🎯 Host received PLAYER_DISCONNECT: ${action.playerName}, reason: ${action.data.reason}`);
-              if (action.data.reason === 'lobby_disconnect') {
-                // Lobby disconnections - remove player completely
-                console.log(`📤 Removing player from lobby: ${action.playerName}`);
-                gameStateManager.removePlayer(action.playerId)
-              } else {
-                // Active game disconnections - pause and wait for reconnect
-                console.log(`⏸️ Handling active game disconnect: ${action.playerName} during ${action.data.gameState}`);
-                gameStateManager.handlePlayerDisconnect(action.playerId, action.playerName, action.data.gameState)
+            case 'PLAYER_SOCKET_UPDATE':
+              console.log(`🔄 Host received PLAYER_SOCKET_UPDATE: ${action.playerName} (${action.data.oldPlayerId} -> ${action.data.newPlayerId})`);
+              if (gameStateManager) {
+                // Update the socket ID in the host's game state
+                gameStateManager.updatePlayerSocketId(action.data.oldPlayerId, action.data.newPlayerId)
               }
               break
               
             case 'PLAYER_RECONNECT':
-              console.log(`🔄 Host handling PLAYER_RECONNECT: ${action.playerName}`)
-              console.log(`   New ID: ${action.playerId}`)
-              console.log(`   Old ID: ${action.data?.oldPlayerId}`)
-              gameStateManager.handlePlayerReconnect(
-                action.playerId, 
-                action.playerName, 
-                action.data?.oldPlayerId
-              )
+              console.log(`🔄 Host received PLAYER_RECONNECT: ${action.playerName} (${action.data.oldPlayerId} -> ${action.data.newPlayerId})`);
+              if (gameStateManager) {
+                // For active game reconnections, update socket ID in all game state Maps
+                if (action.data.reason === 'session_authentication') {
+                  console.log(`🎮 Active game session reconnection - updating all game state mappings`);
+                  // Use the more comprehensive reconnection method for active games
+                  gameStateManager.updatePlayerSocketId(action.data.oldPlayerId, action.data.newPlayerId);
+                  
+                  // Send role assignment again to ensure player gets their role
+                  const playerRole = gameStateManager.getPlayerRole(action.data.newPlayerId);
+                  if (playerRole) {
+                    console.log(`🎭 Re-sending role to reconnected player: ${action.playerName} -> ${playerRole.name}`);
+                    hostSocket.emit('host-send-to-player', {
+                      roomId: roomId,
+                      playerId: action.data.newPlayerId,
+                      event: SOCKET_EVENTS.ROLE_ASSIGNED,
+                      data: {
+                        role: playerRole,
+                        playerName: action.playerName
+                      }
+                    });
+                  }
+                }
+              }
+              break
+              
+            case 'PLAYER_DISCONNECT':
+              console.log(`🎯 Host received PLAYER_DISCONNECT: ${action.playerName}, reason: ${action.data.reason}`);
+              console.log(`🎯 Host PLAYER_DISCONNECT details:`, {
+                playerId: action.playerId,
+                playerName: action.playerName,
+                reason: action.data.reason
+              });
+              if (action.data.reason === 'lobby_disconnect') {
+                // Simple lobby disconnection - remove player completely
+                console.log(`📤 Removing player from lobby: ${action.playerName} (${action.playerId})`);
+                gameStateManager.removePlayer(action.playerId)
+              } else {
+                // Game phase disconnections - continue without pausing (session-based system)
+                console.log(`🔄 Game continues despite ${action.playerName} disconnect`);
+              }
+              break
+              
+            case 'PLAYER_JOIN':
+              // Handle both initial joins and session authentications
+              console.log(`👥 Player ${action.playerName} joined/authenticated`)
+              if (action.data?.reason === 'session_authentication') {
+                console.log(`🔗 Session authentication for existing player`)
+                // Player already exists, just mark as connected via session
+                gameStateManager.updatePlayerActivity(action.playerId)
+              } else {
+                console.log(`➕ New player joining lobby`)
+                // This is handled by the initial PLAYER_JOIN that was already processed
+                // during the original join flow, so we can ignore this duplicate
+              }
+              break
+              
+            case 'PLAYER_ACTIVITY_PING':
+              // Handle activity ping - update player activity timestamp
+              if (gameStateManager) {
+                gameStateManager.updatePlayerActivity(action.playerId)
+              }
               break
               
             default:
@@ -423,6 +472,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
       return () => clearTimeout(timer)
     }
   }, [eliminationCountdown])
+
+  // REMOVED: Periodic cleanup - server now handles all lobby disconnection cleanup automatically
 
   // NOTE: Removed disconnection timer update effects - host gets all state from HostGameStateManager
   // Server handles connection management and host receives updates via player-action events
@@ -720,22 +771,18 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
                     </div>
                   )}
                   
-                  {/* Show disconnected players during day phase */}
+                  {/* Simplified - no complex disconnection tracking during active game */}
                   {players.some(p => !p.connected) && (
                     <div className="day-disconnections">
-                      <h4>⚠️ Disconnected Players</h4>
+                      <h4>ℹ️ Some Players Offline</h4>
                       {players.filter(p => !p.connected).map(player => (
                         <div key={player.id} className="day-disconnected-player">
                           <span className="player-name">{player.name}</span>
-                          <span className="disconnection-status">
-                            {player.disconnectionInfo 
-                              ? `${player.disconnectionInfo.timeLeft}s to reconnect`
-                              : 'Disconnected'}
-                          </span>
+                          <span className="disconnection-status">Offline - can reconnect via session URL</span>
                         </div>
                       ))}
                       <p className="disconnection-note">
-                        Disconnected players cannot vote or be voted for
+                        Game continues - offline players can rejoin using their session URLs
                       </p>
                     </div>
                   )}
@@ -799,31 +846,19 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
               <div className="night-spinner"></div>
               <p>{selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} selecting their target...</p>
               
-              {/* Show game pause status or disconnected players during night phase */}
+              {/* Simplified - no complex pause/reconnection logic during active game */}
               {players.some(p => !p.connected) && (
                 <div className="night-disconnections">
-                  <h4>⚠️ Game Paused - Players Disconnected</h4>
+                  <h4>ℹ️ Some Players Offline</h4>
                   {players.filter(p => !p.connected).map(player => (
                     <div key={player.id} className="night-disconnected-player">
                       <span className="player-name">{player.name}</span>
-                      <span className="disconnection-status">
-                        {player.disconnectionInfo 
-                          ? `${player.disconnectionInfo.timeLeft}s to reconnect`
-                          : 'Disconnected'}
-                      </span>
+                      <span className="disconnection-status">Offline - can reconnect via session URL</span>
                     </div>
                   ))}
                   <div className="disconnection-explanation">
                     <p className="disconnection-note">
-                      <strong>🛑 Night phase is PAUSED</strong>
-                    </p>
-                    <ul className="pause-explanation-list">
-                      <li>🔹 Game will wait for disconnected players to return</li>
-                      <li>🔹 No actions will be skipped automatically</li>
-                      <li>🔹 If players don't reconnect in time, the game will be invalidated</li>
-                    </ul>
-                    <p className="disconnection-note">
-                      All players must be connected for the night phase to continue
+                      Game continues - offline players can rejoin using their session URLs
                     </p>
                   </div>
                 </div>
@@ -861,18 +896,11 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
                       <span className="player-name">{player.name}</span>
                       <span className="ready-text">
                         {!player.connected 
-                          ? player.disconnectionInfo 
-                            ? `Disconnected - ${player.disconnectionInfo.timeLeft}s to reconnect`
-                            : 'Disconnected'
+                          ? 'Offline - can reconnect via session URL'
                           : player.ready 
                             ? 'Ready' 
                             : 'Reviewing role...'}
                       </span>
-                      {!player.connected && player.disconnectionInfo && (
-                        <div className="disconnection-warning">
-                          ⚠️ Game will end if {player.name} doesn't reconnect in {player.disconnectionInfo.timeLeft}s
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -1043,7 +1071,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
               <p className="no-players">Waiting for players to join...</p>
             ) : (
               players.map((player, index) => (
-                <div key={player.id} className={`player-item ${!player.connected ? 'player-disconnected' : ''}`}>
+                <div key={player.id} className="player-item">
                   <span className="player-number">{index + 1}.</span>
                   {player.profileImage && selectedGameType && (
                     <div className="player-avatar">
@@ -1061,13 +1089,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
                   )}
                   <div className="player-details">
                     <span className="player-name">{player.name}</span>
-                    {!player.connected && (
-                      <span className="player-disconnection-note">Disconnected - attempting reconnection...</span>
-                    )}
                   </div>
-                  <span className={`player-status ${player.connected ? 'connected' : 'disconnected'}`}>
-                    {player.connected ? '🟢' : '🔴'}
-                  </span>
+                  <span className="player-status connected">🟢</span>
                 </div>
               ))
             )}
@@ -1075,13 +1098,19 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'https://werewolf-mafi
         </div>
 
         <div className="game-controls">
-          <button 
-            className={`start-game-btn ${canStartGame ? 'enabled' : 'disabled'}`}
-            onClick={handleStartGame}
-            disabled={!canStartGame}
-          >
-            {canStartGame ? 'Start Game' : `Need ${GAME_CONFIG.MIN_PLAYERS - players.length} more players`}
-          </button>
+          {/* Simple game start button */}
+          {players.length >= GAME_CONFIG.MIN_PLAYERS ? (
+            <button 
+              className="start-game-btn enabled"
+              onClick={handleStartGame}
+            >
+              ✅ Start Game ({players.length} Players)
+            </button>
+          ) : (
+            <button className="start-game-btn disabled" disabled>
+              Need {GAME_CONFIG.MIN_PLAYERS - players.length} more players
+            </button>
+          )}
           
           {/* Debug: Auto-fill players for testing */}
           {players.length < GAME_CONFIG.MIN_PLAYERS && (

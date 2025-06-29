@@ -839,4 +839,152 @@ body .reconnect-message {
   font-size: 1rem;
   color: #cbd5e0;
   opacity: 0.9;
+}
+
+/* Session URL Styles */
+.session-info {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.session-info h3 {
+  color: #495057;
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+}
+
+.session-info p {
+  color: #6c757d;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+.session-url-container {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  align-items: stretch;
+}
+
+.session-url-input {
+  flex: 1;
+  padding: 0.75rem;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: monospace;
+  background: white;
+  color: #495057;
+  cursor: pointer;
+}
+
+.session-url-input:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.copy-url-btn {
+  padding: 0.75rem 1rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.copy-url-btn:hover {
+  background: #0056b3;
+}
+
+.copy-url-btn:active {
+  transform: translateY(1px);
+}
+
+.session-help {
+  color: #6c757d !important;
+  font-size: 0.85rem !important;
+  margin-top: 0.5rem !important;
+}
+
+/* Session Authentication Styles */
+.session-auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+}
+
+.session-auth-content {
+  background: white;
+  padding: 3rem;
+  border-radius: 1.5rem;
+  text-align: center;
+  max-width: 90%;
+  width: 500px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+.session-header h1 {
+  color: #2d3748;
+  margin-bottom: 1rem;
+  font-size: 2rem;
+}
+
+.session-header p {
+  color: #4a5568;
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+.session-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.success-icon {
+  font-size: 3rem;
+  color: #28a745;
+  animation: pulse 1s ease infinite;
+}
+
+.error-icon {
+  font-size: 3rem;
+  color: #dc3545;
+  animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+@media (max-width: 768px) {
+  .session-url-container {
+    flex-direction: column;
+  }
+  
+  .session-url-input {
+    margin-bottom: 0.5rem;
+  }
+  
+  .session-auth-content {
+    padding: 2rem;
+    width: 90%;
+  }
+  
+  .session-header h1 {
+    font-size: 1.6rem;
+  }
 } 

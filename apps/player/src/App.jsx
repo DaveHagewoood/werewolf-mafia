@@ -1,9 +1,9 @@
 import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport, PlayerConnectionState } from '@werewolf-mafia/shared'
-import ConnectionManager from './utils/ConnectionManager'
+import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport, ConnectionStatus } from '@werewolf-mafia/shared'
+import SessionConnectionManager from './utils/ConnectionManager'
 import './App.css'
 
 function HomePage() {
@@ -57,7 +57,7 @@ function JoinRoom() {
 
   // Connection management
   const [connectionManager, setConnectionManager] = useState(null)
-  const [connectionState, setConnectionState] = useState(PlayerConnectionState.CONNECTED)
+  const [connectionState, setConnectionState] = useState(ConnectionStatus.CONNECTED)
 
   // New state for game pause/resume
   const [gamePaused, setGamePaused] = useState(false);
@@ -66,6 +66,7 @@ function JoinRoom() {
   // New state for reconnection attempts
   const [reconnectAttempts, setReconnectAttempts] = useState(0)
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [sessionUrl, setSessionUrl] = useState(null); // Store session URL for bookmarking
 
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
@@ -87,7 +88,7 @@ function JoinRoom() {
     checkWebPSupport().then(setSupportsWebP)
     
     // Environment-based server URL
-    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://werewolf-mafia-server.onrender.com'
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
     
     // Connect to Socket.IO server
     const newSocket = io(SERVER_URL, {
@@ -98,38 +99,22 @@ function JoinRoom() {
       timeout: 20000
     })
 
-    // Create connection manager
-    const manager = new ConnectionManager(
+    // Create connection manager (NEW SESSION-BASED)
+    const manager = new SessionConnectionManager(
       newSocket,
+      null, // No session token for initial join
       (newState) => {
         setConnectionState(newState)
-        if (newState === PlayerConnectionState.PAUSED) {
-          setError('Connection lost. Game paused. Click to try reconnecting.')
-        } else if (newState === PlayerConnectionState.ATTEMPTING_RECONNECTION) {
-          setError('Attempting to reconnect...')
+        if (newState === 'DISCONNECTED') {
+          setError('Connection lost. Click to refresh the page.')
+        } else if (newState === 'RECONNECTING') {
+          setError('Reconnecting...')
         }
       },
       (gameState) => {
-        // Handle successful reconnection
-        console.log('Reconnection successful, restoring game state:', gameState)
-        setConnectionState(PlayerConnectionState.CONNECTED)
-        setError(null)
-        
-        // Restore game state
-        setGameState(gameState.gameState)
-        if (gameState.role) {
-          setPlayerRole(gameState.role)
-        }
-        setIsReady(gameState.isReady || false)
-        
-        // Show success message briefly
-        setMessage({ type: 'success', text: 'Reconnected successfully!' })
-        setTimeout(() => setMessage(null), 3000)
-      },
-      (reason) => {
-        // Handle failed reconnection
-        console.log('Reconnection failed:', reason)
-        setError('Failed to reconnect. Click to try again.')
+        // Handle game state updates
+        console.log('Game state update received:', gameState)
+        // Process game state update here
       }
     )
     
@@ -153,10 +138,21 @@ function JoinRoom() {
     const urlParams = new URLSearchParams(window.location.search)
     const autoJoinPlayerName = urlParams.get('playerName')
     const shouldAutoJoin = urlParams.get('autoJoin') === 'true'
+    const sessionToken = urlParams.get('sessionToken')
+    const isAuthenticated = urlParams.get('authenticated') === 'true'
 
     if (shouldAutoJoin && autoJoinPlayerName && roomId) {
       console.log(`Auto-join detected: ${autoJoinPlayerName} -> ${roomId}`)
       setPlayerName(autoJoinPlayerName)
+    }
+
+    // Handle authenticated session - set up session connection manager
+    if (sessionToken && isAuthenticated) {
+      console.log('🔗 Session authenticated, setting up session-based connection')
+      // Update connection manager to use real session token
+      if (manager) {
+        manager.updateSessionToken(sessionToken)
+      }
     }
 
     // Listen for role assignment
@@ -261,6 +257,23 @@ function JoinRoom() {
       setIsJoining(false)
       setIsWaiting(true)
       setMessage(null)
+
+      // Store session URL if provided and redirect to it
+      if (data.sessionUrl) {
+        console.log('📱 Session URL received, redirecting to:', data.sessionUrl)
+        setSessionUrl(data.sessionUrl)
+        
+        // Update connection manager with session token
+        if (connectionManager && data.sessionToken) {
+          connectionManager.updateSessionToken(data.sessionToken)
+        }
+        
+        // Auto-redirect to session URL for seamless experience
+        setTimeout(() => {
+          console.log('🔗 Redirecting to session URL:', data.sessionUrl)
+          window.location.href = data.sessionUrl
+        }, 1500) // Shorter delay for better UX
+      }
       
       console.log('=== PLAYER_JOINED PROCESSING COMPLETE ===')
     })
@@ -294,7 +307,7 @@ function JoinRoom() {
     // Handle reconnection success
     newSocket.on(SOCKET_EVENTS.PLAYER_RECONNECTED, (data) => {
       console.log('🎉 RECONNECTION SUCCESSFUL:', data);
-      setConnectionState(PlayerConnectionState.CONNECTED);
+      setConnectionState(ConnectionStatus.CONNECTED);
       setReconnectAttempts(0);
       setIsReconnecting(false);
       setIsWaiting(true); // Stay in waiting state to receive game state
@@ -324,7 +337,7 @@ function JoinRoom() {
       // Only attempt reconnection for active game phases
       if (gameState !== GAME_STATES.ENDED) {
         console.log('Disconnected during game - attempting to reconnect');
-        setConnectionState(PlayerConnectionState.ATTEMPTING_RECONNECTION);
+        setConnectionState(ConnectionStatus.RECONNECTING);
         setError('Connection lost during game. Please wait for reconnection.');
         
         // Attempt to reconnect after a short delay
@@ -1550,6 +1563,49 @@ function JoinRoom() {
               <div className="player-info">
                 <span className="player-name">Playing as: {playerName}</span>
               </div>
+
+              {/* Session URL for bookmarking */}
+              {sessionUrl && (
+                <div className="session-info">
+                  <h3>📱 Bookmark This Link</h3>
+                  <p>Save this link to easily rejoin if you get disconnected:</p>
+                  <div className="session-url-container">
+                    <input 
+                      type="text" 
+                      value={sessionUrl} 
+                      readOnly 
+                      className="session-url-input"
+                      onClick={(e) => e.target.select()}
+                    />
+                    <button 
+                      className="copy-url-btn"
+                      onClick={() => {
+                        navigator.clipboard.writeText(sessionUrl).then(() => {
+                          setMessage({ type: 'success', text: 'Link copied! 📋' })
+                          setTimeout(() => setMessage(null), 2000)
+                        }).catch(() => {
+                          // Fallback for older browsers
+                          const input = document.querySelector('.session-url-input')
+                          input.select()
+                          try {
+                            document.execCommand('copy')
+                            setMessage({ type: 'success', text: 'Link copied! 📋' })
+                            setTimeout(() => setMessage(null), 2000)
+                          } catch (err) {
+                            setMessage({ type: 'error', text: 'Please copy the link manually' })
+                            setTimeout(() => setMessage(null), 3000)
+                          }
+                        })
+                      }}
+                    >
+                      📋 Copy
+                    </button>
+                  </div>
+                  <p className="session-help">
+                    💡 This link will work even if you close your browser or switch devices
+                  </p>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1561,11 +1617,10 @@ function JoinRoom() {
   return wrapWithPauseOverlay(
     <div className="app-wrapper">
       {/* Connection Status Indicator */}
-      {connectionState !== PlayerConnectionState.CONNECTED && (
+      {connectionState !== ConnectionStatus.CONNECTED && (
         <div className={`connection-status ${connectionState.toLowerCase()}`}>
-          {connectionState === PlayerConnectionState.ATTEMPTING_RECONNECTION && '🔄 Reconnecting...'}
-          {connectionState === PlayerConnectionState.PAUSED && '🔴 Connection Lost'}
-          {connectionState === PlayerConnectionState.DISCONNECTED && '⚫ Disconnected'}
+          {connectionState === ConnectionStatus.RECONNECTING && '🔄 Reconnecting...'}
+          {connectionState === ConnectionStatus.DISCONNECTED && '🔴 Connection Lost'}
         </div>
       )}
       
@@ -1577,7 +1632,7 @@ function JoinRoom() {
       )}
       
       {/* Only show join form if connected */}
-      {connectionState === PlayerConnectionState.CONNECTED && (
+              {connectionState === ConnectionStatus.CONNECTED && (
         <div className="join-container">
           <div className="join-content">
             <h1>Join Game</h1>
@@ -1679,12 +1734,965 @@ function JoinRoom() {
   )
 }
 
+// Session-based authentication and game component
+function SessionPlayer() {
+  const { roomId, sessionToken } = useParams()
+  const navigate = useNavigate()
+  
+  // Authentication states
+  const [status, setStatus] = useState('authenticating')
+  const [authMessage, setAuthMessage] = useState('Authenticating session...')
+  
+  // Game states (same as JoinRoom)
+  const [socket, setSocket] = useState(null)
+  const [playerId, setPlayerId] = useState(null)
+  const [playerName, setPlayerName] = useState('')
+  const [gameState, setGameState] = useState(GAME_STATES.LOBBY)
+  const [playerRole, setPlayerRole] = useState(null)
+  const [isReady, setIsReady] = useState(false)
+  const [gameType, setGameType] = useState(null)
+  const [message, setMessage] = useState(null)
+  const [connectionManager, setConnectionManager] = useState(null)
+  const [connectionState, setConnectionState] = useState(ConnectionStatus.CONNECTED)
+  
+  // Add other game state variables as needed...
+  const [voteTargets, setVoteTargets] = useState([])
+  const [selectedTarget, setSelectedTarget] = useState(null)
+  const [hasVoted, setHasVoted] = useState(false)
+  const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
+  const [savedPlayer, setSavedPlayer] = useState(null)
+  const [dayEliminatedPlayer, setDayEliminatedPlayer] = useState(null)
+  const [isEliminated, setIsEliminated] = useState(false)
+  const [gameEndData, setGameEndData] = useState(null)
+  const [gamePaused, setGamePaused] = useState(false)
+  const [pauseReason, setPauseReason] = useState('')
+  
+  // Night phase state variables (missing from original SessionPlayer)
+  const [mafiaVotes, setMafiaVotes] = useState({}) // { playerId: { name, target, targetName } }
+  const [consensusTimer, setConsensusTimer] = useState(null) // { targetId, targetName, timeLeft }
+  const [mafiaVotesLocked, setMafiaVotesLocked] = useState(false) // Whether Mafia votes are locked
+  const [healTargets, setHealTargets] = useState([]) // Available targets for Doctor to heal
+  const [selectedHeal, setSelectedHeal] = useState(null) // Doctor's selected heal target
+  const [investigationResult, setInvestigationResult] = useState(null) // Seer's investigation result
+  const [investigateTargets, setInvestigateTargets] = useState([]) // Available targets for Seer to investigate
+  const [selectedInvestigation, setSelectedInvestigation] = useState(null) // Seer's selected target
+
+  useEffect(() => {
+    // Validate session token from URL
+    if (!sessionToken || sessionToken.length < 8) {
+      console.log('❌ Invalid session token in URL:', sessionToken);
+      setStatus('invalid');
+      setAuthMessage('Invalid session link');
+      setTimeout(() => navigate(`/join/${roomId}`), 2000);
+      return;
+    }
+
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
+    
+    console.log('🔌 Creating socket connection for session authentication');
+    console.log('🔑 Session token:', sessionToken.substring(0, 8) + '...');
+    
+    // Connect to server and authenticate session
+    const newSocket = io(SERVER_URL, {
+      reconnection: false, // Let SessionConnectionManager handle reconnection
+      timeout: 10000
+    })
+
+    // Create connection manager with the actual session token from URL
+    const manager = new SessionConnectionManager(
+      newSocket,
+      sessionToken, // Use real session token from URL
+      (newState) => {
+        setConnectionState(newState)
+        if (newState === 'DISCONNECTED') {
+          setMessage({ type: 'error', text: 'Connection lost. Click to refresh the page.' })
+        } else if (newState === 'RECONNECTING') {
+          setMessage({ type: 'warning', text: 'Reconnecting...' })
+        }
+      },
+      (gameStateUpdate) => {
+        console.log('🎮 Game state update via ConnectionManager:', gameStateUpdate?.gameState)
+        // Handle game state updates if needed
+      }
+    )
+    
+    setSocket(newSocket)
+    setConnectionManager(manager)
+
+    // Session authentication response handler
+    newSocket.on(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, (data) => {
+      console.log('📋 Session authentication result:', data)
+      
+      if (data.status === 'authenticated') {
+        console.log('✅ Session authenticated successfully')
+        setStatus('authenticated')
+        setAuthMessage('Session authenticated! Loading game...')
+        
+        // Store playerId immediately for race condition fix
+        currentPlayerId = data.playerId
+        setPlayerId(data.playerId)
+        setPlayerName(data.playerName)
+        
+        // Set initial game state from authentication
+        if (data.gameState) {
+          console.log('📊 Initial game state from session:', data.gameState)
+          setGameState(data.gameState)
+          
+          if (data.currentRole) {
+            console.log('🎭 Player role from session:', data.currentRole.name)
+            setPlayerRole(data.currentRole)
+          }
+          
+          if (data.isAlive === false) {
+            console.log('💀 Player is eliminated')
+            setIsEliminated(true)
+          }
+        }
+        
+        // Request room info for game type
+        newSocket.emit(SOCKET_EVENTS.GET_ROOM_INFO, { roomId })
+        
+        // Move to ready state after brief delay
+        setTimeout(() => {
+          console.log('🎯 Setting status to ready for game interface')
+          setStatus('ready')
+          
+          // Send activity ping to maintain connection
+          if (data.gameState !== GAME_STATES.LOBBY) {
+            console.log('📡 Sending ready signal to host for game updates')
+            newSocket.emit('player-activity-ping')
+          }
+        }, 1000)
+        
+      } else if (data.status === 'invalid_session') {
+        console.log('❌ Session invalid:', data.message)
+        setStatus('invalid')
+        setAuthMessage(data.message || 'Session expired or invalid')
+        
+        setTimeout(() => {
+          navigate(`/join/${roomId}`)
+        }, 3000)
+      }
+    })
+
+    // Add all the same game event listeners as JoinRoom
+    newSocket.on(SOCKET_EVENTS.ROOM_INFO, (data) => {
+      console.log('📋 Room info received for session player:', data.gameType)
+      setGameType(data.gameType)
+    })
+
+    newSocket.on(SOCKET_EVENTS.ROLE_ASSIGNED, (data) => {
+      console.log('🎭 Role assigned to session player:', data.role.name)
+      setPlayerRole(data.role)
+      setGameState(GAME_STATES.ROLE_ASSIGNMENT)
+      setIsReady(false) // Reset ready state for new role assignment
+      setMessage(null)
+    })
+
+    // Store playerId reference for immediate use (fixes race condition)
+    let currentPlayerId = null
+    
+    // Listen for game state updates (same as regular players)
+    newSocket.on(SOCKET_EVENTS.GAME_STATE_UPDATE, (masterState) => {
+      console.log('🎮 Master game state update in SessionPlayer:', masterState?.gameState)
+      
+      // Use the stored playerId or current state playerId
+      const playerIdToUse = currentPlayerId || playerId
+      
+      // Only process if we have a valid playerId and masterState
+      if (masterState && playerIdToUse) {
+        const currentPlayer = masterState.players?.find(p => p.id === playerIdToUse)
+        
+        if (currentPlayer) {
+          console.log('👤 Session player state in master update:', {
+            name: currentPlayer.name,
+            alive: currentPlayer.alive,
+            role: currentPlayer.role?.name,
+            gameState: masterState.gameState
+          })
+          
+          // Update game state FIRST (this is the critical fix)
+          console.log('🔄 Updating SessionPlayer game state:', masterState.gameState)
+          setGameState(masterState.gameState)
+          setGameType(masterState.gameType)
+          
+          // Update player-specific state
+          if (currentPlayer.role) {
+            setPlayerRole(currentPlayer.role)
+          }
+          
+          setIsEliminated(!currentPlayer.alive)
+          
+          // Handle phase-specific state
+          if (masterState.gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+            setIsReady(currentPlayer.isReady || false)
+          }
+          
+          // Handle night phase state updates
+          if (masterState.gameState === GAME_STATES.NIGHT_PHASE) {
+            // Extract role-specific targets and actions from master state
+            if (currentPlayer.role) {
+              if (currentPlayer.role.alignment === 'evil') {
+                // For Werewolf/Mafia - get available targets and voting state
+                const aliveNonMafia = masterState.players.filter(p => 
+                  p.alive && p.role?.alignment !== 'evil'
+                ).map(p => ({ id: p.id, name: p.name }))
+                setVoteTargets(aliveNonMafia)
+                
+                // Update mafia vote state from master state
+                if (masterState.mafiaVotes) {
+                  const voteMap = {}
+                  masterState.mafiaVotes.forEach(([voterId, targetId]) => {
+                    const voter = masterState.players.find(p => p.id === voterId)
+                    const target = masterState.players.find(p => p.id === targetId)
+                    if (voter && target) {
+                      voteMap[voterId] = {
+                        name: voter.name,
+                        target: targetId,
+                        targetName: target.name
+                      }
+                    }
+                  })
+                  setMafiaVotes(voteMap)
+                  
+                  // Update player's own vote
+                  const playerVote = masterState.mafiaVotes.find(([voterId]) => voterId === playerIdToUse)
+                  setSelectedTarget(playerVote ? playerVote[1] : null)
+                }
+                
+                setMafiaVotesLocked(masterState.mafiaVotesLocked || false)
+                setConsensusTimer(masterState.consensusTimer)
+              }
+              
+              else if (currentPlayer.role.name === 'Doctor' || currentPlayer.role.name === 'Healer') {
+                // For Doctor/Healer - get all alive players as potential targets
+                const aliveTargets = masterState.players.filter(p => 
+                  p.alive
+                ).map(p => ({ id: p.id, name: p.name }))
+                setHealTargets(aliveTargets)
+                
+                // Update player's heal selection from master state
+                if (masterState.healActions) {
+                  const playerHeal = masterState.healActions.find(([healerId]) => healerId === playerIdToUse)
+                  setSelectedHeal(playerHeal ? playerHeal[1] : null)
+                }
+              }
+              
+              else if (currentPlayer.role.name === 'Seer' || currentPlayer.role.name === 'Detective') {
+                // For Seer/Detective - get alive players except self
+                const investigateTargets = masterState.players.filter(p => 
+                  p.alive && p.id !== playerIdToUse
+                ).map(p => ({ id: p.id, name: p.name }))
+                setInvestigateTargets(investigateTargets)
+                
+                // Update player's investigation selection from master state
+                if (masterState.investigationActions) {
+                  const playerInvestigation = masterState.investigationActions.find(([investigatorId]) => investigatorId === playerIdToUse)
+                  setSelectedInvestigation(playerInvestigation ? playerInvestigation[1] : null)
+                }
+                
+                // Update investigation result from master state
+                if (masterState.investigationResults) {
+                  const playerResult = masterState.investigationResults.find(([investigatorId]) => investigatorId === playerIdToUse)
+                  if (playerResult && playerResult[1]) {
+                    const target = masterState.players.find(p => p.id === playerResult[1].targetId)
+                    setInvestigationResult({
+                      targetId: playerResult[1].targetId,
+                      targetName: target?.name || 'Unknown',
+                      alignment: playerResult[1].alignment
+                    })
+                  }
+                }
+              }
+            }
+            
+            // Update general night phase state
+            setEliminatedPlayer(masterState.eliminatedPlayer)
+            setSavedPlayer(masterState.savedPlayer)
+          }
+          
+          // Update game end state
+          if (masterState.winner) {
+            setGameEndData({
+              winner: masterState.winner,
+              winCondition: masterState.winCondition,
+              alivePlayers: masterState.players.filter(p => masterState.alivePlayers?.has(p.id)),
+              allPlayers: masterState.players
+            })
+          }
+        } else {
+          console.log('⚠️ Player not found in master state:', playerIdToUse)
+        }
+      } else {
+        console.log('⚠️ Missing data for game state update:', { 
+          hasMasterState: !!masterState, 
+          playerId: playerIdToUse 
+        })
+      }
+    })
+
+    newSocket.on(SOCKET_EVENTS.GAME_END, (data) => {
+      console.log('🏁 Game ended for session player:', data)
+      setGameEndData(data)
+      setGameState(GAME_STATES.ENDED)
+      setMessage(null)
+    })
+
+    // Add other game event listeners (same as regular players)
+    newSocket.on(SOCKET_EVENTS.START_NIGHT_PHASE, () => {
+      console.log('🌙 Night phase started for session player')
+      setGameState(GAME_STATES.NIGHT_PHASE)
+    })
+
+    newSocket.on(SOCKET_EVENTS.START_DAY_PHASE, () => {
+      console.log('☀️ Day phase started for session player')
+      setGameState(GAME_STATES.DAY_PHASE)
+    })
+
+    newSocket.on(SOCKET_EVENTS.PLAYER_ELIMINATED, (data) => {
+      console.log('💀 Player eliminated:', data.eliminatedPlayer?.name)
+      if (data.eliminatedPlayer?.id === playerId) {
+        setIsEliminated(true)
+      }
+      setEliminatedPlayer(data.eliminatedPlayer)
+    })
+
+    // Add night phase event listeners (same as JoinRoom)
+    newSocket.on(SOCKET_EVENTS.BEGIN_MAFIA_VOTE, (data) => {
+      console.log('🌙 Mafia voting phase started, targets:', data.targets)
+      setVoteTargets(data.targets || [])
+      setSelectedTarget(null)
+      setHasVoted(false)
+      setMafiaVotesLocked(false)
+    })
+
+    newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_UPDATE, (data) => {
+      console.log('🗳️ Mafia votes update:', data.votes)
+      setMafiaVotes(data.votes || {})
+    })
+
+    newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_START, (data) => {
+      console.log('⏰ Consensus timer started:', data)
+      setConsensusTimer(data)
+    })
+
+    newSocket.on(SOCKET_EVENTS.CONSENSUS_TIMER_CANCELLED, () => {
+      console.log('⏰ Consensus timer cancelled')
+      setConsensusTimer(null)
+    })
+
+    newSocket.on(SOCKET_EVENTS.MAFIA_VOTES_LOCKED, () => {
+      console.log('🔒 Mafia votes locked')
+      setMafiaVotesLocked(true)
+    })
+
+    newSocket.on(SOCKET_EVENTS.BEGIN_DOCTOR_ACTION, (data) => {
+      console.log('🏥 Doctor action phase started, targets:', data.targets)
+      setHealTargets(data.targets || [])
+      setSelectedHeal(null)
+    })
+
+    newSocket.on(SOCKET_EVENTS.BEGIN_SEER_ACTION, (data) => {
+      console.log('🔍 Seer action phase started, targets:', data.targets)
+      setInvestigateTargets(data.targets || [])
+      setSelectedInvestigation(null)
+    })
+
+    newSocket.on(SOCKET_EVENTS.SEER_RESULT, (data) => {
+      console.log('🔍 Seer investigation result:', data)
+      setInvestigationResult(data)
+    })
+
+    newSocket.on('disconnect', () => {
+      if (status === 'authenticating') {
+        setStatus('error')
+        setAuthMessage('Connection lost during authentication')
+        setTimeout(() => navigate(`/join/${roomId}`), 3000)
+      }
+    })
+
+    newSocket.on('connect_error', () => {
+      if (status === 'authenticating') {
+        setStatus('error')
+        setAuthMessage('Failed to connect to server')
+        setTimeout(() => navigate(`/join/${roomId}`), 3000)
+      }
+    })
+
+    newSocket.on('error', (data) => {
+      console.log('❌ Error received:', data)
+      setMessage({ type: 'error', text: data.message })
+    })
+
+    return () => {
+      console.log('🧹 Cleaning up SessionPlayer socket and connection manager')
+      if (manager) {
+        manager.cleanup()
+      }
+      if (newSocket) {
+        newSocket.removeAllListeners()
+        newSocket.close()
+      }
+    }
+  }, [roomId, sessionToken, navigate]) // Only depend on URL params
+
+  // Helper function to handle player ready action
+  const handleReady = () => {
+    if (!isReady && socket) {
+      socket.emit(SOCKET_EVENTS.PLAYER_READY)
+      setIsReady(true)
+    }
+  }
+
+  // Night action handlers (same as JoinRoom)
+  const handleMafiaVote = (targetId) => {
+    if (!socket || mafiaVotesLocked) return
+    
+    console.log('🗳️ Mafia vote:', targetId)
+    socket.emit(SOCKET_EVENTS.MAFIA_VOTE, { targetId })
+    setSelectedTarget(targetId)
+  }
+
+  const handleDoctorHeal = (targetId) => {
+    if (!socket) return
+    
+    console.log('🏥 Doctor heal:', targetId)
+    socket.emit(SOCKET_EVENTS.DOCTOR_HEAL, { targetId })
+    setSelectedHeal(targetId)
+  }
+
+  const handleSeerInvestigate = (targetId) => {
+    if (!socket) return
+    
+    console.log('🔍 Seer investigate:', targetId)
+    socket.emit(SOCKET_EVENTS.SEER_INVESTIGATE, { targetId })
+    setSelectedInvestigation(targetId)
+  }
+
+  // If still authenticating, show authentication screen
+  console.log('🎮 SessionPlayer render - current status:', status, 'gameState:', gameState, 'playerName:', playerName)
+  
+  if (status === 'authenticating') {
+    return (
+      <div className="session-auth-container">
+        <div className="session-auth-content">
+          <div className="session-header">
+            <h1>🎮 Loading Game</h1>
+            <p>Room: <strong>{roomId}</strong></p>
+          </div>
+
+          <div className="session-status">
+            <div className="spinner"></div>
+            <p>{authMessage}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'authenticated') {
+    return (
+      <div className="session-auth-container">
+        <div className="session-auth-content">
+          <div className="session-header">
+            <h1>🎮 Loading Game</h1>
+            <p>Room: <strong>{roomId}</strong></p>
+          </div>
+
+          <div className="session-status">
+            <div className="success-icon">✅</div>
+            <p>{authMessage}</p>
+            <p>Loading game state...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'invalid' || status === 'error') {
+    return (
+      <div className="session-auth-container">
+        <div className="session-auth-content">
+          <div className="session-header">
+            <h1>🔗 Session Error</h1>
+            <p>Room: <strong>{roomId}</strong></p>
+          </div>
+
+          <div className="session-status">
+            <div className="error-icon">❌</div>
+            <p>{authMessage}</p>
+            <p>Redirecting to join page...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Once authenticated and ready, show the appropriate game screen
+  // This is the same logic as JoinRoom but without the join form
+
+  // Game ended screen
+  if (gameState === GAME_STATES.ENDED) {
+    if (!gameEndData) {
+      return (
+        <div className="waiting-container">
+          <div className="waiting-content">
+            <div className="spinner"></div>
+            <h2>Loading game results...</h2>
+          </div>
+        </div>
+      )
+    }
+
+    // Show game results (same as JoinRoom)
+    return (
+      <div className="game-end-container">
+        <div className="game-end-header">
+          <h1>Game Over!</h1>
+          <div className="victory-announcement">
+            <div className="victory-icon">
+              {gameEndData.winner === 'villagers' ? '🎉' : '😈'}
+            </div>
+            <h2>{gameEndData.winner === 'villagers' ? 'Villagers Win!' : 'Mafia Wins!'}</h2>
+            <p className="win-condition">{gameEndData.winCondition}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Role assignment screen  
+  if (gameState === GAME_STATES.ROLE_ASSIGNMENT) {
+    if (!playerRole) {
+      return (
+        <div className="role-container">
+          <div className="role-content">
+            <div className="role-header">
+              <h1>Loading Your Role...</h1>
+            </div>
+            <div className="role-loading">
+              <div className="spinner"></div>
+              <p>Retrieving your role assignment...</p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="role-container">
+        <div className="role-content">
+          <div className="role-header">
+            <div className="warning-banner">⚠️ <strong>SECRET ROLE</strong> ⚠️</div>
+            <h1>Your Role</h1>
+            <p className="warning-text">
+              <strong>Do not show this screen to anyone else!</strong>
+            </p>
+          </div>
+
+          <div className="role-card" style={{ borderColor: playerRole.color }}>
+            <div className="role-name" style={{ color: playerRole.color }}>
+              {playerRole.name}
+            </div>
+            
+            <div className="role-alignment">
+              <span className={`alignment-badge ${playerRole.alignment}`}>
+                {playerRole.alignment === 'good' ? '😇 Good' : '😈 Evil'}
+              </span>
+            </div>
+
+            <div className="role-description">
+              <h3>Description</h3>
+              <p>{playerRole.description}</p>
+            </div>
+
+            <div className="role-ability">
+              <h3>Special Ability</h3>
+              <p>{playerRole.ability}</p>
+            </div>
+          </div>
+
+          <div className="role-footer">
+            <p className="player-info">Playing as: <strong>{playerName}</strong></p>
+            <p className="room-info">Room: <strong>{roomId}</strong></p>
+            
+            <button 
+              className={`ready-btn ${isReady ? 'ready' : ''}`}
+              onClick={handleReady}
+              disabled={isReady}
+            >
+              {isReady ? '✅ Ready - Waiting for others...' : 'I understand my role - Ready!'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Night phase screen with role-specific interfaces
+  if (gameState === GAME_STATES.NIGHT_PHASE && playerRole) {
+    if (isEliminated) {
+      return (
+        <div className="eliminated-container">
+          <div className="eliminated-content">
+            <div className="eliminated-header">
+              <div className="death-icon">💀</div>
+              <h1>You Have Been Eliminated</h1>
+              <p className="elimination-subtitle">But you can still watch the game unfold...</p>
+            </div>
+            <div className="spectator-info">
+              <h3>👻 You Are Now a Spectator</h3>
+              <p>The game continues, but your voice has been silenced.</p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Mafia voting interface - check if this player is evil (Mafia/Werewolf)
+    if (playerRole.alignment === 'evil') {
+      // If we haven't received vote targets yet, show loading
+      if (voteTargets.length === 0) {
+        return (
+          <div className="night-container">
+            <div className="mafia-vote-container">
+              <div className="mafia-vote-content">
+                <div className="night-header">
+                  <div className="night-icon">🌙</div>
+                  <h1>Night Phase</h1>
+                  <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+                </div>
+
+                <div className="vote-section">
+                  <h2>Preparing...</h2>
+                  <div className="night-progress">
+                    <div className="night-spinner"></div>
+                    <p>Gathering intelligence on targets...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="night-container">
+          <div className="mafia-vote-container">
+            <div className="mafia-vote-content">
+              <div className="night-header">
+                <div className="night-icon">🌙</div>
+                <h1>Night Phase</h1>
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+              </div>
+
+              <div className="vote-section">
+                <h2>Choose Your Target</h2>
+                <p>Select a player to eliminate tonight:</p>
+                
+                <div className="target-list">
+                  {voteTargets.map((target) => (
+                    <button
+                      key={target.id}
+                      className={`target-btn ${selectedTarget === target.id ? 'selected' : ''} ${mafiaVotesLocked ? 'locked' : ''}`}
+                      onClick={() => handleMafiaVote(target.id)}
+                      disabled={mafiaVotesLocked}
+                    >
+                      <span className="target-name">{target.name}</span>
+                      {selectedTarget === target.id && <span className="vote-indicator">✓ Voted</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {Object.keys(mafiaVotes).length > 1 && (
+                  <div className="other-votes-section">
+                    <h3>Team Votes</h3>
+                    {Object.entries(mafiaVotes).map(([playerId, voteData]) => (
+                      <div key={playerId} className="vote-status">
+                        <span className="voter-name">{voteData.name}:</span>
+                        <span className="vote-target">
+                          {voteData.target ? voteData.targetName : 'No vote'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {selectedTarget && !mafiaVotesLocked && (
+                  <div className="vote-confirmation">
+                    <p>🎯 You have voted to eliminate <strong>{voteTargets.find(t => t.id === selectedTarget)?.name}</strong></p>
+                    <small className="consensus-info">
+                      Waiting for team consensus...
+                    </small>
+                  </div>
+                )}
+
+                {mafiaVotesLocked && (
+                  <div className="vote-locked">
+                    <p>🔒 Votes Locked</p>
+                    <small className="locked-info">
+                      Your team has reached consensus. The target will be eliminated.
+                    </small>
+                  </div>
+                )}
+
+                {consensusTimer && (
+                  <div className="consensus-timer">
+                    <p>⏰ Consensus reached! Eliminating <strong>{consensusTimer.targetName}</strong> in {consensusTimer.timeLeft}s</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Doctor healing interface  
+    if (playerRole.name === 'Doctor' || playerRole.name === 'Healer') {
+      if (healTargets.length === 0) {
+        return (
+          <div className="night-container">
+            <div className="night-wait-container">
+              <div className="night-wait-content">
+                <div className="night-header">
+                  <div className="night-icon">🌙</div>
+                  <h1>Night Phase</h1>
+                  <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+                </div>
+
+                <div className="sleep-section">
+                  <h2>Preparing Medical Kit...</h2>
+                  <div className="night-progress">
+                    <div className="night-spinner"></div>
+                    <p>Gathering patient information...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="night-container">
+          <div className="doctor-heal-container">
+            <div className="doctor-heal-content">
+              <div className="night-header">
+                <div className="night-icon">🏥</div>
+                <h1>Night Phase</h1>
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+              </div>
+
+              <div className="heal-section">
+                <h2>Choose Someone to Protect</h2>
+                <p>Select a player to protect from elimination tonight:</p>
+                
+                <div className="target-list">
+                  {healTargets.map((target) => (
+                    <button
+                      key={target.id}
+                      className={`target-btn ${selectedHeal === target.id ? 'selected' : ''}`}
+                      onClick={() => handleDoctorHeal(target.id)}
+                    >
+                      <span className="target-name">{target.name}</span>
+                      {selectedHeal === target.id && <span className="vote-indicator">✓ Protected</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {selectedHeal && (
+                  <div className="heal-confirmation">
+                    <p>🛡️ You are protecting <strong>{healTargets.find(t => t.id === selectedHeal)?.name}</strong> tonight</p>
+                    <small>They will survive if targeted for elimination.</small>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Seer investigation interface
+    if (playerRole.name === 'Seer' || playerRole.name === 'Detective') {
+      if (investigateTargets.length === 0) {
+        return (
+          <div className="night-container">
+            <div className="night-wait-container">
+              <div className="night-wait-content">
+                <div className="night-header">
+                  <div className="night-icon">🌙</div>
+                  <h1>Night Phase</h1>
+                  <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+                </div>
+
+                <div className="sleep-section">
+                  <h2>Consulting the Spirits...</h2>
+                  <div className="night-progress">
+                    <div className="night-spinner"></div>
+                    <p>Preparing mystical vision...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="night-container">
+          <div className="seer-investigate-container">
+            <div className="seer-investigate-content">
+              <div className="night-header">
+                <div className="night-icon">🔮</div>
+                <h1>Night Phase</h1>
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+              </div>
+
+              <div className="investigate-section">
+                <h2>Choose Someone to Investigate</h2>
+                <p>Select a player to learn their true alignment:</p>
+                
+                <div className="target-list">
+                  {investigateTargets.map((target) => (
+                    <button
+                      key={target.id}
+                      className={`target-btn ${selectedInvestigation === target.id ? 'selected' : ''}`}
+                      onClick={() => handleSeerInvestigate(target.id)}
+                    >
+                      <span className="target-name">{target.name}</span>
+                      {selectedInvestigation === target.id && <span className="vote-indicator">✓ Investigating</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {selectedInvestigation && (
+                  <div className="investigate-confirmation">
+                    <p>🔍 You are investigating <strong>{investigateTargets.find(t => t.id === selectedInvestigation)?.name}</strong></p>
+                    <small>You will learn their alignment when the night ends.</small>
+                  </div>
+                )}
+
+                {investigationResult && (
+                  <div className="investigation-result">
+                    <h3>🔮 Vision Revealed!</h3>
+                    <p>
+                      <strong>{investigationResult.targetName}</strong> is aligned with the{' '}
+                      <span className={`alignment-${investigationResult.alignment}`}>
+                        {investigationResult.alignment === 'good' ? 'Villagers 😇' : 'Evil Forces 😈'}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Default: Villager "sleep tight" screen
+    return (
+      <div className="night-container">
+        <div className="night-wait-container">
+          <div className="night-wait-content">
+            <div className="night-header">
+              <div className="night-icon">🌙</div>
+              <h1>Night Phase</h1>
+              {playerRole && (
+                <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+              )}
+            </div>
+
+            <div className="sleep-section">
+              <div className="sleep-icon">😴</div>
+              <h2>Sleep Tight</h2>
+              <p>The town sleeps while dark forces move in the shadows...</p>
+              
+              <div className="night-progress">
+                <div className="night-spinner"></div>
+                <p>Waiting for night actions to complete...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Day phase screen
+  if (gameState === GAME_STATES.DAY_PHASE) {
+    if (isEliminated) {
+      return (
+        <div className="eliminated-container">
+          <div className="eliminated-content">
+            <div className="eliminated-header">
+              <div className="death-icon">💀</div>
+              <h1>You Have Been Eliminated</h1>
+              <p className="elimination-subtitle">But you can still watch the voting...</p>
+            </div>
+            <div className="spectator-info">
+              <h3>👻 You Are Now a Spectator</h3>
+              <p>Watch as the remaining players try to find the killers.</p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="day-container">
+        <div className="day-content">
+          <div className="day-header">
+            <div className="day-icon">☀️</div>
+            <h1>Day Phase</h1>
+            {playerRole && (
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            )}
+          </div>
+
+          <div className="day-main">
+            <h2>Town Discussion</h2>
+            <p>Discuss with other players and vote to eliminate someone suspicious.</p>
+            
+            <div className="day-progress">
+              <div className="day-spinner"></div>
+              <p>Discussion and voting in progress...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Default: show waiting screen (lobby state)
+  return (
+    <div className="waiting-container">
+      <div className="waiting-content">
+        <div className="spinner"></div>
+        <h2>Joined Game Lobby</h2>
+        <p>Room: <strong>{roomId}</strong></p>
+        <p>Playing as: <strong>{playerName}</strong></p>
+        <p>Waiting for host to start the game...</p>
+        
+        {message && (
+          <div className={`message ${message.type}`}>
+            {message.text}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function App() {
   return (
     <div className="app">
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/join/:roomId" element={<JoinRoom />} />
+        <Route path="/room/:roomId/player/:sessionToken" element={<SessionPlayer />} />
       </Routes>
     </div>
   )

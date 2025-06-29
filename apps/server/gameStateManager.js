@@ -17,9 +17,6 @@ export class GameStateManager {
       alivePlayers: new Set(),
       mafiaVotes: new Map(),
       accusations: new Map(),
-      reconnectingPlayers: new Set(),
-      gamePaused: false,
-      pauseReason: null,
       eliminatedPlayer: null,
       savedPlayer: null,
       eliminationCountdown: null,
@@ -29,10 +26,10 @@ export class GameStateManager {
       consensusTimer: null,
       nightActionResults: new Map(),
       votingData: new Map(),
-      investigationResults: new Map(), // Store seer investigation results
-      healActions: new Map(), // Store per-player heal actions (playerId -> targetId)
-      investigationActions: new Map(), // Store per-player investigation actions (playerId -> targetId)
-      phaseStartTime: Date.now() // NEW for Step 1.2: Track when current phase started
+      investigationResults: new Map(),
+      healActions: new Map(),
+      investigationActions: new Map(),
+      phaseStartTime: Date.now()
     });
     
     console.log(`GameStateManager: Initialized room ${roomId} with game type ${gameType}`);
@@ -95,8 +92,6 @@ export class GameStateManager {
     const masterState = {
       gameState: room.gameState,
       gameType: room.gameType,
-      gamePaused: room.gamePaused,
-      pauseReason: room.pauseReason,
       
       // Players with all info
       players: room.players.map(p => {
@@ -137,23 +132,22 @@ export class GameStateManager {
         return {
           id: p.id,
           name: p.name,
-          connected: p.connected,
+          sessionToken: p.sessionToken,
           role: role,
           isReady: room.playerReadiness.get(p.id) || false,
           alive: isAlive,
-          disconnectionInfo: p.disconnectionInfo || null,
           
-          // Enhanced action status information (NEW)
+          // Enhanced action status information
           actionStatus: actionStatus,
           hasActed: hasActed,
           
-          // Role-specific capability flags (NEW)
+          // Role-specific capability flags
           canVote: canVote,
           canHeal: canHeal,
           canInvestigate: canInvestigate,
           canMafiaVote: canMafiaVote,
           
-          // Individual action status (NEW)
+          // Individual action status
           isHealed: room.healActions && Array.from(room.healActions.values()).includes(p.id),
           investigationResult: room.investigationResults && room.investigationResults.get(p.id) || null
         };
@@ -177,10 +171,10 @@ export class GameStateManager {
       investigationResults: room.investigationResults ? Array.from(room.investigationResults.entries()) : []
     };
 
-    // Add comprehensive derived action information (NEW for Step 1.2)
+    // Add comprehensive derived action information
     masterState.derivedActions = this.calculateDerivedActions(room);
     
-    // Add timing information (NEW for Step 1.2)
+    // Add timing information
     masterState.timeRemaining = this.calculateTimeRemaining(room);
     
     // Legacy: Keep existing availableTargets for backward compatibility
@@ -194,8 +188,6 @@ export class GameStateManager {
 
     return masterState;
   }
-
-
 
   // Helper functions for game logic
   getAliveNonMafiaPlayers(room) {
@@ -218,11 +210,10 @@ export class GameStateManager {
     return room.players.filter(player => room.alivePlayers.has(player.id));
   }
 
-  // NEW for Step 1.2: Calculate comprehensive derived action information
+  // Calculate comprehensive derived action information
   calculateDerivedActions(room) {
     const derivedActions = {};
     
-    // Calculate for each player what actions they can take and targets available
     room.players.forEach(player => {
       const role = room.playerRoles.get(player.id);
       const isAlive = room.alivePlayers.has(player.id);
@@ -230,8 +221,8 @@ export class GameStateManager {
       const playerActions = {
         availableActions: [],
         actionTargets: [],
-        primaryAction: null, // The main action this player should take
-        actionContext: {}    // Additional context for the action
+        primaryAction: null,
+        actionContext: {}
       };
       
       if (!isAlive) {
@@ -275,7 +266,6 @@ export class GameStateManager {
             break;
             
           case GAME_STATES.DAY_PHASE:
-            // All alive players can participate in discussion
             playerActions.availableActions.push('discuss');
             playerActions.actionTargets = room.players
               .filter(p => room.alivePlayers.has(p.id) && p.id !== player.id)
@@ -300,34 +290,29 @@ export class GameStateManager {
     return derivedActions;
   }
 
-  // NEW for Step 1.2: Calculate time remaining in current phase
+  // Calculate time remaining in current phase
   calculateTimeRemaining(room) {
-    // For now, return a placeholder. In future phases, we'll add actual timing logic
-    // based on phase start time and phase duration settings
     const phaseTimeouts = {
-      [GAME_STATES.ROLE_ASSIGNMENT]: 60000, // 60 seconds
-      [GAME_STATES.NIGHT_PHASE]: 90000,     // 90 seconds  
-      [GAME_STATES.DAY_PHASE]: 180000,      // 3 minutes
+      [GAME_STATES.ROLE_ASSIGNMENT]: 60000,
+      [GAME_STATES.NIGHT_PHASE]: 90000,
+      [GAME_STATES.DAY_PHASE]: 180000,
     };
     
     const phaseTimeout = phaseTimeouts[room.gameState] || 0;
     
-    // If we have a phase start time, calculate remaining time
     if (room.phaseStartTime) {
       const elapsed = Date.now() - room.phaseStartTime;
       const remaining = Math.max(0, phaseTimeout - elapsed);
       return remaining;
     }
     
-    // Default to full phase time if no start time set
     return phaseTimeout;
   }
 
-  // BUGFIX: Format accusations for client compatibility
+  // Format accusations for client compatibility
   formatAccusationsForClients(room) {
     const accusationData = {};
     
-    // Convert Map format to object format expected by clients
     room.accusations.forEach((accusers, accusedId) => {
       const accusedPlayer = room.players.find(p => p.id === accusedId);
       const accuserNames = Array.from(accusers).map(accuserId => {
@@ -343,67 +328,6 @@ export class GameStateManager {
     });
     
     return accusationData;
-  }
-
-  handlePlayerDisconnect(roomId, playerId) {
-    const state = this.roomStates.get(roomId);
-    if (!state) return;
-
-    // Don't handle reconnection in lobby
-    if (state.gameState === GAME_STATES.LOBBY) return;
-
-    console.log(`GameStateManager: Handling disconnect for player ${playerId} in room ${roomId}`);
-
-    if (!state.reconnectingPlayers) {
-      state.reconnectingPlayers = new Set();
-    }
-    
-    state.reconnectingPlayers.add(playerId);
-    const player = state.players.find(p => p.id === playerId);
-    if (!player) return;
-
-    // Update player connection status
-    this.updateGameState(roomId, {
-      players: state.players.map(p => 
-        p.id === playerId ? { ...p, connected: false } : p
-      ),
-      gamePaused: state.gameState !== GAME_STATES.ENDED,
-      pauseReason: state.gameState !== GAME_STATES.ENDED ? 'Waiting for player reconnection' : null
-    });
-  }
-
-  handlePlayerReconnect(roomId, playerId, socket) {
-    const state = this.roomStates.get(roomId);
-    if (!state) return;
-
-    console.log(`GameStateManager: Handling reconnect for player ${playerId} in room ${roomId}`);
-
-    const player = state.players.find(p => p.id === playerId);
-    if (!player) return;
-
-    // Update reconnecting players
-    if (state.reconnectingPlayers) {
-      state.reconnectingPlayers.delete(playerId);
-    }
-
-    // Check if all players are back
-    const allConnected = state.players.every(p => p.connected || p.id === playerId);
-
-    // Update player connection status and game pause state
-    this.updateGameState(roomId, {
-      players: state.players.map(p => 
-        p.id === playerId ? { ...p, connected: true } : p
-      ),
-      gamePaused: !allConnected,
-      pauseReason: !allConnected ? 'Waiting for player reconnection' : null
-    });
-
-    // Send current state to reconnected player immediately
-    const playerState = getPlayerGameState(state, playerId, {
-      getAliveNonMafiaPlayers: (room) => this.getAliveNonMafiaPlayers(room),
-      getMafiaPlayers: (room) => this.getMafiaPlayers(room)
-    });
-    socket.emit(SOCKET_EVENTS.GAME_STATE_UPDATE, playerState);
   }
 
   cleanup(roomId) {

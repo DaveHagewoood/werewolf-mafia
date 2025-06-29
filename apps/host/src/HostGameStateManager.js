@@ -1,4 +1,4 @@
-import { SOCKET_EVENTS, GameConnectionState, GAME_STATES, GAME_CONFIG, assignRoles, GAME_TYPES, ROLE_SETS } from '@werewolf-mafia/shared';
+import { SOCKET_EVENTS, GAME_STATES, GAME_CONFIG, assignRoles, GAME_TYPES, ROLE_SETS } from '@werewolf-mafia/shared';
 
 export class HostGameStateManager {
   constructor(socket, roomId, onStateChange = null) {
@@ -11,7 +11,6 @@ export class HostGameStateManager {
     this.eliminationTimer = null;
     
     this.gameState = {
-      connectionState: GameConnectionState.ACTIVE,
       gameState: GAME_STATES.LOBBY,
       gameType: null,
       players: [],
@@ -20,10 +19,6 @@ export class HostGameStateManager {
       alivePlayers: new Set(),
       mafiaVotes: new Map(),
       accusations: new Map(),
-      reconnectingPlayers: new Set(),
-      gamePaused: false,
-      pauseReason: null,
-      disconnectedPlayer: null,
       eliminatedPlayer: null,
       savedPlayer: null,
       eliminationCountdown: null,
@@ -54,6 +49,11 @@ export class HostGameStateManager {
         this.gameState[key] = value;
       }
     });
+
+    // Debug log for player updates
+    if (updates.players) {
+      console.log(`🔄 HostGameStateManager: Players updated - now have ${updates.players.length} players:`, updates.players.map(p => `${p.name}(${p.id})`));
+    }
 
     // Broadcast updated state to players via server
     this.broadcastGameState();
@@ -92,18 +92,15 @@ export class HostGameStateManager {
     const masterState = {
       gameState: this.gameState.gameState,
       gameType: this.gameState.gameType,
-      gamePaused: this.gameState.gamePaused,
-      pauseReason: this.gameState.pauseReason,
       
       // Players with all info
       players: this.gameState.players.map(p => ({
         id: p.id,
         name: p.name,
-        connected: p.connected,
+        sessionToken: p.sessionToken,
         role: this.gameState.playerRoles.get(p.id),
         isReady: this.gameState.playerReadiness.get(p.id) || false,
-        alive: this.gameState.alivePlayers.has(p.id),
-        disconnectionInfo: p.disconnectionInfo || null
+        alive: this.gameState.alivePlayers.has(p.id)
       })),
       
       // Phase-specific data
@@ -170,111 +167,39 @@ export class HostGameStateManager {
     });
   }
 
-  addPlayer(playerId, playerName, profileImage) {
-    // Check if player with same name already exists (for reconnection during active games)
-    const existingPlayerIndex = this.gameState.players.findIndex(p => p.name === playerName);
-    
-    if (existingPlayerIndex !== -1 && this.gameState.gameState !== GAME_STATES.LOBBY) {
-      // Player reconnecting during active game - update their socket ID
-      const existingPlayer = this.gameState.players[existingPlayerIndex];
-      const oldPlayerId = existingPlayer.id;
-      const newPlayerId = playerId;
-      
-      console.log(`Player ${playerName} reconnecting: ${oldPlayerId} -> ${newPlayerId}`);
-      
-      // Update player's socket ID
-      const updatedPlayers = [...this.gameState.players];
-      updatedPlayers[existingPlayerIndex] = {
-        ...existingPlayer,
-        id: newPlayerId,
-        connected: true,
-        profileImage: profileImage
-      };
-      
-      // Update all game state maps/sets to use new socket ID
-      const newPlayerRoles = new Map(this.gameState.playerRoles);
-      const newPlayerReadiness = new Map(this.gameState.playerReadiness);
-      const newAlivePlayers = new Set(this.gameState.alivePlayers);
-      const newMafiaVotes = new Map(this.gameState.mafiaVotes);
-      const newAccusations = new Map(this.gameState.accusations);
-      const newHealActions = new Map(this.gameState.healActions);
-      const newInvestigationActions = new Map(this.gameState.investigationActions);
-      const newInvestigationResults = new Map(this.gameState.investigationResults);
-      
-      // Move data from old socket ID to new socket ID
-      if (newPlayerRoles.has(oldPlayerId)) {
-        newPlayerRoles.set(newPlayerId, newPlayerRoles.get(oldPlayerId));
-        newPlayerRoles.delete(oldPlayerId);
-      }
-      if (newPlayerReadiness.has(oldPlayerId)) {
-        newPlayerReadiness.set(newPlayerId, newPlayerReadiness.get(oldPlayerId));
-        newPlayerReadiness.delete(oldPlayerId);
-      }
-      if (newAlivePlayers.has(oldPlayerId)) {
-        newAlivePlayers.delete(oldPlayerId);
-        newAlivePlayers.add(newPlayerId);
-      }
-      if (newMafiaVotes.has(oldPlayerId)) {
-        newMafiaVotes.set(newPlayerId, newMafiaVotes.get(oldPlayerId));
-        newMafiaVotes.delete(oldPlayerId);
-      }
-      if (newHealActions.has(oldPlayerId)) {
-        newHealActions.set(newPlayerId, newHealActions.get(oldPlayerId));
-        newHealActions.delete(oldPlayerId);
-      }
-      if (newInvestigationActions.has(oldPlayerId)) {
-        newInvestigationActions.set(newPlayerId, newInvestigationActions.get(oldPlayerId));
-        newInvestigationActions.delete(oldPlayerId);
-      }
-      if (newInvestigationResults.has(oldPlayerId)) {
-        newInvestigationResults.set(newPlayerId, newInvestigationResults.get(oldPlayerId));
-        newInvestigationResults.delete(oldPlayerId);
-      }
-      
-      // Update accusations (both as accuser and accused)
-      newAccusations.forEach((accusers, accusedId) => {
-        if (accusers.has(oldPlayerId)) {
-          accusers.delete(oldPlayerId);
-          accusers.add(newPlayerId);
-        }
-      });
-      if (newAccusations.has(oldPlayerId)) {
-        newAccusations.set(newPlayerId, newAccusations.get(oldPlayerId));
-        newAccusations.delete(oldPlayerId);
-      }
-      
-      this.updateGameState({
-        players: updatedPlayers,
-        playerRoles: newPlayerRoles,
-        playerReadiness: newPlayerReadiness,
-        alivePlayers: newAlivePlayers,
-        mafiaVotes: newMafiaVotes,
-        accusations: newAccusations,
-        healActions: newHealActions,
-        investigationActions: newInvestigationActions,
-        investigationResults: newInvestigationResults
-      });
-      
-      console.log(`✅ Reconnection successful for ${playerName}: alive=${newAlivePlayers.has(newPlayerId)}`);
-    } else {
-      // New player joining or player joining lobby - create new player
-      const newPlayer = {
-        id: playerId,
-        name: playerName,
-        connected: true,
-        profileImage: profileImage
-      };
+  addPlayer(playerId, playerName, profileImage, sessionToken = null) {
+    // Create new player entry
+    const newPlayer = {
+      id: playerId,
+      name: playerName,
+      profileImage: profileImage,
+      sessionToken: sessionToken || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Temporary token for old system compatibility
+      connected: true, // Set as connected when they join
+      lastSeen: Date.now() // Track when we last heard from them
+    };
 
-      this.updateGameState({
-        players: [...this.gameState.players, newPlayer]
-      });
-      
-      console.log(`✅ New player added: ${playerName}`);
-    }
+    this.updateGameState({
+      players: [...this.gameState.players, newPlayer]
+    });
+    
+    console.log(`✅ Player added: ${playerName}`);
   }
 
   removePlayer(playerId) {
+    console.log(`🗑️ HOST: Attempting to remove player with ID: ${playerId}`);
+    console.log(`🗑️ HOST: Current players before removal:`, this.gameState.players.map(p => `${p.name}(${p.id})`));
+    
+    const playerToRemove = this.gameState.players.find(p => p.id === playerId);
+    if (!playerToRemove) {
+      console.log(`❌ HOST: Player with ID ${playerId} not found in game state!`);
+      console.log(`❌ HOST: Available player IDs:`, this.gameState.players.map(p => p.id));
+      return;
+    }
+    
+    console.log(`🎯 HOST: Found player to remove: ${playerToRemove.name} (${playerId})`);
+    
     const updatedPlayers = this.gameState.players.filter(p => p.id !== playerId);
+    console.log(`✅ HOST: Players after removal:`, updatedPlayers.map(p => `${p.name}(${p.id})`));
     
     // Clean up player data
     const newPlayerRoles = new Map(this.gameState.playerRoles);
@@ -294,190 +219,153 @@ export class HostGameStateManager {
       alivePlayers: newAlivePlayers,
       mafiaVotes: newMafiaVotes
     });
+    
+    console.log(`✅ HOST: Player ${playerToRemove.name} successfully removed from game state`);
   }
 
-  // Helper method to generate pause reason based on current disconnected players
-  generatePauseReason(players) {
-    const disconnectedPlayers = players.filter(p => p.connected === false);
+  // Session-based player reconnection (NEW)
+  reconnectPlayerBySession(sessionToken, newSocketId) {
+    // Find player by session token
+    const playerIndex = this.gameState.players.findIndex(p => p.sessionToken === sessionToken);
     
-    if (disconnectedPlayers.length === 0) {
-      return null;
-    } else if (disconnectedPlayers.length === 1) {
-      return `Waiting for ${disconnectedPlayers[0].name} to reconnect...`;
-    } else if (disconnectedPlayers.length === 2) {
-      return `Waiting for ${disconnectedPlayers[0].name} and ${disconnectedPlayers[1].name} to reconnect...`;
-    } else {
-      const names = disconnectedPlayers.map(p => p.name);
-      const lastPlayer = names.pop();
-      return `Waiting for ${names.join(', ')}, and ${lastPlayer} to reconnect...`;
-    }
-  }
-
-  // Handle player disconnection during active gameplay
-  handlePlayerDisconnect(playerId, playerName, gamePhase) {
-    console.log(`🔌 Player ${playerName} disconnected during ${gamePhase}`);
-    console.log(`🔍 Current game state: ${this.gameState.gameState}`);
-    console.log(`🔍 Is active game phase: ${this.isActiveGamePhase()}`);
-    
-    // Check if this is an active game phase that requires pausing
-    if (this.isActiveGamePhase()) {
-      console.log(`✅ Active game phase detected - proceeding with pause`);
-      
-      // Mark player as disconnected
-      const updatedPlayers = this.gameState.players.map(p => 
-        p.id === playerId ? { ...p, connected: false } : p
-      );
-      
-      console.log(`🔌 Marked ${playerName} as disconnected in host game state`);
-      
-      // Generate pause reason that includes all disconnected players
-      const pauseReason = this.generatePauseReason(updatedPlayers);
-      
-      console.log(`🔄 Updating game state to paused...`);
-      this.updateGameState({
-        players: updatedPlayers,
-        gamePaused: true,
-        pauseReason: pauseReason,
-        disconnectedPlayer: { id: playerId, name: playerName }
-      });
-      
-      console.log(`⏸️ Game paused: ${pauseReason}`);
-      console.log(`🔍 Updated game state - paused: ${this.gameState.gamePaused}, reason: ${this.gameState.pauseReason}`);
-    } else {
-      console.log(`❌ Not an active game phase - no pause needed`);
-    }
-  }
-
-  // Handle player reconnection during active gameplay  
-  handlePlayerReconnect(playerId, playerName, oldPlayerId = null) {
-    console.log(`🔌 Player ${playerName} reconnected (${oldPlayerId || 'unknown'} -> ${playerId})`);
-    
-    // Use old player ID to find the player if provided, otherwise fallback to current ID
-    const searchId = oldPlayerId || playerId;
-    
-    // Find and update the player with new socket ID
-    let playerFound = false;
-    const updatedPlayers = this.gameState.players.map(p => {
-      if (p.id === searchId) {
-        playerFound = true;
-        return { ...p, id: playerId, connected: true }; // Update to new socket ID
-      }
-      return p;
-    });
-    
-    if (!playerFound) {
-      console.error(`❌ Player ${playerName} not found with ID ${searchId}`);
-      return;
+    if (playerIndex === -1) {
+      console.log(`❌ No player found with session token`);
+      return false;
     }
     
-    // Update all game state Maps that reference the old player ID
+    const player = this.gameState.players[playerIndex];
+    const oldSocketId = player.id;
+    
+    console.log(`🔄 Reconnecting player ${player.name}: ${oldSocketId} -> ${newSocketId}`);
+    
+    // Update all game state references from old socket ID to new socket ID
+    const updatedPlayers = [...this.gameState.players];
+    updatedPlayers[playerIndex] = { ...player, id: newSocketId };
+    
     const updates = { players: updatedPlayers };
     
-    if (oldPlayerId && oldPlayerId !== playerId) {
-      console.log(`🔄 Updating game state maps: ${oldPlayerId} -> ${playerId}`);
-      
-      // Update playerRoles Map
-      if (this.gameState.playerRoles.has(oldPlayerId)) {
-        const role = this.gameState.playerRoles.get(oldPlayerId);
-        const newPlayerRoles = new Map(this.gameState.playerRoles);
-        newPlayerRoles.delete(oldPlayerId);
-        newPlayerRoles.set(playerId, role);
-        updates.playerRoles = newPlayerRoles;
+    // Update Maps/Sets that use socket IDs as keys
+    ['playerRoles', 'playerReadiness', 'mafiaVotes', 'healActions', 'investigationActions'].forEach(mapName => {
+      if (this.gameState[mapName] && this.gameState[mapName].has(oldSocketId)) {
+        const newMap = new Map(this.gameState[mapName]);
+        const value = newMap.get(oldSocketId);
+        newMap.delete(oldSocketId);
+        newMap.set(newSocketId, value);
+        updates[mapName] = newMap;
       }
+    });
+    
+    // Update alivePlayers Set
+    if (this.gameState.alivePlayers.has(oldSocketId)) {
+      const newAlivePlayers = new Set(this.gameState.alivePlayers);
+      newAlivePlayers.delete(oldSocketId);
+      newAlivePlayers.add(newSocketId);
+      updates.alivePlayers = newAlivePlayers;
+    }
+    
+    // Update accusations Map (both as accuser and accused)
+    if (this.gameState.accusations.size > 0) {
+      const newAccusations = new Map();
+      this.gameState.accusations.forEach((accusers, accusedId) => {
+        const newAccusedId = accusedId === oldSocketId ? newSocketId : accusedId;
+        const newAccusers = new Set();
+        accusers.forEach(accuserId => {
+          const newAccuserId = accuserId === oldSocketId ? newSocketId : accuserId;
+          newAccusers.add(newAccuserId);
+        });
+        newAccusations.set(newAccusedId, newAccusers);
+      });
+      updates.accusations = newAccusations;
+    }
+    
+    this.updateGameState(updates);
+    
+    console.log(`✅ Session-based reconnection successful for ${player.name}`);
+    return true;
+  }
+
+  // Update player socket ID and mark as connected (for both lobby and active game session authentication)
+  updatePlayerSocketId(oldSocketId, newSocketId) {
+    const playerIndex = this.gameState.players.findIndex(p => p.id === oldSocketId);
+    
+    if (playerIndex === -1) {
+      console.log(`❌ No player found with old socket ID: ${oldSocketId}`);
+      return false;
+    }
+    
+    const player = this.gameState.players[playerIndex];
+    console.log(`🔄 Updating socket ID for ${player.name}: ${oldSocketId} -> ${newSocketId}`);
+    
+    // Update the player list
+    const updatedPlayers = [...this.gameState.players];
+    updatedPlayers[playerIndex] = { 
+      ...player, 
+      id: newSocketId,
+      connected: true,
+      lastSeen: Date.now()
+    };
+    
+    const updates = { players: updatedPlayers };
+    
+    // For active games, also update all game state Maps that use socket IDs as keys
+    if (this.gameState.gameState !== GAME_STATES.LOBBY) {
+      console.log(`🎮 Active game - updating all game state mappings for ${player.name}`);
       
-      // Update playerReadiness Map
-      if (this.gameState.playerReadiness.has(oldPlayerId)) {
-        const readiness = this.gameState.playerReadiness.get(oldPlayerId);
-        const newPlayerReadiness = new Map(this.gameState.playerReadiness);
-        newPlayerReadiness.delete(oldPlayerId);
-        newPlayerReadiness.set(playerId, readiness);
-        updates.playerReadiness = newPlayerReadiness;
-      }
+      // Update Maps/Sets that use socket IDs as keys
+      ['playerRoles', 'playerReadiness', 'mafiaVotes', 'healActions', 'investigationActions'].forEach(mapName => {
+        if (this.gameState[mapName] && this.gameState[mapName].has(oldSocketId)) {
+          const newMap = new Map(this.gameState[mapName]);
+          const value = newMap.get(oldSocketId);
+          newMap.delete(oldSocketId);
+          newMap.set(newSocketId, value);
+          updates[mapName] = newMap;
+          console.log(`  📝 Updated ${mapName}: ${oldSocketId} -> ${newSocketId}`);
+        }
+      });
       
       // Update alivePlayers Set
-      if (this.gameState.alivePlayers.has(oldPlayerId)) {
+      if (this.gameState.alivePlayers && this.gameState.alivePlayers.has(oldSocketId)) {
         const newAlivePlayers = new Set(this.gameState.alivePlayers);
-        newAlivePlayers.delete(oldPlayerId);
-        newAlivePlayers.add(playerId);
+        newAlivePlayers.delete(oldSocketId);
+        newAlivePlayers.add(newSocketId);
         updates.alivePlayers = newAlivePlayers;
-      }
-      
-      // Update mafiaVotes Map (both as voter and target)
-      if (this.gameState.mafiaVotes) {
-        const newMafiaVotes = new Map();
-        this.gameState.mafiaVotes.forEach((targetId, voterId) => {
-          const newVoterId = voterId === oldPlayerId ? playerId : voterId;
-          const newTargetId = targetId === oldPlayerId ? playerId : targetId;
-          newMafiaVotes.set(newVoterId, newTargetId);
-        });
-        updates.mafiaVotes = newMafiaVotes;
+        console.log(`  📝 Updated alivePlayers: ${oldSocketId} -> ${newSocketId}`);
       }
       
       // Update accusations Map (both as accuser and accused)
-      if (this.gameState.accusations) {
+      if (this.gameState.accusations && this.gameState.accusations.size > 0) {
         const newAccusations = new Map();
         this.gameState.accusations.forEach((accusers, accusedId) => {
-          const newAccusedId = accusedId === oldPlayerId ? playerId : accusedId;
+          const newAccusedId = accusedId === oldSocketId ? newSocketId : accusedId;
           const newAccusers = new Set();
           accusers.forEach(accuserId => {
-            const newAccuserId = accuserId === oldPlayerId ? playerId : accuserId;
+            const newAccuserId = accuserId === oldSocketId ? newSocketId : accuserId;
             newAccusers.add(newAccuserId);
           });
           newAccusations.set(newAccusedId, newAccusers);
         });
         updates.accusations = newAccusations;
+        console.log(`  📝 Updated accusations mapping`);
       }
-      
-      // Update other action Maps
-      ['healActions', 'investigationActions'].forEach(actionType => {
-        if (this.gameState[actionType]) {
-          const newActions = new Map();
-          this.gameState[actionType].forEach((targetId, actorId) => {
-            const newActorId = actorId === oldPlayerId ? playerId : actorId;
-            const newTargetId = targetId === oldPlayerId ? playerId : targetId;
-            newActions.set(newActorId, newTargetId);
-          });
-          updates[actionType] = newActions;
-        }
-      });
     }
-    
-    // Check if we can resume the game
-    const allConnected = updatedPlayers.every(p => p.connected);
-    
-    updates.gamePaused = !allConnected;
-    // Update pause reason to reflect current state of disconnected players
-    updates.pauseReason = allConnected ? null : this.generatePauseReason(updatedPlayers);
-    updates.disconnectedPlayer = allConnected ? null : this.gameState.disconnectedPlayer;
     
     this.updateGameState(updates);
     
-    if (allConnected) {
-      console.log(`▶️ Game resumed - all players reconnected`);
-    } else {
-      console.log(`⏸️ Game still paused: ${updates.pauseReason}`);
+    console.log(`✅ Socket ID updated for ${this.gameState.gameState === GAME_STATES.LOBBY ? 'lobby' : 'active game'} player: ${player.name}`);
+    return true;
+  }
+
+  // Simple lobby readiness check - no complex grace periods or cleanup
+  checkPlayersReady() {
+    // For simplified lobby: just check if all players are present
+    // Server handles disconnection cleanup, host doesn't need to
+    
+    return {
+      ready: this.gameState.players.length >= GAME_CONFIG.MIN_PLAYERS,
+      connected: this.gameState.players.length,
+      total: this.gameState.players.length,
+      disconnectedPlayers: []
     }
-    
-    console.log(`✅ Player ${playerName} successfully reconnected and game state updated`);
-  }
-
-  // Check if current game state requires disconnection management
-  isActiveGamePhase() {
-    return this.gameState.gameState !== GAME_STATES.LOBBY && 
-           this.gameState.gameState !== GAME_STATES.ENDED;
-  }
-
-  // End game due to permanent disconnection
-  endGameDueToDisconnection(playerName) {
-    console.log(`🛑 Ending game due to permanent disconnection: ${playerName}`);
-    
-    this.updateGameState({
-      gameState: GAME_STATES.ENDED,
-      winner: null,
-      winCondition: `Game ended - ${playerName} could not reconnect`,
-      gamePaused: false,
-      pauseReason: null
-    });
   }
 
   startGame() {
@@ -488,6 +376,8 @@ export class HostGameStateManager {
     if (this.gameState.gameState !== GAME_STATES.LOBBY) {
       throw new Error('Game already started');
     }
+
+    // Simple start: if players are in the lobby, they're ready to play
 
     // Assign roles to players
     const gameType = this.gameState.gameType || 'werewolf';
@@ -535,7 +425,32 @@ export class HostGameStateManager {
     });
   }
 
+  // Update player's last seen timestamp (for connection tracking)
+  updatePlayerActivity(playerId) {
+    const playerIndex = this.gameState.players.findIndex(p => p.id === playerId)
+    if (playerIndex !== -1) {
+      const updatedPlayers = [...this.gameState.players]
+      updatedPlayers[playerIndex] = {
+        ...updatedPlayers[playerIndex],
+        connected: true,
+        lastSeen: Date.now()
+      }
+      
+      this.updateGameState({
+        players: updatedPlayers
+      })
+    }
+  }
+
+  // Get a player's role (for reconnection)
+  getPlayerRole(playerId) {
+    return this.gameState.playerRoles.get(playerId) || null;
+  }
+
   playerReady(playerId) {
+    // Update activity tracking
+    this.updatePlayerActivity(playerId)
+
     const newReadiness = new Map(this.gameState.playerReadiness);
     newReadiness.set(playerId, true);
     
@@ -580,6 +495,9 @@ export class HostGameStateManager {
 
   // Handle player actions
   processMafiaVote(playerId, targetId) {
+    // Update activity tracking
+    this.updatePlayerActivity(playerId)
+
     // Verify player is Mafia
     const playerRole = this.gameState.playerRoles.get(playerId);
     if (playerRole?.alignment !== 'evil') {
@@ -639,6 +557,9 @@ export class HostGameStateManager {
   }
 
   processDoctorHeal(playerId, targetId) {
+    // Update activity tracking
+    this.updatePlayerActivity(playerId)
+
     const gameType = this.gameState.gameType || GAME_TYPES.WEREWOLF;
     const roleSet = ROLE_SETS[gameType];
     const playerRole = this.gameState.playerRoles.get(playerId);
@@ -663,6 +584,9 @@ export class HostGameStateManager {
   }
 
   processSeerInvestigation(playerId, targetId) {
+    // Update activity tracking
+    this.updatePlayerActivity(playerId)
+
     const gameType = this.gameState.gameType || GAME_TYPES.WEREWOLF;
     const roleSet = ROLE_SETS[gameType];
     const playerRole = this.gameState.playerRoles.get(playerId);
@@ -854,6 +778,9 @@ export class HostGameStateManager {
 
   // Day Phase Voting Logic
   processDayVote(playerId, targetId) {
+    // Update activity tracking
+    this.updatePlayerActivity(playerId)
+
     console.log(`🗳️ Player ${playerId} voting for ${targetId || 'no target'}`);
     
     if (this.gameState.gameState !== GAME_STATES.DAY_PHASE) {
@@ -1026,5 +953,15 @@ export class HostGameStateManager {
     } else {
       console.log('Host tried to continue but not in a resolved state');
     }
+  }
+
+  // Get session URL for a player (for host to share)
+  getPlayerSessionUrl(playerId) {
+    const player = this.gameState.players.find(p => p.id === playerId)
+    if (player && player.sessionToken) {
+      const playerUrl = `${import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001'}/room/${this.roomId}/player/${player.sessionToken}`
+      return playerUrl
+    }
+    return null
   }
 } 
