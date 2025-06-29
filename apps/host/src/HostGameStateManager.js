@@ -8,6 +8,7 @@ export class HostGameStateManager {
     
     // Initialize timer handles for countdown management
     this.consensusTimerHandle = null;
+    this.consensusCountdownInterval = null;
     this.eliminationTimer = null;
     
     this.gameState = {
@@ -492,6 +493,16 @@ export class HostGameStateManager {
       return; // Game ended due to inevitable victory
     }
     
+    // Clear any existing timers from previous phases
+    if (this.consensusTimerHandle) {
+      clearTimeout(this.consensusTimerHandle);
+      this.consensusTimerHandle = null;
+    }
+    if (this.consensusCountdownInterval) {
+      clearInterval(this.consensusCountdownInterval);
+      this.consensusCountdownInterval = null;
+    }
+    
     this.updateGameState({
       gameState: GAME_STATES.NIGHT_PHASE,
       mafiaVotes: new Map(),
@@ -542,8 +553,12 @@ export class HostGameStateManager {
     if (this.consensusTimerHandle) {
       clearTimeout(this.consensusTimerHandle);
       this.consensusTimerHandle = null;
-      updates.consensusTimer = null;
     }
+    if (this.consensusCountdownInterval) {
+      clearInterval(this.consensusCountdownInterval);
+      this.consensusCountdownInterval = null;
+    }
+    updates.consensusTimer = null;
 
     // Check for consensus
     const consensusTarget = this.checkMafiaVoteConsensus(newMafiaVotes);
@@ -551,15 +566,47 @@ export class HostGameStateManager {
       const targetPlayer = this.gameState.players.find(p => p.id === consensusTarget);
       console.log(`Mafia consensus reached for ${targetPlayer?.name}`);
       
+      const initialTimeLeft = Math.floor(GAME_CONFIG.MAFIA_VOTE_CONSENSUS_TIME / 1000);
+      let currentTimeLeft = initialTimeLeft;
+      
       updates.consensusTimer = {
         targetId: consensusTarget,
         targetName: targetPlayer?.name,
-        timeLeft: Math.floor(GAME_CONFIG.MAFIA_VOTE_CONSENSUS_TIME / 1000)
+        timeLeft: currentTimeLeft
       };
       
-      // Start consensus timer and store handle
+      // Start countdown interval that updates the timer every second
+      this.consensusCountdownInterval = setInterval(() => {
+        currentTimeLeft--;
+        
+        if (currentTimeLeft > 0) {
+          // Update the timer display for players
+          this.updateGameState({
+            consensusTimer: {
+              targetId: consensusTarget,
+              targetName: targetPlayer?.name,
+              timeLeft: currentTimeLeft
+            }
+          });
+        } else {
+          // Timer expired, lock in the votes
+          clearInterval(this.consensusCountdownInterval);
+          this.consensusCountdownInterval = null;
+          this.updateGameState({
+            mafiaVotesLocked: true,
+            consensusTimer: null
+          });
+          this.checkNightCompletion();
+        }
+      }, 1000);
+      
+      // Fallback timeout in case interval fails
       this.consensusTimerHandle = setTimeout(() => {
         this.consensusTimerHandle = null;
+        if (this.consensusCountdownInterval) {
+          clearInterval(this.consensusCountdownInterval);
+          this.consensusCountdownInterval = null;
+        }
         this.updateGameState({
           mafiaVotesLocked: true,
           consensusTimer: null
