@@ -19,6 +19,7 @@ export const SOCKET_EVENTS = {
   BEGIN_SEER_ACTION: 'begin-seer-action',
   SEER_INVESTIGATE: 'seer-investigate',
   SEER_RESULT: 'seer-result',
+  SUSPICION_VOTE: 'suspicion-vote',
   NIGHT_RESOLUTION: 'night-resolution',
   START_DAY_PHASE: 'start-day-phase',
   PLAYER_ACCUSE: 'player-accuse',
@@ -302,9 +303,17 @@ export function createRoleWithPowerDescription(themeId, power) {
   const role = getRoleByPower(themeId, power)
   if (!role) return null
   
+  // Create a natural power description based on the role type
+  let powerDescription
+  if (power === POWERS.CITIZEN) {
+    powerDescription = `You are a ${role.name}, and your role is to identify and eliminate the killers`
+  } else {
+    powerDescription = `You are a ${role.name}, and you have the power to ${role.powerName}`
+  }
+  
   return {
     ...role,
-    powerDescription: `You are a ${role.name}, and you have the power to ${role.powerName}`
+    powerDescription: powerDescription
   }
 }
 

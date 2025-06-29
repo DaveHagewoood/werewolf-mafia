@@ -15,6 +15,7 @@ function GameLobby() {
   const [playerReadiness, setPlayerReadiness] = useState([])
   const [eliminatedPlayer, setEliminatedPlayer] = useState(null)
   const [savedPlayer, setSavedPlayer] = useState(null)
+  const [mostSuspiciousPlayer, setMostSuspiciousPlayer] = useState(null)
   const [accusations, setAccusations] = useState({})
   const [eliminationCountdown, setEliminationCountdown] = useState(null)
   const [dayEliminatedPlayer, setDayEliminatedPlayer] = useState(null)
@@ -139,6 +140,9 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         if (newGameState.savedPlayer !== undefined) {
           setSavedPlayer(newGameState.savedPlayer);
         }
+        if (newGameState.mostSuspiciousPlayer !== undefined) {
+          setMostSuspiciousPlayer(newGameState.mostSuspiciousPlayer);
+        }
         if (newGameState.dayEliminatedPlayer !== undefined) {
           setDayEliminatedPlayer(newGameState.dayEliminatedPlayer);
         }
@@ -225,6 +229,10 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               
             case 'SEER_INVESTIGATE':
               gameStateManager.processSeerInvestigation(action.playerId, action.data.targetId)
+              break
+              
+            case 'SUSPICION_VOTE':
+              gameStateManager.processSuspicionVote(action.playerId, action.data.targetId)
               break
               
             case 'PLAYER_ACCUSE':
@@ -988,6 +996,15 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
             <div className="no-elimination-notice">
               <h3>No One Was Killed</h3>
               <p>The night passed peacefully - no attacks were made.</p>
+            </div>
+          )}
+
+          {mostSuspiciousPlayer && (
+            <div className="save-notice">
+              <h3>🕵️ Nighttime Whispers</h3>
+              <p>
+                <strong>{mostSuspiciousPlayer.name}</strong> is currently drawing the most suspicion among the citizens...
+              </p>
             </div>
           )}
           

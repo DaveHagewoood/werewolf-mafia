@@ -111,6 +111,7 @@ export class HostGameStateManager {
       eliminatedPlayer: this.gameState.eliminatedPlayer,
       savedPlayer: this.gameState.savedPlayer,
       dayEliminatedPlayer: this.gameState.dayEliminatedPlayer,
+      mostSuspiciousPlayer: this.gameState.mostSuspiciousPlayer,
       accusations: Array.from(this.gameState.accusations.entries()).map(([accusedId, accusers]) => [
         accusedId, 
         Array.from(accusers) // Convert Set to Array for serialization
@@ -126,7 +127,8 @@ export class HostGameStateManager {
       consensusTimer: this.gameState.consensusTimer || null,
       healActions: this.gameState.healActions ? Array.from(this.gameState.healActions.entries()) : [],
       investigationActions: this.gameState.investigationActions ? Array.from(this.gameState.investigationActions.entries()) : [],
-      investigationResults: this.gameState.investigationResults ? Array.from(this.gameState.investigationResults.entries()) : []
+      investigationResults: this.gameState.investigationResults ? Array.from(this.gameState.investigationResults.entries()) : [],
+      suspicionVotes: this.gameState.suspicionVotes ? Array.from(this.gameState.suspicionVotes.entries()) : []
     };
 
     // Add available targets for different roles
@@ -494,9 +496,11 @@ export class HostGameStateManager {
       mafiaVotes: new Map(),
       healActions: new Map(),
       investigationActions: new Map(),
+      suspicionVotes: new Map(),
       mafiaVotesLocked: false,
       eliminatedPlayer: null,
-      savedPlayer: null
+      savedPlayer: null,
+      mostSuspiciousPlayer: null
     });
     
     console.log(`Night phase started in room ${this.roomId}`);
@@ -629,6 +633,36 @@ export class HostGameStateManager {
     this.checkNightCompletion();
   }
 
+  processSuspicionVote(playerId, targetId) {
+    // Update activity tracking
+    this.updatePlayerActivity(playerId)
+
+    const playerRole = this.gameState.playerRoles.get(playerId);
+    
+    if (playerRole?.power !== POWERS.CITIZEN) {
+      throw new Error(`Only citizens can cast suspicion votes during night phase`);
+    }
+
+    if (!this.gameState.alivePlayers.has(targetId)) {
+      throw new Error('Invalid suspicion target');
+    }
+
+    if (targetId === playerId) {
+      throw new Error('Cannot vote for yourself');
+    }
+
+    const currentSuspicionVotes = new Map(this.gameState.suspicionVotes);
+    currentSuspicionVotes.set(playerId, targetId);
+    
+    this.updateGameState({
+      suspicionVotes: currentSuspicionVotes
+    });
+    
+    console.log(`${this.getPlayerName(playerId)} cast suspicion vote for ${this.getPlayerName(targetId)}`);
+    
+    this.checkNightCompletion();
+  }
+
   checkMafiaVoteConsensus(votes) {
     const voteTargets = new Map();
     votes.forEach((targetId) => {
@@ -656,12 +690,19 @@ export class HostGameStateManager {
       const role = this.gameState.playerRoles.get(p.id);
       return role?.power === POWERS.INVESTIGATE && this.gameState.alivePlayers.has(p.id);
     });
+    const citizenPlayers = this.gameState.players.filter(p => {
+      const role = this.gameState.playerRoles.get(p.id);
+      return role?.power === POWERS.CITIZEN && this.gameState.alivePlayers.has(p.id);
+    });
 
     const mafiaComplete = this.gameState.mafiaVotesLocked;
     const doctorComplete = doctorPlayers.length === 0 || this.gameState.healActions.size >= doctorPlayers.length;
     const seerComplete = seerPlayers.length === 0 || this.gameState.investigationActions.size >= seerPlayers.length;
+    const citizenComplete = citizenPlayers.length === 0 || this.gameState.suspicionVotes.size >= citizenPlayers.length;
 
-    if (mafiaComplete && doctorComplete && seerComplete) {
+    console.log(`Night completion check - Mafia: ${mafiaComplete}, Doctor: ${doctorComplete}, Seer: ${seerComplete}, Citizens: ${citizenComplete} (${this.gameState.suspicionVotes.size}/${citizenPlayers.length})`);
+
+    if (mafiaComplete && doctorComplete && seerComplete && citizenComplete) {
       console.log('All night actions complete, resolving night phase');
       this.resolveNightPhase();
     }
@@ -707,10 +748,44 @@ export class HostGameStateManager {
       }
     }
 
+    // Calculate most suspicious player from citizen votes
+    let mostSuspiciousPlayer = null;
+    if (this.gameState.suspicionVotes.size > 0) {
+      const suspicionCounts = new Map();
+      
+      // Count votes for each player
+      for (const targetId of this.gameState.suspicionVotes.values()) {
+        suspicionCounts.set(targetId, (suspicionCounts.get(targetId) || 0) + 1);
+      }
+      
+      // Find player with most votes
+      let maxVotes = 0;
+      let topSuspects = [];
+      
+      for (const [playerId, voteCount] of suspicionCounts.entries()) {
+        if (voteCount > maxVotes) {
+          maxVotes = voteCount;
+          topSuspects = [playerId];
+        } else if (voteCount === maxVotes) {
+          topSuspects.push(playerId);
+        }
+      }
+      
+      // Only show suspicion result if there's a clear winner (no ties)
+      if (topSuspects.length === 1) {
+        const suspectId = topSuspects[0];
+        mostSuspiciousPlayer = this.gameState.players.find(p => p.id === suspectId);
+        console.log(`Most suspicious player: ${mostSuspiciousPlayer?.name} with ${maxVotes} votes (clear winner)`);
+      } else if (topSuspects.length > 1) {
+        console.log(`Suspicion vote tied between ${topSuspects.length} players with ${maxVotes} votes each - not showing result`);
+      }
+    }
+
     // Wait for host confirmation before starting day phase
     this.updateGameState({
       gameState: GAME_STATES.NIGHT_RESOLVED,
-      waitingForHostContinue: true
+      waitingForHostContinue: true,
+      mostSuspiciousPlayer: mostSuspiciousPlayer
     });
     
     console.log('Night phase resolved - waiting for host to continue to day phase');

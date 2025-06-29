@@ -46,6 +46,10 @@ function JoinRoom() {
   const [accusationTarget, setAccusationTarget] = useState(null) // Current accusation target
   const [accusations, setAccusations] = useState({}) // Current accusations { accusedId: { name, accusers, voteCount } }
   const [eliminationCountdown, setEliminationCountdown] = useState(null) // { targetId, targetName, timeLeft }
+  const [suspicionTargets, setSuspicionTargets] = useState([]) // Available targets for suspicion voting
+  const [selectedSuspicion, setSelectedSuspicion] = useState(null) // Citizen's selected suspicion target
+  const [hasSuspicionVoted, setHasSuspicionVoted] = useState(false) // Whether citizen has voted
+  const [mostSuspiciousPlayer, setMostSuspiciousPlayer] = useState(null) // Most suspicious player result
   const [message, setMessage] = useState(null) // Added message state
   const [isEliminated, setIsEliminated] = useState(false) // Track if this player is eliminated
   const [eliminationInfo, setEliminationInfo] = useState(null) // Store elimination details
@@ -530,6 +534,19 @@ function JoinRoom() {
             const investigationResultsArray = masterState.investigationResults || [];
             const playerResult = investigationResultsArray.find(([investigatorId]) => investigatorId === playerId);
             setInvestigationResult(playerResult ? playerResult[1] : null);
+            
+            // Update suspicion vote state from master state (for citizen roles)
+            if (currentPlayer.role && currentPlayer.role.power === POWERS.CITIZEN) {
+              const suspicionTargets = masterState.players.filter(p => 
+                p.alive && p.id !== playerId
+              ).map(p => ({ id: p.id, name: p.name }));
+              setSuspicionTargets(suspicionTargets);
+              
+              const suspicionVotesArray = masterState.suspicionVotes || [];
+              const playerSuspicion = suspicionVotesArray.find(([voterId]) => voterId === playerId);
+              setSelectedSuspicion(playerSuspicion ? playerSuspicion[1] : null);
+              setHasSuspicionVoted(!!playerSuspicion);
+            }
           }
           break;
           
@@ -597,6 +614,7 @@ function JoinRoom() {
             setIsEliminated(!currentPlayer.alive);
             setEliminatedPlayer(masterState.eliminatedPlayer);
             setSavedPlayer(masterState.savedPlayer);
+            setMostSuspiciousPlayer(masterState.mostSuspiciousPlayer);
             
             // Set eliminationInfo for dead players
             if (!currentPlayer.alive) {
@@ -798,6 +816,16 @@ function JoinRoom() {
         console.log('Accused target:', targetId)
         setMessage(null) // Clear any old messages
       }
+    }
+  }
+
+  const handleSuspicionVote = (targetId) => {
+    if (socket && !isEliminated && !hasSuspicionVoted) { // Prevent dead players from voting and multiple votes
+      socket.emit(SOCKET_EVENTS.SUSPICION_VOTE, { targetId })
+      console.log('Cast suspicion vote for:', targetId)
+      setSelectedSuspicion(targetId)
+      setHasSuspicionVoted(true)
+      setMessage(null) // Clear any old messages
     }
   }
 
@@ -1077,6 +1105,13 @@ function JoinRoom() {
                 <div className="no-elimination-result">
                   <h3>No One Was Killed</h3>
                   <p>The night passed peacefully...</p>
+                </div>
+              )}
+
+              {mostSuspiciousPlayer && (
+                <div className="save-result">
+                  <h3>🕵️ Nighttime Whispers</h3>
+                  <p><strong>{mostSuspiciousPlayer.name}</strong> is currently drawing the most suspicion...</p>
                 </div>
               )}
 
@@ -1799,6 +1834,10 @@ function SessionPlayer() {
   const [accusations, setAccusations] = useState({}) // Current accusations/votes { playerId: { name, accusers, voteCount } }
   const [accusationTarget, setAccusationTarget] = useState(null) // Player's current accusation target
   const [eliminationCountdown, setEliminationCountdown] = useState(null) // Elimination countdown timer
+  const [suspicionTargets, setSuspicionTargets] = useState([]) // Available targets for suspicion voting
+  const [selectedSuspicion, setSelectedSuspicion] = useState(null) // Citizen's selected suspicion target
+  const [hasSuspicionVoted, setHasSuspicionVoted] = useState(false) // Whether citizen has voted
+  const [mostSuspiciousPlayer, setMostSuspiciousPlayer] = useState(null) // Most suspicious player result
 
   useEffect(() => {
     // Validate session token from URL
@@ -2027,11 +2066,27 @@ function SessionPlayer() {
                   }
                 }
               }
+              
+              else if (currentPlayer.role.power === POWERS.CITIZEN) {
+                // For citizen roles - get alive players except self for suspicion voting
+                const suspicionTargets = masterState.players.filter(p => 
+                  p.alive && p.id !== playerIdToUse
+                ).map(p => ({ id: p.id, name: p.name }))
+                setSuspicionTargets(suspicionTargets)
+                
+                // Update player's suspicion vote from master state
+                if (masterState.suspicionVotes) {
+                  const playerSuspicion = masterState.suspicionVotes.find(([voterId]) => voterId === playerIdToUse)
+                  setSelectedSuspicion(playerSuspicion ? playerSuspicion[1] : null)
+                  setHasSuspicionVoted(!!playerSuspicion)
+                }
+              }
             }
             
             // Update general night phase state
             setEliminatedPlayer(masterState.eliminatedPlayer)
             setSavedPlayer(masterState.savedPlayer)
+            setMostSuspiciousPlayer(masterState.mostSuspiciousPlayer)
           }
 
           // Handle day phase state updates
@@ -2245,6 +2300,17 @@ function SessionPlayer() {
       console.log('Accused target:', targetId)
       setMessage(null) // Clear any old messages
     }
+  }
+
+  // Suspicion vote handler for citizens during night phase
+  const handleSuspicionVote = (targetId) => {
+    if (!socket || isEliminated || hasSuspicionVoted) return // Prevent dead players from voting and multiple votes
+    
+    socket.emit(SOCKET_EVENTS.SUSPICION_VOTE, { targetId })
+    console.log('Cast suspicion vote for:', targetId)
+    setSelectedSuspicion(targetId)
+    setHasSuspicionVoted(true)
+    setMessage(null) // Clear any old messages
   }
 
   // If still authenticating, show authentication screen
@@ -2682,28 +2748,76 @@ function SessionPlayer() {
       )
     }
 
-    // Default: Villager "sleep tight" screen
+    // Default: Citizen suspicion voting interface
+    if (suspicionTargets.length === 0) {
+      return (
+        <div className="night-container">
+          <div className="night-wait-container">
+            <div className="night-wait-content">
+              <div className="night-header">
+                <div className="night-icon">🌙</div>
+                <h1>Night Phase</h1>
+                {playerRole && (
+                  <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+                )}
+              </div>
+
+              <div className="sleep-section">
+                <h2>Gathering Information...</h2>
+                <div className="night-progress">
+                  <div className="night-spinner"></div>
+                  <p>Preparing to assess who seems suspicious...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="night-container">
-        <div className="night-wait-container">
-          <div className="night-wait-content">
+        <div className="mafia-vote-container">
+          <div className="mafia-vote-content">
             <div className="night-header">
-              <div className="night-icon">🌙</div>
+              <div className="night-icon">🤔</div>
               <h1>Night Phase</h1>
               {playerRole && (
                 <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
               )}
             </div>
 
-            <div className="sleep-section">
-              <div className="sleep-icon">😴</div>
-              <h2>Sleep Tight</h2>
-              <p>The town sleeps while dark forces move in the shadows...</p>
+            <div className="vote-section">
+              <h2>Who Seems Suspicious?</h2>
+              <p>While the town sleeps, reflect on who you find most suspicious. Your vote is private and anonymous:</p>
               
-              <div className="night-progress">
-                <div className="night-spinner"></div>
-                <p>Waiting for night actions to complete...</p>
+              <div className="target-list">
+                {suspicionTargets.map((target) => (
+                  <button
+                    key={target.id}
+                    className={`target-btn ${selectedSuspicion === target.id ? 'selected' : ''}`}
+                    onClick={() => handleSuspicionVote(target.id)}
+                    disabled={hasSuspicionVoted}
+                  >
+                    <span className="target-name">{target.name}</span>
+                    {selectedSuspicion === target.id && <span className="vote-indicator">✓ Suspicious</span>}
+                  </button>
+                ))}
               </div>
+
+              {selectedSuspicion && (
+                <div className="vote-confirmation">
+                  <p>🕵️ You find <strong>{suspicionTargets.find(t => t.id === selectedSuspicion)?.name}</strong> most suspicious</p>
+                  <small>Your suspicion has been recorded anonymously.</small>
+                </div>
+              )}
+
+              {!selectedSuspicion && (
+                <div className="vote-confirmation">
+                  <p className="suspicion-note">💭 Think carefully about the day's discussions and behaviors...</p>
+                  <small>Everyone gets to vote so it's harder to tell who has special roles!</small>
+                </div>
+              )}
             </div>
           </div>
         </div>

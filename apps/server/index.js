@@ -1144,6 +1144,36 @@ io.on('connection', (socket) => {
     }
   })
 
+  // Forward Suspicion votes to host
+  socket.on(SOCKET_EVENTS.SUSPICION_VOTE, (data) => {
+    if (socket.isHost) {
+      socket.emit('error', { message: 'Host cannot cast suspicion votes' })
+      return
+    }
+
+    if (!socket.roomId) {
+      socket.emit('error', { message: 'Not in a room' })
+      return
+    }
+
+    const room = getRoom(socket.roomId)
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' })
+      return
+    }
+
+    // Forward action to host
+    const hostSocket = io.sockets.sockets.get(room.host)
+    if (hostSocket) {
+      hostSocket.emit('player-action', {
+        type: 'SUSPICION_VOTE',
+        playerId: socket.id,
+        playerName: socket.playerName,
+        data: data
+      })
+    }
+  })
+
   // Forward Day Phase Voting/Accusations to host (RELAY ARCHITECTURE)
   socket.on(SOCKET_EVENTS.PLAYER_ACCUSE, (data) => {
     if (socket.isHost) {
