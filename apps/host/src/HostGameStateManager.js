@@ -128,7 +128,8 @@ export class HostGameStateManager {
       healActions: this.gameState.healActions ? Array.from(this.gameState.healActions.entries()) : [],
       investigationActions: this.gameState.investigationActions ? Array.from(this.gameState.investigationActions.entries()) : [],
       investigationResults: this.gameState.investigationResults ? Array.from(this.gameState.investigationResults.entries()) : [],
-      suspicionVotes: this.gameState.suspicionVotes ? Array.from(this.gameState.suspicionVotes.entries()) : []
+      suspicionVotes: this.gameState.suspicionVotes ? Array.from(this.gameState.suspicionVotes.entries()) : [],
+      nightActionsComplete: this.gameState.nightActionsComplete || false
     };
 
     // Add available targets for different roles
@@ -704,13 +705,13 @@ export class HostGameStateManager {
     console.log(`Night completion check - Mafia: ${mafiaComplete}, Doctor: ${doctorComplete}, Seer: ${seerComplete}, Citizens: ${citizenComplete} (${this.gameState.suspicionVotes.size}/${citizenPlayers.length})`);
 
     if (mafiaComplete && doctorComplete && seerComplete && citizenComplete) {
-      console.log('All night actions complete, resolving night phase');
-      this.resolveNightPhase();
+      console.log('All night actions complete, showing results on current screens for 5 seconds');
+      this.processNightResults();
     }
   }
 
-  resolveNightPhase() {
-    // Get consensus target
+  processNightResults() {
+    // First, perform night resolution calculations
     const consensusTarget = this.checkMafiaVoteConsensus(this.gameState.mafiaVotes);
     let eliminatedPlayer = null;
     let savedPlayer = null;
@@ -722,12 +723,6 @@ export class HostGameStateManager {
       if (wasHealed) {
         savedPlayer = this.gameState.players.find(p => p.id === consensusTarget);
         console.log(`${savedPlayer?.name} was saved by the doctor!`);
-        
-        // Update game state with saved player info
-        this.updateGameState({
-          savedPlayer: savedPlayer,
-          eliminatedPlayer: null
-        });
       } else {
         // Eliminate the target
         eliminatedPlayer = this.gameState.players.find(p => p.id === consensusTarget);
@@ -735,17 +730,10 @@ export class HostGameStateManager {
         newAlivePlayers.delete(consensusTarget);
         
         this.updateGameState({
-          alivePlayers: newAlivePlayers,
-          eliminatedPlayer: eliminatedPlayer,
-          savedPlayer: null
+          alivePlayers: newAlivePlayers
         });
         
         console.log(`${eliminatedPlayer?.name} was eliminated by the Mafia`);
-        
-        // Check win conditions
-        if (this.checkWinConditions()) {
-          return; // Game ended
-        }
       }
     }
 
@@ -782,14 +770,42 @@ export class HostGameStateManager {
       }
     }
 
+    // Update results while staying in NIGHT_PHASE
+    this.updateGameState({
+      nightActionsComplete: true,
+      eliminatedPlayer: eliminatedPlayer,
+      savedPlayer: savedPlayer,
+      mostSuspiciousPlayer: mostSuspiciousPlayer
+    });
+
+    // Set 5-second timer to automatically proceed to NIGHT_RESOLVED
+    this.nightActionsCompleteTimer = setTimeout(() => {
+      this.nightActionsCompleteTimer = null;
+      this.finishNightResolution();
+    }, 5000);
+    
+    console.log('Night actions complete - showing results on voting screens for 5 seconds before resolution');
+  }
+
+  finishNightResolution() {
+    // Check win conditions (elimination/save already applied)
+    if (this.gameState.eliminatedPlayer && this.checkWinConditions()) {
+      return; // Game ended
+    }
+
     // Wait for host confirmation before starting day phase
     this.updateGameState({
       gameState: GAME_STATES.NIGHT_RESOLVED,
-      waitingForHostContinue: true,
-      mostSuspiciousPlayer: mostSuspiciousPlayer
+      waitingForHostContinue: true
     });
     
     console.log('Night phase resolved - waiting for host to continue to day phase');
+  }
+
+  // Legacy method - kept for any remaining references
+  resolveNightPhase() {
+    console.log('Legacy resolveNightPhase called - redirecting to new flow');
+    this.startNightActionsCompletePhase();
   }
 
   startDayPhase() {

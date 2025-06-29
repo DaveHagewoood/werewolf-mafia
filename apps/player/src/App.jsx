@@ -50,6 +50,7 @@ function JoinRoom() {
   const [selectedSuspicion, setSelectedSuspicion] = useState(null) // Citizen's selected suspicion target
   const [hasSuspicionVoted, setHasSuspicionVoted] = useState(false) // Whether citizen has voted
   const [mostSuspiciousPlayer, setMostSuspiciousPlayer] = useState(null) // Most suspicious player result
+  const [nightActionsComplete, setNightActionsComplete] = useState(false) // Whether all night actions are complete
   const [message, setMessage] = useState(null) // Added message state
   const [isEliminated, setIsEliminated] = useState(false) // Track if this player is eliminated
   const [eliminationInfo, setEliminationInfo] = useState(null) // Store elimination details
@@ -557,6 +558,14 @@ function JoinRoom() {
               const playerSuspicion = suspicionVotesArray.find(([voterId]) => voterId === playerId);
               setSelectedSuspicion(playerSuspicion ? playerSuspicion[1] : null);
               setHasSuspicionVoted(!!playerSuspicion);
+            }
+            
+            // Update night actions completion status and results
+            setNightActionsComplete(masterState.nightActionsComplete || false);
+            if (masterState.nightActionsComplete) {
+              setEliminatedPlayer(masterState.eliminatedPlayer);
+              setSavedPlayer(masterState.savedPlayer);
+              setMostSuspiciousPlayer(masterState.mostSuspiciousPlayer);
             }
           }
           break;
@@ -1085,6 +1094,8 @@ function JoinRoom() {
     )
   }
 
+
+
   // Show night resolved screen (waiting for host to continue)
   if (gameState === GAME_STATES.NIGHT_RESOLVED && playerRole) {
     return wrapWithPauseOverlay(
@@ -1348,10 +1359,23 @@ function JoinRoom() {
 
                 {hasHealed && (
                   <div className="heal-confirmation">
-                    <p>Protection cast! Waiting for other night actions...</p>
-                    <div className="heal-info">
-                      <small>Your choice is final and cannot be changed</small>
-                    </div>
+                    {nightActionsComplete ? (
+                      <div className="night-complete-status">
+                        <p>✅ All night actions complete! Results:</p>
+                        {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
+                        {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
+                        {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
+                        {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
+                        <p><small>Waiting for day phase to begin...</small></p>
+                      </div>
+                    ) : (
+                      <>
+                        <p>Protection cast! Waiting for other night actions...</p>
+                        <div className="heal-info">
+                          <small>Your choice is final and cannot be changed</small>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1436,16 +1460,34 @@ function JoinRoom() {
                     <div className="investigation-result">
                       <div className="result-content">
                         <div className="result-icon">🔍</div>
-                        <p className="result-text">{investigationResult}</p>
+                        <p className="result-text">
+                          <strong>{investigationResult.targetName}</strong> is aligned with{' '}
+                          <span className={`alignment-${investigationResult.alignment}`}>
+                            {investigationResult.alignment === 'good' ? 'Good Forces 😇' : 'Evil Forces 😈'}
+                          </span>
+                        </p>
                       </div>
                     </div>
                   )}
 
                   <div className="investigate-confirmation">
-                    <p>Waiting for other night actions to complete...</p>
-                    <div className="investigate-info">
-                      <small>Your investigation is complete and private to you</small>
-                    </div>
+                    {nightActionsComplete ? (
+                      <div className="night-complete-status">
+                        <p>✅ All night actions complete! Results:</p>
+                        {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
+                        {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
+                        {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
+                        {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
+                        <p><small>Waiting for day phase to begin...</small></p>
+                      </div>
+                    ) : (
+                      <>
+                        <p>Waiting for other night actions to complete...</p>
+                        <div className="investigate-info">
+                          <small>Your investigation is complete and private to you</small>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -1849,6 +1891,7 @@ function SessionPlayer() {
   const [selectedSuspicion, setSelectedSuspicion] = useState(null) // Citizen's selected suspicion target
   const [hasSuspicionVoted, setHasSuspicionVoted] = useState(false) // Whether citizen has voted
   const [mostSuspiciousPlayer, setMostSuspiciousPlayer] = useState(null) // Most suspicious player result
+  const [nightActionsComplete, setNightActionsComplete] = useState(false) // Whether all night actions are complete
 
   useEffect(() => {
     // Validate session token from URL
@@ -2106,6 +2149,14 @@ function SessionPlayer() {
             setEliminatedPlayer(masterState.eliminatedPlayer)
             setSavedPlayer(masterState.savedPlayer)
             setMostSuspiciousPlayer(masterState.mostSuspiciousPlayer)
+            
+            // Update night actions completion status and results
+            setNightActionsComplete(masterState.nightActionsComplete || false);
+            if (masterState.nightActionsComplete) {
+              setEliminatedPlayer(masterState.eliminatedPlayer);
+              setSavedPlayer(masterState.savedPlayer);
+              setMostSuspiciousPlayer(masterState.mostSuspiciousPlayer);
+            }
           }
 
           // Handle day phase state updates
@@ -2502,6 +2553,8 @@ function SessionPlayer() {
     )
   }
 
+
+
   // Night phase screen with role-specific interfaces
   if (gameState === GAME_STATES.NIGHT_PHASE && playerRole) {
     if (isEliminated) {
@@ -2614,6 +2667,17 @@ function SessionPlayer() {
                     <p>⏰ Consensus reached! Eliminating <strong>{consensusTimer.targetName}</strong> in {consensusTimer.timeLeft}s</p>
                   </div>
                 )}
+
+                {nightActionsComplete && (
+                  <div className="night-complete-status">
+                    <h3>✅ All Night Actions Complete!</h3>
+                    {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
+                    {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
+                    {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
+                    {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
+                    <p><small>Waiting for day phase to begin...</small></p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2676,8 +2740,21 @@ function SessionPlayer() {
 
                 {selectedHeal && (
                   <div className="heal-confirmation">
-                    <p>🛡️ You are protecting <strong>{healTargets.find(t => t.id === selectedHeal)?.name}</strong> tonight</p>
-                    <small>They will survive if targeted for elimination.</small>
+                    {nightActionsComplete ? (
+                      <div className="night-complete-status">
+                        <p>✅ All night actions complete! Results:</p>
+                        {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
+                        {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
+                        {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
+                        {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
+                        <p><small>Waiting for day phase to begin...</small></p>
+                      </div>
+                    ) : (
+                      <>
+                        <p>🛡️ You are protecting <strong>{healTargets.find(t => t.id === selectedHeal)?.name}</strong> tonight</p>
+                        <small>They will survive if targeted for elimination.</small>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -2760,6 +2837,17 @@ function SessionPlayer() {
                     <small>Your investigation is complete for this night.</small>
                   </div>
                 )}
+
+                {nightActionsComplete && (
+                  <div className="night-complete-status">
+                    <h3>✅ All Night Actions Complete!</h3>
+                    {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
+                    {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
+                    {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
+                    {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
+                    <p><small>Waiting for day phase to begin...</small></p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2826,12 +2914,25 @@ function SessionPlayer() {
 
               {selectedSuspicion && (
                 <div className="vote-confirmation">
-                  <p>🕵️ You find <strong>{suspicionTargets.find(t => t.id === selectedSuspicion)?.name}</strong> most suspicious</p>
-                  <small>Your suspicion has been recorded anonymously.</small>
+                  {nightActionsComplete ? (
+                    <div className="night-complete-status">
+                      <p>✅ All night actions complete! Results:</p>
+                      {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
+                      {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
+                      {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
+                      {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
+                      <p><small>Waiting for day phase to begin...</small></p>
+                    </div>
+                  ) : (
+                    <>
+                      <p>🕵️ You find <strong>{suspicionTargets.find(t => t.id === selectedSuspicion)?.name}</strong> most suspicious</p>
+                      <small>Your suspicion has been recorded anonymously.</small>
+                    </>
+                  )}
                 </div>
               )}
 
-              {!selectedSuspicion && (
+              {!selectedSuspicion && !nightActionsComplete && (
                 <div className="vote-confirmation">
                   <p className="suspicion-note">💭 Think carefully about the day's discussions and behaviors...</p>
                   <small>Everyone gets to vote so it's harder to tell who has special roles!</small>
