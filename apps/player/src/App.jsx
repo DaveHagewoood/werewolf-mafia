@@ -3054,6 +3054,92 @@ function SessionPlayer() {
     )
   }
 
+  // Show night resolved screen (waiting for host to continue to day phase)
+  if (gameState === GAME_STATES.NIGHT_RESOLVED && playerRole) {
+    return (
+      <div className="night-container">
+        <div className="night-resolved-container">
+          <div className="night-resolved-content">
+            <div className="night-header">
+              <div className="night-icon">🌙</div>
+              <h1>Night Phase Complete</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
+
+            <div className="resolution-section">
+              {eliminatedPlayer && (
+                <div className="elimination-result">
+                  <h3>Night Action Complete</h3>
+                  <p><strong>{eliminatedPlayer.name}</strong> was eliminated during the night.</p>
+                </div>
+              )}
+              
+              {savedPlayer && (
+                <div className="save-result">
+                  <h3>Miraculous Survival!</h3>
+                  <p>Someone was attacked last night, but somehow survived!</p>
+                </div>
+              )}
+              
+              {!eliminatedPlayer && !savedPlayer && (
+                <div className="no-elimination-result">
+                  <h3>No One Was Killed</h3>
+                  <p>The night passed peacefully...</p>
+                </div>
+              )}
+
+              {mostSuspiciousPlayer && (
+                <div className="save-result">
+                  <h3>🕵️ Nighttime Whispers</h3>
+                  <p><strong>{mostSuspiciousPlayer.name}</strong> is currently drawing the most suspicion...</p>
+                </div>
+              )}
+
+              <div className="waiting-for-host">
+                <div className="waiting-icon">⏳</div>
+                <h3>Waiting for Host</h3>
+                <p>The host will continue to the day phase when everyone is ready.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show day resolved screen (waiting for host to continue to next night)
+  if (gameState === GAME_STATES.DAY_RESOLVED && playerRole) {
+    return (
+      <div className="day-container">
+        <div className="day-resolved-container">
+          <div className="day-resolved-content">
+            <div className="day-header">
+              <div className="day-icon">☀️</div>
+              <h1>Day Phase Complete</h1>
+              <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
+            </div>
+
+            <div className="resolution-section">
+              {dayEliminatedPlayer && (
+                <div className="elimination-result">
+                  <h3>Player Eliminated</h3>
+                  <p><strong>{dayEliminatedPlayer.name}</strong> was eliminated by majority vote.</p>
+                  <p className="mystery-text">Their role remains a mystery...</p>
+                </div>
+              )}
+
+              <div className="waiting-for-host">
+                <div className="waiting-icon">⏳</div>
+                <h3>Waiting for Host</h3>
+                <p>The host will continue to the night phase when everyone is ready.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Default: show waiting screen (lobby state)
   return (
     <div className="waiting-container">
