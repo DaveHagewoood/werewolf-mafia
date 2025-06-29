@@ -829,17 +829,17 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               
               {savedPlayer && (
                 <div className="save-notice">
-                  <h3>A Life Saved!</h3>
+                  <h3>Miraculous Survival!</h3>
                   <p>
-                    The {getTheme(selectedGameType).roles[POWERS.HEAL].name} successfully saved someone from certain death!
+                    Someone was attacked last night, but somehow survived! The {getTheme(selectedGameType).roles[POWERS.HEAL].name} intervened at the crucial moment.
                   </p>
                 </div>
               )}
               
-              {!eliminatedPlayer && savedPlayer && (
+              {!eliminatedPlayer && !savedPlayer && (
                 <div className="no-elimination-notice">
                   <h3>No One Was Killed</h3>
-                  <p>The {getTheme(selectedGameType).evilName} plan was thwarted by excellent medical intervention!</p>
+                  <p>The night passed peacefully - no attacks were made.</p>
                 </div>
               )}
               
@@ -977,17 +977,17 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           
           {savedPlayer && (
             <div className="save-notice">
-              <h3>A Life Saved!</h3>
+              <h3>Miraculous Survival!</h3>
               <p>
-                The {selectedGameType === 'mafia' ? 'Doctor' : 'Healer'} successfully saved someone from certain death!
+                Someone was attacked last night, but somehow survived! The healer intervened at the crucial moment.
               </p>
             </div>
           )}
           
-          {!eliminatedPlayer && savedPlayer && (
+          {!eliminatedPlayer && !savedPlayer && (
             <div className="no-elimination-notice">
               <h3>No One Was Killed</h3>
-              <p>The {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} plan was thwarted by excellent medical intervention!</p>
+              <p>The night passed peacefully - no attacks were made.</p>
             </div>
           )}
           

@@ -1068,12 +1068,12 @@ function JoinRoom() {
               
               {savedPlayer && (
                 <div className="save-result">
-                  <h3>A Life Saved!</h3>
-                  <p>Someone was saved from certain death!</p>
+                  <h3>Miraculous Survival!</h3>
+                  <p>Someone was attacked last night, but somehow survived!</p>
                 </div>
               )}
               
-              {!eliminatedPlayer && savedPlayer && (
+              {!eliminatedPlayer && !savedPlayer && (
                 <div className="no-elimination-result">
                   <h3>No One Was Killed</h3>
                   <p>The night passed peacefully...</p>

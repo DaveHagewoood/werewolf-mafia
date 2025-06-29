@@ -680,6 +680,12 @@ export class HostGameStateManager {
       if (wasHealed) {
         savedPlayer = this.gameState.players.find(p => p.id === consensusTarget);
         console.log(`${savedPlayer?.name} was saved by the doctor!`);
+        
+        // Update game state with saved player info
+        this.updateGameState({
+          savedPlayer: savedPlayer,
+          eliminatedPlayer: null
+        });
       } else {
         // Eliminate the target
         eliminatedPlayer = this.gameState.players.find(p => p.id === consensusTarget);
@@ -689,7 +695,7 @@ export class HostGameStateManager {
         this.updateGameState({
           alivePlayers: newAlivePlayers,
           eliminatedPlayer: eliminatedPlayer,
-          savedPlayer: savedPlayer
+          savedPlayer: null
         });
         
         console.log(`${eliminatedPlayer?.name} was eliminated by the Mafia`);
