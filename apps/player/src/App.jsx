@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport, ConnectionStatus } from '@werewolf-mafia/shared'
+import { SOCKET_EVENTS, validatePlayerName, GAME_STATES, GAME_TYPES, PROFILE_IMAGES, getProfileImageUrl, ROLE_SETS, checkWebPSupport, ConnectionStatus, POWERS } from '@werewolf-mafia/shared'
 import SessionConnectionManager from './utils/ConnectionManager'
 import './App.css'
 
@@ -472,19 +472,19 @@ function JoinRoom() {
               if (currentPlayer.role.alignment === 'evil') {
                 console.log('Setting mafia targets:', masterState.availableTargets.mafia);
                 setVoteTargets(masterState.availableTargets.mafia || []);
-              } else if (currentPlayer.role.name === 'Doctor' || currentPlayer.role.name === 'Healer') {
-                console.log('Doctor role detected, available targets:', masterState.availableTargets.doctor);
-                console.log('Doctor targets type:', typeof masterState.availableTargets.doctor);
-                console.log('Doctor targets length:', masterState.availableTargets.doctor?.length);
-                console.log('Doctor targets content:', JSON.stringify(masterState.availableTargets.doctor, null, 2));
+              } else if (currentPlayer.role.power === POWERS.HEAL) {
+                console.log('Heal role detected, available targets:', masterState.availableTargets.doctor);
+                console.log('Heal targets type:', typeof masterState.availableTargets.doctor);
+                console.log('Heal targets length:', masterState.availableTargets.doctor?.length);
+                console.log('Heal targets content:', JSON.stringify(masterState.availableTargets.doctor, null, 2));
                 const doctorTargets = masterState.availableTargets.doctor || [];
                 setHealTargets(doctorTargets);
                 console.log('setHealTargets called with:', doctorTargets.length, 'targets');
-              } else if (currentPlayer.role.name === 'Seer' || currentPlayer.role.name === 'Detective') {
-                console.log('Seer/Detective role detected, available targets:', masterState.availableTargets.seer);
-                console.log('Seer targets type:', typeof masterState.availableTargets.seer);
-                console.log('Seer targets length:', masterState.availableTargets.seer?.length);
-                console.log('Seer targets content:', JSON.stringify(masterState.availableTargets.seer, null, 2));
+              } else if (currentPlayer.role.power === POWERS.INVESTIGATE) {
+                console.log('Investigation role detected, available targets:', masterState.availableTargets.seer);
+                console.log('Investigation targets type:', typeof masterState.availableTargets.seer);
+                console.log('Investigation targets length:', masterState.availableTargets.seer?.length);
+                console.log('Investigation targets content:', JSON.stringify(masterState.availableTargets.seer, null, 2));
                 const seerTargets = masterState.availableTargets.seer || [];
                 setInvestigateTargets(seerTargets);
                 console.log('setInvestigateTargets called with:', seerTargets.length, 'targets');
@@ -577,9 +577,16 @@ function JoinRoom() {
             
             setEliminationCountdown(masterState.eliminationCountdown);
             
-            // Set day phase targets (all alive players for voting)
-            const alivePlayers = masterState.players.filter(p => p.alive);
-            setDayPhaseTargets(alivePlayers);
+            // Set day phase targets from master state
+            if (masterState.dayPhaseTargets) {
+              console.log('📊 Day phase targets from master state:', masterState.dayPhaseTargets.length);
+              setDayPhaseTargets(masterState.dayPhaseTargets);
+            } else {
+              // Fallback: filter alive players from master state
+              const alivePlayers = masterState.players.filter(p => p.alive);
+              console.log('📊 Day phase targets fallback - alive players:', alivePlayers.length);
+              setDayPhaseTargets(alivePlayers);
+            }
           }
           break;
           
@@ -1491,13 +1498,23 @@ function JoinRoom() {
               </span>
             </div>
 
+            {/* Show the new power-based description prominently */}
+            {playerRole.powerDescription && (
+              <div className="role-power">
+                <h3>Your Power</h3>
+                <p className="power-description">
+                  <strong>{playerRole.powerDescription}</strong>
+                </p>
+              </div>
+            )}
+
             <div className="role-description">
-              <h3>Description</h3>
+              <h3>Background</h3>
               <p>{playerRole.description}</p>
             </div>
 
             <div className="role-ability">
-              <h3>Special Ability</h3>
+              <h3>How to Use Your Power</h3>
               <p>{playerRole.ability}</p>
             </div>
           </div>
@@ -1777,6 +1794,12 @@ function SessionPlayer() {
   const [investigateTargets, setInvestigateTargets] = useState([]) // Available targets for Seer to investigate
   const [selectedInvestigation, setSelectedInvestigation] = useState(null) // Seer's selected target
 
+  // Day phase state variables (missing from original SessionPlayer)
+  const [dayPhaseTargets, setDayPhaseTargets] = useState([]) // Available targets for day phase voting
+  const [accusations, setAccusations] = useState({}) // Current accusations/votes { playerId: { name, accusers, voteCount } }
+  const [accusationTarget, setAccusationTarget] = useState(null) // Player's current accusation target
+  const [eliminationCountdown, setEliminationCountdown] = useState(null) // Elimination countdown timer
+
   useEffect(() => {
     // Validate session token from URL
     if (!sessionToken || sessionToken.length < 8) {
@@ -1964,8 +1987,8 @@ function SessionPlayer() {
                 setConsensusTimer(masterState.consensusTimer)
               }
               
-              else if (currentPlayer.role.name === 'Doctor' || currentPlayer.role.name === 'Healer') {
-                // For Doctor/Healer - get all alive players as potential targets
+              else if (currentPlayer.role.power === POWERS.HEAL) {
+                // For heal power roles (Doctor/Healer/Priest/Medic) - get all alive players as potential targets
                 const aliveTargets = masterState.players.filter(p => 
                   p.alive
                 ).map(p => ({ id: p.id, name: p.name }))
@@ -1978,8 +2001,8 @@ function SessionPlayer() {
                 }
               }
               
-              else if (currentPlayer.role.name === 'Seer' || currentPlayer.role.name === 'Detective') {
-                // For Seer/Detective - get alive players except self
+              else if (currentPlayer.role.power === POWERS.INVESTIGATE) {
+                // For investigation power roles (Seer/Detective/Oracle/Agent) - get alive players except self
                 const investigateTargets = masterState.players.filter(p => 
                   p.alive && p.id !== playerIdToUse
                 ).map(p => ({ id: p.id, name: p.name }))
@@ -2009,6 +2032,43 @@ function SessionPlayer() {
             // Update general night phase state
             setEliminatedPlayer(masterState.eliminatedPlayer)
             setSavedPlayer(masterState.savedPlayer)
+          }
+
+          // Handle day phase state updates
+          if (masterState.gameState === GAME_STATES.DAY_PHASE) {
+            // Set day phase targets from master state
+            if (masterState.dayPhaseTargets) {
+              console.log('📊 SessionPlayer day phase targets from master state:', masterState.dayPhaseTargets.length);
+              setDayPhaseTargets(masterState.dayPhaseTargets);
+            } else {
+              // Fallback: filter alive players from master state
+              const alivePlayers = masterState.players.filter(p => p.alive);
+              console.log('📊 SessionPlayer day phase targets fallback - alive players:', alivePlayers.length);
+              setDayPhaseTargets(alivePlayers);
+            }
+
+            // Convert accusations array back to object for UI (same as JoinRoom)
+            if (masterState.accusations) {
+              const accusationsObj = {}
+              masterState.accusations.forEach(([accusedId, accusers]) => {
+                const accusedPlayer = masterState.players?.find(p => p.id === accusedId)
+                // Convert accuser IDs to names
+                const accuserNames = accusers.map(accuserId => {
+                  const accuserPlayer = masterState.players?.find(p => p.id === accuserId)
+                  return accuserPlayer?.name || 'Unknown'
+                })
+                accusationsObj[accusedId] = {
+                  name: accusedPlayer?.name || 'Unknown',
+                  accusers: accuserNames,
+                  voteCount: accusers.length
+                }
+              })
+              setAccusations(accusationsObj)
+            } else {
+              setAccusations({})
+            }
+
+            setEliminationCountdown(masterState.eliminationCountdown);
           }
           
           // Update game end state
@@ -2169,6 +2229,24 @@ function SessionPlayer() {
     setSelectedInvestigation(targetId)
   }
 
+  // Day phase action handler (same as JoinRoom)
+  const handleAccusation = (targetId) => {
+    if (!socket || isEliminated) return // Prevent dead players from voting
+    
+    // Toggle accusation off if clicking same target
+    if (accusationTarget === targetId) {
+      socket.emit(SOCKET_EVENTS.PLAYER_ACCUSE, { targetId: null })
+      setAccusationTarget(null)
+      console.log('Cleared accusation')
+      setMessage(null) // Clear any old messages
+    } else {
+      socket.emit(SOCKET_EVENTS.PLAYER_ACCUSE, { targetId })
+      setAccusationTarget(targetId)
+      console.log('Accused target:', targetId)
+      setMessage(null) // Clear any old messages
+    }
+  }
+
   // If still authenticating, show authentication screen
   console.log('🎮 SessionPlayer render - current status:', status, 'gameState:', gameState, 'playerName:', playerName)
   
@@ -2301,13 +2379,23 @@ function SessionPlayer() {
               </span>
             </div>
 
+            {/* Show the new power-based description prominently */}
+            {playerRole.powerDescription && (
+              <div className="role-power">
+                <h3>Your Power</h3>
+                <p className="power-description">
+                  <strong>{playerRole.powerDescription}</strong>
+                </p>
+              </div>
+            )}
+
             <div className="role-description">
-              <h3>Description</h3>
+              <h3>Background</h3>
               <p>{playerRole.description}</p>
             </div>
 
             <div className="role-ability">
-              <h3>Special Ability</h3>
+              <h3>How to Use Your Power</h3>
               <p>{playerRole.ability}</p>
             </div>
           </div>
@@ -2448,8 +2536,8 @@ function SessionPlayer() {
       )
     }
 
-    // Doctor healing interface  
-    if (playerRole.name === 'Doctor' || playerRole.name === 'Healer') {
+    // Healing interface (Doctor/Healer/Priest/Medic)
+    if (playerRole.power === POWERS.HEAL) {
       if (healTargets.length === 0) {
         return (
           <div className="night-container">
@@ -2514,8 +2602,8 @@ function SessionPlayer() {
       )
     }
 
-    // Seer investigation interface
-    if (playerRole.name === 'Seer' || playerRole.name === 'Detective') {
+    // Investigation interface (Seer/Detective/Oracle/Agent)
+    if (playerRole.power === POWERS.INVESTIGATE) {
       if (investigateTargets.length === 0) {
         return (
           <div className="night-container">
@@ -2621,8 +2709,8 @@ function SessionPlayer() {
     )
   }
 
-  // Day phase screen
-  if (gameState === GAME_STATES.DAY_PHASE) {
+  // Day phase screen (same as JoinRoom)
+  if (gameState === GAME_STATES.DAY_PHASE && playerRole) {
     if (isEliminated) {
       return (
         <div className="eliminated-container">
@@ -2641,24 +2729,88 @@ function SessionPlayer() {
       )
     }
 
+    // Filter out self, but show all players if filtering results in empty list (fallback)
+    const votableTargets = dayPhaseTargets.filter(player => player.id !== playerId)
+    const playersToShow = votableTargets.length > 0 ? votableTargets : dayPhaseTargets
+    
+    console.log('SessionPlayer day phase debug:', {
+      playerId,
+      totalTargets: dayPhaseTargets.length,
+      votableTargets: votableTargets.length,
+      playersToShow: playersToShow.length
+    })
+
     return (
       <div className="day-container">
-        <div className="day-content">
-          <div className="day-header">
-            <div className="day-icon">☀️</div>
-            <h1>Day Phase</h1>
-            {playerRole && (
+        <div className="day-phase-container">
+          <div className="day-phase-content">
+            <div className="day-header">
+              <div className="day-icon">☀️</div>
+              <h1>Day Phase</h1>
               <p className="role-reminder">You are: <strong style={{ color: playerRole.color }}>{playerRole.name}</strong></p>
-            )}
-          </div>
+            </div>
 
-          <div className="day-main">
-            <h2>Town Discussion</h2>
-            <p>Discuss with other players and vote to eliminate someone suspicious.</p>
-            
-            <div className="day-progress">
-              <div className="day-spinner"></div>
-              <p>Discussion and voting in progress...</p>
+            <div className="voting-section">
+              <h2>Discuss and Vote</h2>
+              <p>Select a player to accuse and vote for elimination:</p>
+              
+              <div className="player-list">
+                {playersToShow.length > 0 ? (
+                  playersToShow.map((player) => (
+                    <button
+                      key={player.id}
+                      className={`player-btn ${accusationTarget === player.id ? 'selected' : ''}`}
+                      onClick={() => handleAccusation(player.id)}
+                    >
+                      <span className="player-name">{player.name}</span>
+                      <div className="vote-info">
+                        {accusationTarget === player.id && <span className="vote-indicator">✓ Accused</span>}
+                        {accusations[player.id] && (
+                          <span className="vote-count">({accusations[player.id].voteCount} votes)</span>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="no-players">
+                    <p>No players available to vote for</p>
+                    <small>Debug: Total targets: {dayPhaseTargets.length}, Player ID: {playerId}</small>
+                  </div>
+                )}
+              </div>
+
+              {accusationTarget && (
+                <div className="accusation-confirmation">
+                  <p>You are accusing <strong>{playersToShow.find(p => p.id === accusationTarget)?.name}</strong></p>
+                  <div className="accusation-info">
+                    <small>Click the same player again to clear your accusation</small>
+                  </div>
+                </div>
+              )}
+
+              {eliminationCountdown && (
+                <div className="elimination-timer">
+                  <h3>⚖️ Majority Reached!</h3>
+                  <p>Eliminating: <strong>{eliminationCountdown.targetName}</strong></p>
+                  <div className="countdown">
+                    <span className="timer">{eliminationCountdown.timeLeft}</span>
+                    <small>seconds to cancel</small>
+                  </div>
+                </div>
+              )}
+
+              {Object.keys(accusations).length > 0 && !eliminationCountdown && (
+                <div className="vote-summary">
+                  <h3>Current Accusations</h3>
+                  {Object.entries(accusations).map(([accusedId, accusationData]) => (
+                    <div key={accusedId} className="accusation-item">
+                      <span className="accusation-text">
+                        {accusationData.accusers.join(', ')} accuses {accusationData.name} - {accusationData.voteCount} Votes
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

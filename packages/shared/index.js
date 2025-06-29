@@ -84,80 +84,258 @@ export function isSessionTokenValid(sessionData) {
   return now < expiryTime
 }
 
-// Game Types
-export const GAME_TYPES = {
-  WEREWOLF: 'werewolf',
-  MAFIA: 'mafia'
+// Standardized Powers (consistent across all themes)
+export const POWERS = {
+  KILL: 'kill',
+  HEAL: 'heal',
+  INVESTIGATE: 'investigate',
+  CITIZEN: 'citizen'
 }
 
-// Role Definitions by Game Type
-export const ROLE_SETS = {
-  [GAME_TYPES.WEREWOLF]: {
-    EVIL: {
-      name: 'Werewolf',
-      alignment: 'evil',
-      description: 'You are a werewolf. Your goal is to eliminate all villagers.',
-      ability: 'Each night, you and other werewolves can eliminate one player.',
-      color: '#dc2626' // red
-    },
-    INVESTIGATOR: {
-      name: 'Seer',
-      alignment: 'good',
-      description: 'You are a villager with mystical powers. Find the werewolves before they eliminate you.',
-      ability: 'Each night, you may investigate one player to learn their alignment.',
-      color: '#7c3aed' // purple
-    },
-    PROTECTOR: {
-      name: 'Healer',
-      alignment: 'good',
-      description: 'You are a villager with healing powers. Protect the innocent from the werewolves.',
-      ability: 'Each night, you may protect one player from elimination.',
-      color: '#059669' // green
-    },
-    CITIZEN: {
-      name: 'Villager',
-      alignment: 'good',
-      description: 'You are an ordinary villager. Work with others to identify and eliminate the werewolves.',
-      ability: 'Vote during the day phase to eliminate suspected werewolves.',
-      color: '#0284c7' // blue
+// Evil Themes with role names and metadata
+export const EVIL_THEMES = {
+  WEREWOLF: {
+    id: 'werewolf',
+    name: 'Werewolf',
+    description: 'Ancient lycanthropes terrorize the village under moonlight',
+    evilName: 'Werewolves',
+    citizenName: 'Villagers',
+    settingName: 'Village',
+    roles: {
+      [POWERS.KILL]: {
+        name: 'Werewolf',
+        power: POWERS.KILL,
+        powerName: 'KILL',
+        alignment: 'evil',
+        description: 'You are a werewolf. Your goal is to eliminate all villagers.',
+        ability: 'Each night, you and other werewolves can eliminate one player.',
+        color: '#dc2626' // red
+      },
+      [POWERS.HEAL]: {
+        name: 'Healer',
+        power: POWERS.HEAL,
+        powerName: 'HEAL',
+        alignment: 'good',
+        description: 'You are a villager with healing powers. Protect the innocent from the werewolves.',
+        ability: 'Each night, you may protect one player from elimination.',
+        color: '#059669' // green
+      },
+      [POWERS.INVESTIGATE]: {
+        name: 'Seer',
+        power: POWERS.INVESTIGATE,
+        powerName: 'INVESTIGATE',
+        alignment: 'good',
+        description: 'You are a villager with mystical powers. Find the werewolves before they eliminate you.',
+        ability: 'Each night, you may investigate one player to learn their alignment.',
+        color: '#7c3aed' // purple
+      },
+      [POWERS.CITIZEN]: {
+        name: 'Villager',
+        power: POWERS.CITIZEN,
+        powerName: 'CITIZEN',
+        alignment: 'good',
+        description: 'You are an ordinary villager. Work with others to identify and eliminate the werewolves.',
+        ability: 'Vote during the day phase to eliminate suspected werewolves.',
+        color: '#0284c7' // blue
+      }
     }
   },
-  [GAME_TYPES.MAFIA]: {
-    EVIL: {
-      name: 'Mafia',
-      alignment: 'evil',
-      description: 'You are part of the mafia. Your goal is to eliminate all townspeople.',
-      ability: 'Each night, you and other mafia members can eliminate one player.',
-      color: '#dc2626' // red
-    },
-    INVESTIGATOR: {
-      name: 'Detective',
-      alignment: 'good',
-      description: 'You are a detective with investigative skills. Find the mafia before they eliminate you.',
-      ability: 'Each night, you may investigate one player to learn their alignment.',
-      color: '#7c3aed' // purple
-    },
-    PROTECTOR: {
-      name: 'Doctor',
-      alignment: 'good',
-      description: 'You are a doctor with medical skills. Protect the innocent from the mafia.',
-      ability: 'Each night, you may protect one player from elimination.',
-      color: '#059669' // green
-    },
-    CITIZEN: {
-      name: 'Townsperson',
-      alignment: 'good',
-      description: 'You are an ordinary townsperson. Work with others to identify and eliminate the mafia.',
-      ability: 'Vote during the day phase to eliminate suspected mafia members.',
-      color: '#0284c7' // blue
+  MAFIA: {
+    id: 'mafia',
+    name: 'Mafia',
+    description: 'Organized crime families control the city through fear and violence',
+    evilName: 'Mafia',
+    citizenName: 'Townspeople',
+    settingName: 'City',
+    roles: {
+      [POWERS.KILL]: {
+        name: 'Mafioso',
+        power: POWERS.KILL,
+        powerName: 'KILL',
+        alignment: 'evil',
+        description: 'You are part of the mafia. Your goal is to eliminate all townspeople.',
+        ability: 'Each night, you and other mafia members can eliminate one player.',
+        color: '#dc2626' // red
+      },
+      [POWERS.HEAL]: {
+        name: 'Doctor',
+        power: POWERS.HEAL,
+        powerName: 'HEAL',
+        alignment: 'good',
+        description: 'You are a doctor with medical skills. Protect the innocent from the mafia.',
+        ability: 'Each night, you may protect one player from elimination.',
+        color: '#059669' // green
+      },
+      [POWERS.INVESTIGATE]: {
+        name: 'Detective',
+        power: POWERS.INVESTIGATE,
+        powerName: 'INVESTIGATE',
+        alignment: 'good',
+        description: 'You are a detective with investigative skills. Find the mafia before they eliminate you.',
+        ability: 'Each night, you may investigate one player to learn their alignment.',
+        color: '#7c3aed' // purple
+      },
+      [POWERS.CITIZEN]: {
+        name: 'Townsperson',
+        power: POWERS.CITIZEN,
+        powerName: 'CITIZEN',
+        alignment: 'good',
+        description: 'You are an ordinary townsperson. Work with others to identify and eliminate the mafia.',
+        ability: 'Vote during the day phase to eliminate suspected mafia members.',
+        color: '#0284c7' // blue
+      }
     }
+  },
+  VAMPIRE: {
+    id: 'vampire',
+    name: 'Vampire',
+    description: 'Undead bloodsuckers hunt in the shadows of the night',
+    evilName: 'Vampires',
+    citizenName: 'Mortals',
+    settingName: 'Town',
+    roles: {
+      [POWERS.KILL]: {
+        name: 'Vampire',
+        power: POWERS.KILL,
+        powerName: 'KILL',
+        alignment: 'evil',
+        description: 'You are a vampire. Your goal is to drain the life from all mortals.',
+        ability: 'Each night, you and other vampires can eliminate one player.',
+        color: '#dc2626' // red
+      },
+      [POWERS.HEAL]: {
+        name: 'Priest',
+        power: POWERS.HEAL,
+        powerName: 'HEAL',
+        alignment: 'good',
+        description: 'You are a holy priest with divine powers. Protect the innocent from the vampires.',
+        ability: 'Each night, you may protect one player from elimination.',
+        color: '#059669' // green
+      },
+      [POWERS.INVESTIGATE]: {
+        name: 'Oracle',
+        power: POWERS.INVESTIGATE,
+        powerName: 'INVESTIGATE',
+        alignment: 'good',
+        description: 'You are an oracle with mystical sight. Find the vampires before they drain you.',
+        ability: 'Each night, you may investigate one player to learn their alignment.',
+        color: '#7c3aed' // purple
+      },
+      [POWERS.CITIZEN]: {
+        name: 'Mortal',
+        power: POWERS.CITIZEN,
+        powerName: 'CITIZEN',
+        alignment: 'good',
+        description: 'You are an ordinary mortal. Work with others to identify and eliminate the vampires.',
+        ability: 'Vote during the day phase to eliminate suspected vampires.',
+        color: '#0284c7' // blue
+      }
+    }
+  },
+  CARTEL: {
+    id: 'cartel',
+    name: 'Cartel',
+    description: 'Drug cartels wage war for control of the border town',
+    evilName: 'Cartel',
+    citizenName: 'Citizens',
+    settingName: 'Border Town',
+    roles: {
+      [POWERS.KILL]: {
+        name: 'Sicario',
+        power: POWERS.KILL,
+        powerName: 'KILL',
+        alignment: 'evil',
+        description: 'You are a cartel assassin. Your goal is to eliminate all who oppose the cartel.',
+        ability: 'Each night, you and other sicarios can eliminate one player.',
+        color: '#dc2626' // red
+      },
+      [POWERS.HEAL]: {
+        name: 'Medic',
+        power: POWERS.HEAL,
+        powerName: 'HEAL',
+        alignment: 'good',
+        description: 'You are a field medic. Protect the innocent from cartel violence.',
+        ability: 'Each night, you may protect one player from elimination.',
+        color: '#059669' // green
+      },
+      [POWERS.INVESTIGATE]: {
+        name: 'Agent',
+        power: POWERS.INVESTIGATE,
+        powerName: 'INVESTIGATE',
+        alignment: 'good',
+        description: 'You are an undercover agent. Find the cartel members before they eliminate you.',
+        ability: 'Each night, you may investigate one player to learn their alignment.',
+        color: '#7c3aed' // purple
+      },
+      [POWERS.CITIZEN]: {
+        name: 'Citizen',
+        power: POWERS.CITIZEN,
+        powerName: 'CITIZEN',
+        alignment: 'good',
+        description: 'You are an ordinary citizen caught in cartel war. Work with others to identify the criminals.',
+        ability: 'Vote during the day phase to eliminate suspected cartel members.',
+        color: '#0284c7' // blue
+      }
+    }
+  }
+}
+
+// Legacy Game Types (for backwards compatibility)
+export const GAME_TYPES = {
+  WEREWOLF: 'werewolf',
+  MAFIA: 'mafia',
+  VAMPIRE: 'vampire',
+  CARTEL: 'cartel'
+}
+
+// Helper functions for the new theme system
+export function getTheme(themeId) {
+  return EVIL_THEMES[themeId.toUpperCase()] || EVIL_THEMES.WEREWOLF
+}
+
+export function getRoleByPower(themeId, power) {
+  const theme = getTheme(themeId)
+  return theme.roles[power]
+}
+
+export function createRoleWithPowerDescription(themeId, power) {
+  const role = getRoleByPower(themeId, power)
+  if (!role) return null
+  
+  return {
+    ...role,
+    powerDescription: `You are a ${role.name}, and you have the power to ${role.powerName}`
+  }
+}
+
+export function getThemeList() {
+  return Object.values(EVIL_THEMES).map(theme => ({
+    id: theme.id,
+    name: theme.name,
+    description: theme.description
+  }))
+}
+
+// Legacy ROLE_SETS for backwards compatibility
+export const ROLE_SETS = {
+  [GAME_TYPES.WEREWOLF]: {
+    EVIL: EVIL_THEMES.WEREWOLF.roles[POWERS.KILL],
+    INVESTIGATOR: EVIL_THEMES.WEREWOLF.roles[POWERS.INVESTIGATE],
+    PROTECTOR: EVIL_THEMES.WEREWOLF.roles[POWERS.HEAL],
+    CITIZEN: EVIL_THEMES.WEREWOLF.roles[POWERS.CITIZEN]
+  },
+  [GAME_TYPES.MAFIA]: {
+    EVIL: EVIL_THEMES.MAFIA.roles[POWERS.KILL],
+    INVESTIGATOR: EVIL_THEMES.MAFIA.roles[POWERS.INVESTIGATE],
+    PROTECTOR: EVIL_THEMES.MAFIA.roles[POWERS.HEAL],
+    CITIZEN: EVIL_THEMES.MAFIA.roles[POWERS.CITIZEN]
   }
 }
 
 // Legacy ROLES export for backward compatibility (defaults to Werewolf)
 export const ROLES = ROLE_SETS[GAME_TYPES.WEREWOLF]
 
-// Profile Images
+// Profile Images by Theme
 export const PROFILE_IMAGES = {
   [GAME_TYPES.WEREWOLF]: [
     'wolf_1', 'wolf_2', 'wolf_3', 'wolf_4', 'wolf_5', 'wolf_6', 'wolf_7', 'wolf_8', 'wolf_9', 'wolf_10',
@@ -170,11 +348,32 @@ export const PROFILE_IMAGES = {
     'mafia_11', 'mafia_12', 'mafia_13', 'mafia_14', 'mafia_15', 'mafia_16', 'mafia_17', 'mafia_18', 'mafia_19', 'mafia_20',
     'mafia_21', 'mafia_22', 'mafia_23', 'mafia_24', 'mafia_25', 'mafia_26', 'mafia_27', 'mafia_28', 'mafia_29', 'mafia_30',
     'mafia_31', 'mafia_32', 'mafia_33', 'mafia_34', 'mafia_35', 'mafia_36', 'mafia_37', 'mafia_38', 'mafia_39'
+  ],
+  // For new themes, fallback to existing images for now
+  [GAME_TYPES.VAMPIRE]: [
+    'wolf_1', 'wolf_2', 'wolf_3', 'wolf_4', 'wolf_5', 'wolf_6', 'wolf_7', 'wolf_8', 'wolf_9', 'wolf_10',
+    'wolf_11', 'wolf_12', 'wolf_13', 'wolf_14', 'wolf_15', 'wolf_16', 'wolf_17', 'wolf_18', 'wolf_19', 'wolf_20',
+    'wolf_21', 'wolf_22', 'wolf_23', 'wolf_24', 'wolf_25', 'wolf_26', 'wolf_27', 'wolf_28', 'wolf_29', 'wolf_30',
+    'wolf_31', 'wolf_32', 'wolf_33'
+  ],
+  [GAME_TYPES.CARTEL]: [
+    'mafia_1', 'mafia_2', 'mafia_3', 'mafia_4', 'mafia_5', 'mafia_6', 'mafia_7', 'mafia_8', 'mafia_9', 'mafia_10',
+    'mafia_11', 'mafia_12', 'mafia_13', 'mafia_14', 'mafia_15', 'mafia_16', 'mafia_17', 'mafia_18', 'mafia_19', 'mafia_20',
+    'mafia_21', 'mafia_22', 'mafia_23', 'mafia_24', 'mafia_25', 'mafia_26', 'mafia_27', 'mafia_28', 'mafia_29', 'mafia_30',
+    'mafia_31', 'mafia_32', 'mafia_33', 'mafia_34', 'mafia_35', 'mafia_36', 'mafia_37', 'mafia_38', 'mafia_39'
   ]
 }
 
-export function getProfileImageUrl(gameType, imageName, useWebP = true) {
-  const gameFolder = gameType === GAME_TYPES.WEREWOLF ? 'Werewolf' : 'Mafia'
+export function getProfileImageUrl(themeId, imageName, useWebP = true) {
+  // Map theme IDs to image folders
+  const folderMap = {
+    [GAME_TYPES.WEREWOLF]: 'Werewolf',
+    [GAME_TYPES.MAFIA]: 'Mafia', 
+    [GAME_TYPES.VAMPIRE]: 'Werewolf', // Use werewolf images for vampire theme for now
+    [GAME_TYPES.CARTEL]: 'Mafia' // Use mafia images for cartel theme for now
+  }
+  
+  const gameFolder = folderMap[themeId] || 'Werewolf'
   const extension = useWebP ? '.webp' : '.png'
   return `/images/ProfileImages/${gameFolder}/${imageName}${extension}`
 }
@@ -190,31 +389,31 @@ export function checkWebPSupport() {
   })
 }
 
-// Role Assignment Logic
-export function assignRoles(playerCount, gameType = GAME_TYPES.WEREWOLF) {
+// Role Assignment Logic (updated for new theme system)
+export function assignRoles(playerCount, themeId = GAME_TYPES.WEREWOLF) {
   if (playerCount < GAME_CONFIG.MIN_PLAYERS) {
     throw new Error(`Need at least ${GAME_CONFIG.MIN_PLAYERS} players`)
   }
 
-  const roleSet = ROLE_SETS[gameType]
+  const theme = getTheme(themeId)
   const roles = []
   
   // Determine evil count based on player count
   const evilCount = playerCount <= 7 ? 1 : 2
   
-  // Add evil roles
+  // Add evil roles (KILL power)
   for (let i = 0; i < evilCount; i++) {
-    roles.push(roleSet.EVIL)
+    roles.push(createRoleWithPowerDescription(themeId, POWERS.KILL))
   }
   
-  // Add special roles
-  roles.push(roleSet.INVESTIGATOR)
-  roles.push(roleSet.PROTECTOR)
+  // Add special roles  
+  roles.push(createRoleWithPowerDescription(themeId, POWERS.INVESTIGATE)) // Seer/Detective/Oracle/Agent
+  roles.push(createRoleWithPowerDescription(themeId, POWERS.HEAL)) // Healer/Doctor/Priest/Medic
   
   // Fill remaining slots with citizens
   const remainingSlots = playerCount - roles.length
   for (let i = 0; i < remainingSlots; i++) {
-    roles.push(roleSet.CITIZEN)
+    roles.push(createRoleWithPowerDescription(themeId, POWERS.CITIZEN))
   }
   
   // Shuffle roles randomly
@@ -224,6 +423,11 @@ export function assignRoles(playerCount, gameType = GAME_TYPES.WEREWOLF) {
   }
   
   return roles
+}
+
+// Legacy function for backwards compatibility
+export function assignRolesByGameType(playerCount, gameType = GAME_TYPES.WEREWOLF) {
+  return assignRoles(playerCount, gameType)
 }
 
 export const generateRoomId = () => {
@@ -328,13 +532,13 @@ export const getPlayerGameState = (room, playerId, helpers = {}) => {
           nightState.selectedTarget = room.mafiaVotes.get(playerId) || null;
           nightState.hasVoted = room.mafiaVotes.has(playerId);
           
-        } else if (playerRole && (playerRole.name === 'Doctor' || playerRole.name === 'Protector')) {
+        } else if (playerRole && playerRole.power === POWERS.HEAL) {
           nightState.availableTargets = room.players
             .filter(p => room.alivePlayers.has(p.id))
             .map(p => ({ id: p.id, name: p.name }));
           nightState.selectedHeal = room.healActions?.get(playerId) || null;
           
-        } else if (playerRole && (playerRole.name === 'Seer' || playerRole.name === 'Investigator')) {
+        } else if (playerRole && playerRole.power === POWERS.INVESTIGATE) {
           nightState.availableTargets = room.players
             .filter(p => room.alivePlayers.has(p.id) && p.id !== playerId)
             .map(p => ({ id: p.id, name: p.name }));

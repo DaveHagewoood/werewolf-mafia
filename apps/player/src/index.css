@@ -380,9 +380,39 @@ body {
   color: white;
 }
 
+.role-power,
 .role-description,
 .role-ability {
   margin-bottom: 20px;
+}
+
+.role-power {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.1));
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 25px;
+}
+
+.role-power h3 {
+  font-size: 1.3rem;
+  color: #2563eb;
+  margin-bottom: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.power-description {
+  text-align: center;
+  font-size: 1.1rem;
+  line-height: 1.4;
+  color: #1e40af;
+  margin: 0;
+}
+
+.power-description strong {
+  color: #1d4ed8;
+  font-weight: 700;
 }
 
 .role-description h3,

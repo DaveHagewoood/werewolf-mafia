@@ -1,4 +1,4 @@
-import { SOCKET_EVENTS, GAME_STATES, GAME_CONFIG, assignRoles, GAME_TYPES, ROLE_SETS } from '@werewolf-mafia/shared';
+import { SOCKET_EVENTS, GAME_STATES, GAME_CONFIG, assignRoles, GAME_TYPES, ROLE_SETS, POWERS } from '@werewolf-mafia/shared';
 
 export class HostGameStateManager {
   constructor(socket, roomId, onStateChange = null) {
@@ -132,6 +132,11 @@ export class HostGameStateManager {
         doctor: this.gameState.players.filter(p => this.gameState.alivePlayers.has(p.id)).map(p => ({ id: p.id, name: p.name })),
         seer: this.gameState.players.filter(p => this.gameState.alivePlayers.has(p.id)).map(p => ({ id: p.id, name: p.name }))
       };
+    }
+
+    // Add day phase voting targets
+    if (this.gameState.gameState === GAME_STATES.DAY_PHASE) {
+      masterState.dayPhaseTargets = this.gameState.players.filter(p => this.gameState.alivePlayers.has(p.id)).map(p => ({ id: p.id, name: p.name }));
     }
 
     return masterState;
@@ -560,12 +565,10 @@ export class HostGameStateManager {
     // Update activity tracking
     this.updatePlayerActivity(playerId)
 
-    const gameType = this.gameState.gameType || GAME_TYPES.WEREWOLF;
-    const roleSet = ROLE_SETS[gameType];
     const playerRole = this.gameState.playerRoles.get(playerId);
     
-    if (playerRole?.name !== roleSet.PROTECTOR.name) {
-      throw new Error(`Only ${roleSet.PROTECTOR.name} can heal during night phase`);
+    if (playerRole?.power !== POWERS.HEAL) {
+      throw new Error(`Only players with heal power can heal during night phase`);
     }
 
     if (!this.gameState.alivePlayers.has(targetId)) {
@@ -587,12 +590,10 @@ export class HostGameStateManager {
     // Update activity tracking
     this.updatePlayerActivity(playerId)
 
-    const gameType = this.gameState.gameType || GAME_TYPES.WEREWOLF;
-    const roleSet = ROLE_SETS[gameType];
     const playerRole = this.gameState.playerRoles.get(playerId);
     
-    if (playerRole?.name !== roleSet.INVESTIGATOR.name) {
-      throw new Error(`Only ${roleSet.INVESTIGATOR.name} can investigate during night phase`);
+    if (playerRole?.power !== POWERS.INVESTIGATE) {
+      throw new Error(`Only players with investigate power can investigate during night phase`);
     }
 
     if (!this.gameState.alivePlayers.has(targetId)) {
@@ -645,15 +646,11 @@ export class HostGameStateManager {
     const mafiaPlayers = this.getMafiaPlayers();
     const doctorPlayers = this.gameState.players.filter(p => {
       const role = this.gameState.playerRoles.get(p.id);
-      const gameType = this.gameState.gameType || GAME_TYPES.WEREWOLF;
-      const roleSet = ROLE_SETS[gameType];
-      return role?.name === roleSet.PROTECTOR.name && this.gameState.alivePlayers.has(p.id);
+      return role?.power === POWERS.HEAL && this.gameState.alivePlayers.has(p.id);
     });
     const seerPlayers = this.gameState.players.filter(p => {
       const role = this.gameState.playerRoles.get(p.id);
-      const gameType = this.gameState.gameType || GAME_TYPES.WEREWOLF;
-      const roleSet = ROLE_SETS[gameType];
-      return role?.name === roleSet.INVESTIGATOR.name && this.gameState.alivePlayers.has(p.id);
+      return role?.power === POWERS.INVESTIGATE && this.gameState.alivePlayers.has(p.id);
     });
 
     const mafiaComplete = this.gameState.mafiaVotesLocked;

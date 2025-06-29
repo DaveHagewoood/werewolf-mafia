@@ -14,7 +14,8 @@ import {
   assignRoles, 
   generateSessionToken,
   isSessionTokenValid,
-  SESSION_CONFIG
+  SESSION_CONFIG,
+  POWERS
 } from '@werewolf-mafia/shared'
 const httpServer = createServer()
 const port = process.env.PORT || 3002
@@ -174,23 +175,19 @@ function getAliveNonMafiaPlayers(room) {
   })
 }
 
-// Helper function to get Doctor players (Protector role)
+// Helper function to get Doctor players (Heal power role)
 function getDoctorPlayers(room, roomId) {
-  const gameType = roomGameTypes.get(roomId) || GAME_TYPES.WEREWOLF
-  const roleSet = ROLE_SETS[gameType]
   return room.players.filter(player => {
     const role = room.playerRoles.get(player.id)
-    return role?.name === roleSet.PROTECTOR.name && room.alivePlayers.has(player.id)
+    return role?.power === POWERS.HEAL && room.alivePlayers.has(player.id)
   })
 }
 
-// Helper function to get Seer players (Investigator role)
+// Helper function to get Seer players (Investigate power role)
 function getSeerPlayers(room, roomId) {
-  const gameType = roomGameTypes.get(roomId) || GAME_TYPES.WEREWOLF
-  const roleSet = ROLE_SETS[gameType]
   return room.players.filter(player => {
     const role = room.playerRoles.get(player.id)
-    return role?.name === roleSet.INVESTIGATOR.name && room.alivePlayers.has(player.id)
+    return role?.power === POWERS.INVESTIGATE && room.alivePlayers.has(player.id)
   })
 }
 
@@ -980,9 +977,33 @@ io.on('connection', (socket) => {
       return
     }
     
-    // Relay state to PLAYERS ONLY (not host) - pure host-authoritative architecture
+    // Store complete game state in server for session reconnections
     const room = getRoom(roomId)
     if (room) {
+      // Store essential game state including full role objects
+      room.gameState = gameState?.gameState || room.gameState
+      room.gameType = gameState?.gameType || room.gameType
+      
+      // Store role mapping for session reconnections
+      if (gameState?.players) {
+        room.playerRoles = new Map()
+        room.playerReadiness = new Map()
+        room.alivePlayers = new Set()
+        
+        gameState.players.forEach(player => {
+          if (player.role) {
+            console.log(`💾 Storing role for ${player.name}:`, typeof player.role, player.role)
+            room.playerRoles.set(player.id, player.role)
+          }
+          room.playerReadiness.set(player.id, player.isReady || false)
+          if (player.alive) {
+            room.alivePlayers.add(player.id)
+          }
+        })
+        console.log(`💾 Stored complete game state for session handling - ${room.playerRoles.size} roles`)
+      }
+      
+      // Relay state to PLAYERS ONLY (not host) - pure host-authoritative architecture
       room.players.forEach(player => {
         const playerSocket = io.sockets.sockets.get(player.id)
         if (playerSocket && playerSocket.id !== socket.id) { // Don't send to host
@@ -1586,6 +1607,7 @@ io.on('connection', (socket) => {
       
       if (room.playerRoles && room.playerRoles.has(oldSocketId)) {
         currentRole = room.playerRoles.get(oldSocketId)
+        console.log(`🎭 Found role for ${playerName}:`, currentRole?.name, 'with power:', currentRole?.power)
         room.playerRoles.delete(oldSocketId)
         room.playerRoles.set(socket.id, currentRole)
       }
@@ -1594,6 +1616,8 @@ io.on('connection', (socket) => {
         room.alivePlayers.delete(oldSocketId)
         room.alivePlayers.add(socket.id)
         isAlive = true
+      } else if (room.alivePlayers) {
+        isAlive = false
       }
       
       // Update other game maps...

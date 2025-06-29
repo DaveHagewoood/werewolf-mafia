@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
-import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport } from '@werewolf-mafia/shared'
+import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport, getThemeList, getTheme, EVIL_THEMES, POWERS } from '@werewolf-mafia/shared'
 import { HostGameStateManager } from './HostGameStateManager'
 import './App.css'
 
@@ -583,8 +583,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         
         <div className="main-menu-content">
           <div className="game-selection">
-            <h3>Choose Your Game</h3>
-            <p>Both games use the same mechanics but different themes and role names</p>
+            <h3>Choose Your Evil Theme</h3>
+            <p>All themes use the same mechanics but feature different storylines and role names</p>
             
             {!imagesLoaded ? (
               <div className="loading-images">
@@ -593,19 +593,25 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               </div>
             ) : (
               <div className="game-options">
-                <div 
-                  className="game-option game-option-werewolf" 
-                  onClick={() => handleGameTypeSelect('werewolf')}
-                >
-                  {/* Content handled by background image */}
-                </div>
-                
-                <div 
-                  className="game-option game-option-mafia" 
-                  onClick={() => handleGameTypeSelect('mafia')}
-                >
-                  {/* Content handled by background image */}
-                </div>
+                {getThemeList().map((theme) => (
+                  <div 
+                    key={theme.id}
+                    className={`game-option game-option-${theme.id}`} 
+                    onClick={() => handleGameTypeSelect(theme.id)}
+                  >
+                    <div className="theme-content">
+                      <h4>{theme.name}</h4>
+                      <p className="theme-description">{theme.description}</p>
+                      <div className="theme-roles">
+                        <span className="role-preview">
+                          🗡️ {getTheme(theme.id).roles[POWERS.KILL].name} • 
+                          🏥 {getTheme(theme.id).roles[POWERS.HEAL].name} • 
+                          🔍 {getTheme(theme.id).roles[POWERS.INVESTIGATE].name}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -808,7 +814,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         <div className="night-content">
           <div className="night-icon">🌙</div>
           <h2>Night Phase</h2>
-          <p>The town sleeps while the {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} make their move...</p>
+          <p>The {getTheme(selectedGameType).settingName.toLowerCase()} sleeps while the {getTheme(selectedGameType).evilName} make their move...</p>
           
           {eliminatedPlayer || savedPlayer ? (
             <div className="night-result">
@@ -816,7 +822,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 <div className="elimination-notice">
                   <h3>Night Action Complete</h3>
                   <p>
-                    <strong>{eliminatedPlayer.name}</strong> was eliminated by the {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'}.
+                    <strong>{eliminatedPlayer.name}</strong> was eliminated by the {getTheme(selectedGameType).evilName}.
                   </p>
                 </div>
               )}
@@ -825,7 +831,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 <div className="save-notice">
                   <h3>A Life Saved!</h3>
                   <p>
-                    The {selectedGameType === 'mafia' ? 'Doctor' : 'Healer'} successfully saved someone from certain death!
+                    The {getTheme(selectedGameType).roles[POWERS.HEAL].name} successfully saved someone from certain death!
                   </p>
                 </div>
               )}
@@ -833,7 +839,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               {!eliminatedPlayer && savedPlayer && (
                 <div className="no-elimination-notice">
                   <h3>No One Was Killed</h3>
-                  <p>The {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} plan was thwarted by excellent medical intervention!</p>
+                  <p>The {getTheme(selectedGameType).evilName} plan was thwarted by excellent medical intervention!</p>
                 </div>
               )}
               
@@ -844,7 +850,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           ) : (
             <div className="night-progress">
               <div className="night-spinner"></div>
-              <p>{selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'} selecting their target...</p>
+              <p>{getTheme(selectedGameType).evilName} selecting their target...</p>
               
               {/* Simplified - no complex pause/reconnection logic during active game */}
               {players.some(p => !p.connected) && (
@@ -1046,7 +1052,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
   return wrapWithConnectionStatus(
     <div className="lobby-container">
       <div className="lobby-header">
-        <h1>{selectedGameType === 'mafia' ? '🕴️ Mafia' : '🐺 Werewolf'}</h1>
+        <h1>{getTheme(selectedGameType).name === 'Werewolf' ? '🐺' : getTheme(selectedGameType).name === 'Mafia' ? '🕴️' : getTheme(selectedGameType).name === 'Vampire' ? '🧛' : '🔫'} {getTheme(selectedGameType).name}</h1>
         <h2>Room Code: {roomId}</h2>
       </div>
 

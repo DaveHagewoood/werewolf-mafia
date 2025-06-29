@@ -1,4 +1,4 @@
-import { SOCKET_EVENTS, GameConnectionState, getPlayerGameState, GAME_STATES, GAME_CONFIG } from '@werewolf-mafia/shared';
+import { SOCKET_EVENTS, GameConnectionState, getPlayerGameState, GAME_STATES, GAME_CONFIG, POWERS } from '@werewolf-mafia/shared';
 
 export class GameStateManager {
   constructor(io) {
@@ -111,10 +111,10 @@ export class GameStateManager {
           if (role.alignment === 'evil' && hasVoted) {
             actionStatus = 'COMPLETED';
             hasActed = true;
-          } else if ((role.name === 'Doctor' || role.name === 'Healer') && hasHealed) {
+          } else if (role.power === POWERS.HEAL && hasHealed) {
             actionStatus = 'COMPLETED'; 
             hasActed = true;
-          } else if ((role.name === 'Seer' || role.name === 'Detective') && hasInvestigated) {
+          } else if (role.power === POWERS.INVESTIGATE && hasInvestigated) {
             actionStatus = 'COMPLETED';
             hasActed = true;
           }
@@ -123,9 +123,9 @@ export class GameStateManager {
         // Role-specific capability flags
         const canVote = isAlive && room.gameState === GAME_STATES.DAY_PHASE;
         const canHeal = isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
-                       role && (role.name === 'Doctor' || role.name === 'Healer') && !hasHealed;
+                       role && role.power === POWERS.HEAL && !hasHealed;
         const canInvestigate = isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
-                             role && (role.name === 'Seer' || role.name === 'Detective') && !hasInvestigated;
+                             role && role.power === POWERS.INVESTIGATE && !hasInvestigated;
         const canMafiaVote = isAlive && room.gameState === GAME_STATES.NIGHT_PHASE && 
                            role && role.alignment === 'evil' && !hasVoted;
         
@@ -242,7 +242,7 @@ export class GameStateManager {
                 playerActions.primaryAction = 'mafia_vote';
                 playerActions.actionContext.description = 'Vote to eliminate a player';
               }
-            } else if (role && (role.name === 'Doctor' || role.name === 'Healer')) {
+            } else if (role && role.power === POWERS.HEAL) {
               const hasHealed = room.healActions && room.healActions.has(player.id);
               if (!hasHealed) {
                 playerActions.availableActions.push('heal');
@@ -252,7 +252,7 @@ export class GameStateManager {
                 playerActions.primaryAction = 'heal';
                 playerActions.actionContext.description = 'Protect a player from elimination';
               }
-            } else if (role && (role.name === 'Seer' || role.name === 'Detective')) {
+            } else if (role && role.power === POWERS.INVESTIGATE) {
               const hasInvestigated = room.investigationActions && room.investigationActions.has(player.id);
               if (!hasInvestigated) {
                 playerActions.availableActions.push('investigate');
