@@ -255,12 +255,11 @@ function JoinRoom() {
       setPlayerId(data.playerId)
       setPlayerName(data.playerName)
       setIsJoining(false)
-      setIsWaiting(true)
       setMessage(null)
 
-      // Store session URL if provided and redirect to it
+      // Store session URL if provided and redirect to it immediately
       if (data.sessionUrl) {
-        console.log('📱 Session URL received, redirecting to:', data.sessionUrl)
+        console.log('📱 Session URL received, redirecting immediately to:', data.sessionUrl)
         setSessionUrl(data.sessionUrl)
         
         // Update connection manager with session token
@@ -268,11 +267,12 @@ function JoinRoom() {
           connectionManager.updateSessionToken(data.sessionToken)
         }
         
-        // Auto-redirect to session URL for seamless experience
-        setTimeout(() => {
-          console.log('🔗 Redirecting to session URL:', data.sessionUrl)
-          window.location.href = data.sessionUrl
-        }, 1500) // Shorter delay for better UX
+        // Immediate redirect for seamless experience
+        console.log('🔗 Redirecting to session URL:', data.sessionUrl)
+        window.location.href = data.sessionUrl
+      } else {
+        // Only set waiting state if no session URL (fallback)
+        setIsWaiting(true)
       }
       
       console.log('=== PLAYER_JOINED PROCESSING COMPLETE ===')
