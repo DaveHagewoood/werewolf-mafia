@@ -783,16 +783,21 @@ body .reconnect-message {
 /* ===== Phase Resolved Styles ===== */
 .night-resolved-container,
 .day-resolved-container {
-  background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .night-resolved-content,
 .day-resolved-content {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
+  background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+  border-radius: 1.5rem;
   padding: 2rem;
-  margin: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.5s ease;
 }
 
 .resolution-section {
@@ -800,6 +805,7 @@ body .reconnect-message {
   flex-direction: column;
   gap: 1.5rem;
   align-items: center;
+  margin-top: 1.5rem;
 }
 
 .elimination-result,
@@ -811,15 +817,34 @@ body .reconnect-message {
   border: 2px solid rgba(255, 255, 255, 0.2);
   text-align: center;
   max-width: 500px;
+  width: 100%;
+}
+
+.elimination-result h3,
+.save-result h3,
+.no-elimination-result h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.4rem;
+  color: #e2e8f0;
+}
+
+.elimination-result p,
+.save-result p,
+.no-elimination-result p {
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+  color: #cbd5e0;
 }
 
 .waiting-for-host {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   padding: 2rem;
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.2);
   text-align: center;
   max-width: 400px;
+  width: 100%;
+  margin-top: 1rem;
 }
 
 .waiting-icon {
@@ -839,6 +864,39 @@ body .reconnect-message {
   font-size: 1rem;
   color: #cbd5e0;
   opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+  .night-resolved-content,
+  .day-resolved-content {
+    padding: 1.5rem;
+    margin: 0.5rem;
+  }
+
+  .elimination-result,
+  .save-result,
+  .no-elimination-result,
+  .waiting-for-host {
+    padding: 1.2rem;
+  }
+
+  .elimination-result h3,
+  .save-result h3,
+  .no-elimination-result h3,
+  .waiting-for-host h3 {
+    font-size: 1.2rem;
+  }
+
+  .elimination-result p,
+  .save-result p,
+  .no-elimination-result p,
+  .waiting-for-host p {
+    font-size: 1rem;
+  }
+
+  .waiting-icon {
+    font-size: 2.5rem;
+  }
 }
 
 /* Session URL Styles */
