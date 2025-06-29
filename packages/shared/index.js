@@ -460,6 +460,7 @@ export const GAME_STATES = {
   LOBBY: 'lobby',
   STARTING: 'starting',
   ROLE_ASSIGNMENT: 'role-assignment',
+  STORY_INTRO: 'story-intro',
   NIGHT_PHASE: 'night-phase',
   NIGHT_RESOLVED: 'night-resolved',
   DAY_PHASE: 'day-phase',

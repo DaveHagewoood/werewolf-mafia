@@ -31,14 +31,18 @@ export class HostGameStateManager {
       votingData: new Map(),
       investigationResults: new Map(),
       healActions: new Map(),
-      investigationActions: new Map()
+      investigationActions: new Map(),
+      introStory: null
     };
     
     console.log(`HostGameStateManager: Initialized for room ${roomId}`);
   }
 
   updateGameState(updates) {
-    console.log(`HostGameStateManager: Updating state:`, Object.keys(updates));
+    // Only log story-related updates or major state changes
+    if (updates.introStory !== undefined || updates.gameState || Object.keys(updates).length > 1) {
+      console.log(`HostGameStateManager: Updating state:`, Object.keys(updates));
+    }
 
     // Apply updates to local state
     Object.entries(updates).forEach(([key, value]) => {
@@ -51,8 +55,8 @@ export class HostGameStateManager {
       }
     });
 
-    // Debug log for player updates
-    if (updates.players) {
+    // Only log player updates for major changes, not activity pings
+    if (updates.players && Object.keys(updates).length > 1) {
       console.log(`🔄 HostGameStateManager: Players updated - now have ${updates.players.length} players:`, updates.players.map(p => `${p.name}(${p.id})`));
     }
 
@@ -68,7 +72,10 @@ export class HostGameStateManager {
   }
 
   broadcastGameState() {
-    console.log(`HostGameStateManager: Broadcasting state, gameState: ${this.gameState.gameState}, players: ${this.gameState.players.length}`);
+    // Only log for story-related or major state changes
+    if (this.gameState.gameState === GAME_STATES.STORY_INTRO || this.gameState.introStory) {
+      console.log(`HostGameStateManager: Broadcasting state, gameState: ${this.gameState.gameState}, introStory: ${this.gameState.introStory ? 'present' : 'null'}`);
+    }
 
     // Generate the master state
     const masterState = this.getMasterGameState();
@@ -89,7 +96,10 @@ export class HostGameStateManager {
 
   // Generate the single source of truth state
   getMasterGameState() {
-    console.log('HOST DEBUG - getMasterGameState() gameType:', this.gameState.gameType);
+    // Only log game type for story-related states
+    if (this.gameState.gameState === GAME_STATES.STORY_INTRO) {
+      console.log('HOST DEBUG - getMasterGameState() gameType:', this.gameState.gameType, 'introStory:', this.gameState.introStory ? 'present' : 'null');
+    }
     
     const masterState = {
       gameState: this.gameState.gameState,
@@ -122,6 +132,9 @@ export class HostGameStateManager {
       winner: this.gameState.winner,
       winCondition: this.gameState.winCondition,
       
+      // Story intro data
+      introStory: this.gameState.introStory,
+      
       // Night phase actions
       mafiaVotes: Array.from(this.gameState.mafiaVotes.entries()),
       mafiaVotesLocked: this.gameState.mafiaVotesLocked || false,
@@ -132,6 +145,11 @@ export class HostGameStateManager {
       suspicionVotes: this.gameState.suspicionVotes ? Array.from(this.gameState.suspicionVotes.entries()) : [],
       nightActionsComplete: this.gameState.nightActionsComplete || false
     };
+
+    // Log intro story status for debugging
+    if (this.gameState.gameState === GAME_STATES.STORY_INTRO) {
+      console.log(`📖 getMasterGameState: including introStory in state:`, masterState.introStory ? masterState.introStory.substring(0, 50) + '...' : 'null');
+    }
 
     // Add available targets for different roles
     if (this.gameState.gameState === GAME_STATES.NIGHT_PHASE) {
@@ -482,9 +500,62 @@ export class HostGameStateManager {
     console.log(`Role assignment progress: ${connectedPlayers.filter(p => newReadiness.get(p.id)).length}/${connectedPlayers.length} connected players ready`);
     
     if (allConnectedReady) {
-      console.log(`All connected players ready in room ${this.roomId}, starting night phase`);
-      this.startNightPhase();
+      console.log(`All connected players ready in room ${this.roomId}, starting story intro`);
+      this.startStoryIntro();
     }
+  }
+
+  async startStoryIntro() {
+    // Generate the intro story
+    console.log(`🎭 Generating intro story for ${this.gameState.gameType} theme`);
+    
+    // Request story generation from server
+    const storyRequest = {
+      roomId: this.roomId,
+      themeId: this.gameState.gameType,
+      playerCount: this.gameState.players.length,
+      playerNames: this.gameState.players.map(p => p.name)
+    };
+    
+    console.log(`📤 Sending story request to server:`, storyRequest);
+    console.log(`🔌 Socket connected?`, this.socket.connected);
+    
+    this.socket.emit('generate-intro-story', storyRequest);
+    
+    console.log(`📤 Story request sent to server`);
+
+    // Set story intro state immediately (story will be received via socket)
+    this.updateGameState({
+      gameState: GAME_STATES.STORY_INTRO,
+      introStory: null // Will be set when story is received
+    });
+  }
+
+  // Handle story received from server
+  setIntroStory(story) {
+    console.log(`📖 setIntroStory called with story (${story.length} chars):`, story.substring(0, 100) + '...');
+    console.log(`📖 Current gameState.introStory before update:`, this.gameState.introStory);
+    
+    this.updateGameState({
+      introStory: story
+    });
+    
+    console.log(`📖 gameState.introStory after update:`, this.gameState.introStory ? this.gameState.introStory.substring(0, 100) + '...' : 'null');
+    console.log(`📖 Intro story successfully set (${story.length} chars)`);
+    
+    // Broadcast story to all players
+    this.socket.emit('broadcast-to-players', {
+      roomId: this.roomId,
+      event: 'story-intro-update',
+      data: {
+        story: story
+      }
+    });
+    
+    // Set waiting for host to continue (no automatic transition)
+    this.updateGameState({
+      waitingForHostContinue: true
+    });
   }
 
   startNightPhase() {
@@ -1084,7 +1155,13 @@ export class HostGameStateManager {
 
   // Manual phase progression methods
   continueToNextPhase() {
-    if (this.gameState.gameState === GAME_STATES.NIGHT_RESOLVED) {
+    if (this.gameState.gameState === GAME_STATES.STORY_INTRO) {
+      console.log('Host continuing from story intro to night phase');
+      this.updateGameState({
+        waitingForHostContinue: false
+      });
+      this.startNightPhase();
+    } else if (this.gameState.gameState === GAME_STATES.NIGHT_RESOLVED) {
       console.log('Host continuing from night resolved to day phase');
       this.updateGameState({
         waitingForHostContinue: false

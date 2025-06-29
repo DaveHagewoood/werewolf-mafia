@@ -1485,4 +1485,211 @@ body {
     flex-direction: column;
     gap: 15px;
   }
+}
+
+/* ===== Story Intro Styles ===== */
+
+.story-intro-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #2d1b69 0%, #11047a 100%);
+  display: flex;
+  flex-direction: column;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.story-intro-header {
+  text-align: center;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.story-intro-header h1 {
+  font-size: 3rem;
+  margin: 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.story-intro-header h2 {
+  font-size: 1.5rem;
+  margin: 0.5rem 0 0 0;
+  opacity: 0.9;
+}
+
+.story-intro-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  gap: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.story-intro-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.story-intro-content h2 {
+  font-size: 2.5rem;
+  margin-bottom: 2rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.story-text {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 2rem;
+  margin: 1rem 0;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  max-width: 800px;
+  backdrop-filter: blur(10px);
+}
+
+.story-text p {
+  font-size: 1.2rem;
+  line-height: 1.8;
+  margin: 0;
+  font-style: italic;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.story-loading {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 3rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.story-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+.story-loading p {
+  font-size: 1.3rem;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.story-transition {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1rem 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.story-transition p {
+  font-size: 1rem;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.players-ready {
+  width: 100%;
+  max-width: 600px;
+}
+
+.players-ready h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  opacity: 0.9;
+}
+
+.players-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  justify-items: center;
+}
+
+.player-ready-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.player-ready-item:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.player-ready-item.disconnected {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.player-ready-item .player-avatar {
+  width: 50px;
+  height: 50px;
+}
+
+.player-ready-item .player-profile-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.player-ready-item .player-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disconnection-status {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+  .story-intro-header h1 {
+    font-size: 2.5rem;
+  }
+  
+  .story-intro-content h2 {
+    font-size: 2rem;
+  }
+  
+  .story-text p {
+    font-size: 1rem;
+  }
+  
+  .players-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.8rem;
+  }
+  
+  .player-ready-item {
+    padding: 0.8rem;
+  }
 } 

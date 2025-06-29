@@ -73,6 +73,9 @@ function JoinRoom() {
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [sessionUrl, setSessionUrl] = useState(null); // Store session URL for bookmarking
 
+  // Add state for intro story
+  const [introStory, setIntroStory] = useState(null)
+
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
     setError(errorMessage)
@@ -375,6 +378,12 @@ function JoinRoom() {
         setIsWaiting(false);
       }
     });
+
+    // Listen for story intro updates
+    newSocket.on('story-intro-update', (data) => {
+      console.log('📖 Story intro update received:', data.story ? data.story.substring(0, 100) + '...' : 'Loading...')
+      setIntroStory(data.story)
+    })
 
     return () => {
       manager.cleanup()
@@ -1176,6 +1185,38 @@ function JoinRoom() {
                 <p>The host will continue to the night phase when everyone is ready.</p>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show story intro screen
+  if (gameState === GAME_STATES.STORY_INTRO) {
+    return wrapWithPauseOverlay(
+      <div className="story-intro-container">
+        <div className="story-intro-content">
+          <div className="story-intro-icon">📖</div>
+          <h2>The Story Begins...</h2>
+          
+          {introStory ? (
+            <div className="story-text">
+              <p>{introStory}</p>
+            </div>
+          ) : (
+            <div className="story-loading">
+              <div className="story-spinner"></div>
+              <p>Your tale is being crafted...</p>
+            </div>
+          )}
+          
+          <div className="story-transition">
+            <p>Prepare yourself... the night phase approaches.</p>
+          </div>
+          
+          <div className="player-info">
+            <p>Playing as: <strong>{playerName}</strong></p>
+            <p>You are: <strong style={{ color: playerRole?.color }}>{playerRole?.name}</strong></p>
           </div>
         </div>
       </div>

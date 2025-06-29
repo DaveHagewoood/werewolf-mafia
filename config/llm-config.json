@@ -1,0 +1,29 @@
+{
+  "providers": {
+    "openai": {
+      "apiKey": "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",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "model": "gpt-4o-mini",
+      "maxTokens": 500,
+      "temperature": 0.8,
+      "enabled": true
+    },
+    "anthropic": {
+      "apiKey": "YOUR_ANTHROPIC_API_KEY", 
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "model": "claude-3-haiku-20240307",
+      "maxTokens": 500,
+      "temperature": 0.8,
+      "enabled": false
+    },
+    "ollama": {
+      "endpoint": "http://localhost:11434/api/chat",
+      "model": "qwen2.5:7b",
+      "maxTokens": 500,
+      "temperature": 0.8,
+      "enabled": false
+    }
+  },
+  "defaultProvider": "openai",
+  "basePrompt": "You are a master storyteller creating immersive opening narratives for social deduction games. Your stories should:\n\n1. Set the atmospheric tone and mood for the game theme\n2. Introduce the setting and basic situation without revealing specific roles\n3. Create tension and intrigue that draws players into the world\n4. Be 3-4 sentences long (approximately 150-200 words maximum)\n5. End with a hook that leads into the night phase\n6. Use vivid, atmospheric language that matches the theme\n7. Avoid mentioning specific player names or roles\n8. Focus on the collective danger and mystery all players face\n\nWrite in second person (\"you\") to immerse all players in the story. The story should make everyone feel they are part of this world, regardless of their secret role."
+} 

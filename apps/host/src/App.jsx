@@ -29,6 +29,7 @@ function GameLobby() {
   const [pauseReason, setPauseReason] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('connecting')
   const [hostGameStateManager, setHostGameStateManager] = useState(null)
+  const [introStory, setIntroStory] = useState(null)
 
   // Environment-based URLs
   const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
@@ -109,7 +110,10 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
       // Initialize host game state manager
       // Create callback to update React state when HostGameStateManager state changes
       const handleStateChange = (newGameState) => {
-        console.log('HostGameStateManager state changed:', newGameState.gameState);
+        // Only log story-related state changes or major transitions
+        if (newGameState.gameState !== gameState || newGameState.introStory !== undefined) {
+          console.log('HostGameStateManager state changed:', newGameState.gameState);
+        }
         
         // Update React state from HostGameStateManager state
         setGameState(newGameState.gameState);
@@ -131,6 +135,13 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         // Update lobby state
         if (newGameState.gameState === GAME_STATES.LOBBY) {
           setCanStartGame(newGameState.players.length >= GAME_CONFIG.MIN_PLAYERS);
+        }
+        
+        // Update story intro state
+        if (newGameState.introStory !== undefined) {
+          console.log('📖 Host UI updating intro story:', newGameState.introStory ? newGameState.introStory.substring(0, 100) + '...' : 'null');
+          console.log('📖 Full intro story value:', newGameState.introStory);
+          setIntroStory(newGameState.introStory);
         }
         
         // Update game-specific state
@@ -205,9 +216,36 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
       setHostGameStateManager(gameStateManager)
       console.log('HostGameStateManager initialized')
       
+      // Listen for generated intro story
+      hostSocket.on('intro-story-generated', (data) => {
+        console.log('📖 Intro story received from server:', data.story.substring(0, 100) + '...');
+        console.log('📖 gameStateManager available?', !!gameStateManager);
+        if (gameStateManager) {
+          gameStateManager.setIntroStory(data.story);
+        } else {
+          console.error('❌ gameStateManager not available when story received!');
+        }
+      });
+
+      // Handle player story requests during story intro phase
+      hostSocket.on('player-story-request', (data) => {
+        console.log('📚 Player requesting current story:', data.playerName);
+        const currentStory = gameStateManager?.gameState?.introStory;
+        if (currentStory) {
+          console.log('📖 Sending current story to reconnecting player:', data.playerName);
+          hostSocket.emit('send-story-to-player', {
+            playerId: data.playerId,
+            story: currentStory
+          });
+        }
+      });
+      
       // Set up player action handler using the local gameStateManager variable
       hostSocket.on('player-action', (action) => {
-        console.log('Player action received by host:', action)
+        // Only log non-activity pings
+        if (action.type !== 'PLAYER_ACTIVITY_PING') {
+          console.log('Player action received by host:', action)
+        }
         
         try {
           switch (action.type) {
@@ -1061,6 +1099,70 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           </div>
           {renderPauseOverlay()}
         </div>
+      </div>
+    )
+  }
+
+  // Show story intro screen
+  if (gameState === GAME_STATES.STORY_INTRO) {
+    
+    return wrapWithConnectionStatus(
+      <div className="story-intro-container">
+        <div className="story-intro-header">
+          <h1>{getTheme(selectedGameType).name === 'Werewolf' ? '🐺' : getTheme(selectedGameType).name === 'Mafia' ? '🕴️' : getTheme(selectedGameType).name === 'Vampire' ? '🧛' : '🔫'} {getTheme(selectedGameType).name}</h1>
+          <h2>Room Code: {roomId}</h2>
+        </div>
+        
+        <div className="story-intro-content">
+          <div className="story-intro-icon">📖</div>
+          <h2>The Story Begins...</h2>
+          
+          {introStory ? (
+            <div className="story-text">
+              <p>{introStory}</p>
+            </div>
+          ) : (
+            <div className="story-loading">
+              <div className="story-spinner"></div>
+              <p>Crafting your tale...</p>
+            </div>
+          )}
+          
+          {introStory && (
+            <div className="host-continue-section">
+              <p className="continue-instruction">
+                ✋ <strong>Host:</strong> Click Continue when everyone has read the story and you're ready to start the night phase.
+              </p>
+              <button 
+                className="continue-button"
+                onClick={() => hostGameStateManager.continueToNextPhase()}
+              >
+                Continue to Night Phase 🌙
+              </button>
+            </div>
+          )}
+          
+          {/* Show connected players */}
+          <div className="players-ready">
+            <h3>All Players Ready ({players.length})</h3>
+            <div className="players-grid">
+              {players.map(player => (
+                <div key={player.id} className={`player-ready-item ${!player.connected ? 'disconnected' : ''}`}>
+                  <div className="player-avatar">
+                    <img 
+                      src={getProfileImageUrl(selectedGameType, player.profileImage, supportsWebP)} 
+                      alt={player.name}
+                      className="player-profile-image"
+                    />
+                  </div>
+                  <span className="player-name">{player.name}</span>
+                  {!player.connected && <span className="disconnection-status">📵</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {renderPauseOverlay()}
       </div>
     )
   }

@@ -17,6 +17,7 @@ import {
   SESSION_CONFIG,
   POWERS
 } from '@werewolf-mafia/shared'
+import { storyGenerationService } from './services/StoryGenerationService.js'
 const httpServer = createServer()
 const port = process.env.PORT || 3002
 
@@ -931,6 +932,13 @@ function removePlayerFromGame(room, playerId, roomId) {
 
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id)
+  
+  // Add debug logging for ALL events
+  socket.onAny((eventName, ...args) => {
+    if (eventName !== 'heartbeat' && eventName !== 'player-activity-ping') { // Filter out noisy events
+      console.log(`🔍 SERVER: Received event '${eventName}' from ${socket.id}:`, args);
+    }
+  });
 
   // Host creates/joins a room
   socket.on('host-room', (data) => {
@@ -1673,8 +1681,8 @@ io.on('connection', (socket) => {
       }
     }
     
-    // Confirm authentication with current game state
-    socket.emit(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, {
+    // Prepare authentication response data
+    const authResponse = {
       status: 'authenticated',
       playerId: socket.id,
       playerName: playerName,
@@ -1682,7 +1690,24 @@ io.on('connection', (socket) => {
       gameState: room.gameState,
       currentRole: currentRole,
       isAlive: isAlive
-    })
+    };
+
+    // Include story intro data if in story intro state
+    if (room.gameState === GAME_STATES.STORY_INTRO) {
+      // Try to get story from host game state (host is the authority)
+      const hostSocket = io.sockets.sockets.get(room.host);
+      if (hostSocket) {
+        console.log('📖 Story intro state - requesting current story from host');
+        // Send player story request to host
+        hostSocket.emit('player-story-request', {
+          playerId: socket.id,
+          playerName: playerName
+        });
+      }
+    }
+
+    // Confirm authentication with current game state
+    socket.emit(SOCKET_EVENTS.CONNECTION_STATUS_UPDATE, authResponse)
     
     // Notify host of socket ID change for both lobby and game states
     const hostSocket = io.sockets.sockets.get(room.host)
@@ -1716,6 +1741,28 @@ io.on('connection', (socket) => {
         })
       }
     }
+
+    // Set initial game state from authentication
+    if (data.gameState) {
+      console.log('📊 Initial game state from session:', data.gameState)
+      setGameState(data.gameState)
+      
+      if (data.currentRole) {
+        console.log('🎭 Player role from session:', data.currentRole.name)
+        setPlayerRole(data.currentRole)
+      }
+      
+      if (data.isAlive === false) {
+        console.log('💀 Player is eliminated')
+        setIsEliminated(true)
+      }
+      
+      // Handle story intro state
+      if (data.gameState === GAME_STATES.STORY_INTRO && data.introStory) {
+        console.log('📖 Story intro data from session')
+        setIntroStory(data.introStory)
+      }
+    }
   })
 
   // Player activity ping to maintain session
@@ -1739,6 +1786,32 @@ io.on('connection', (socket) => {
       }
     }
   })
+
+  // Handle broadcast to all players in a room
+  socket.on('broadcast-to-players', (data) => {
+    const { roomId, event, data: eventData } = data;
+    
+    if (!socket.isHost) {
+      socket.emit('error', { message: 'Only host can broadcast to players' });
+      return;
+    }
+
+    const room = getRoom(roomId);
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+
+    console.log(`📡 Broadcasting ${event} to all players in room ${roomId}`);
+    
+    // Send to all players in the room
+    room.players.forEach(player => {
+      const playerSocket = io.sockets.sockets.get(player.id);
+      if (playerSocket) {
+        playerSocket.emit(event, eventData);
+      }
+    });
+  });
 
   // ===================== END CONNECTION MANAGEMENT HANDLERS =====================
 
@@ -1842,6 +1915,100 @@ io.on('connection', (socket) => {
       }
     } else {
       console.log(`Disconnected client ${socket.id} was not found in room ${socket.roomId} players`);
+    }
+  });
+
+  // Handle story generation request from host
+  socket.on('generate-intro-story', async (data) => {
+    console.log('🎭 Story generation request received:', {
+      roomId: data.roomId,
+      themeId: data.themeId,
+      playerCount: data.playerCount,
+      playerNames: data.playerNames?.length
+    });
+
+    const { roomId, themeId, playerCount, playerNames } = data;
+    
+    if (!socket.isHost) {
+      console.error('❌ Non-host attempted story generation');
+      socket.emit('error', { message: 'Only host can request story generation' });
+      return;
+    }
+
+    const room = getRoom(roomId);
+    if (!room) {
+      console.error('❌ Room not found for story generation:', roomId);
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+
+    try {
+      console.log(`🎭 Generating intro story for room ${roomId}, theme: ${themeId}`);
+      console.log('📊 Story service status:', {
+        serviceExists: !!storyGenerationService,
+        configLoaded: storyGenerationService?.configLoaded,
+        isEnabled: storyGenerationService?.isEnabled()
+      });
+
+      const story = await storyGenerationService.generateIntroStory(themeId, playerCount, playerNames);
+      
+      // Check if this is a fallback story (indicates LLM failed)
+      const fallbackStory = storyGenerationService.getFallbackStory(themeId, playerCount);
+      const isLLMGenerated = story !== fallbackStory;
+      
+      if (isLLMGenerated) {
+        console.log(`✨ LLM story generated successfully (${story.length} chars)`);
+        console.log(`📖 Story preview: ${story.substring(0, 100)}...`);
+      } else {
+        console.log(`⚠️ Using fallback story - LLM generation failed (check logs above for reason)`);
+        console.log(`📖 Fallback story (${story.length} chars): ${story.substring(0, 100)}...`);
+      }
+      
+      // Send story back to host
+      socket.emit('intro-story-generated', {
+        roomId,
+        story
+      });
+      
+      console.log(`📤 Story sent to host for room ${roomId}`);
+    } catch (error) {
+      console.error(`❌ Failed to generate story for room ${roomId}:`, error.message);
+      
+      // Provide specific guidance for common issues
+      if (error.message.includes('quota exceeded')) {
+        console.error(`💳 QUOTA ISSUE: Add billing to your OpenAI account or switch to Ollama`);
+      } else if (error.message.includes('authentication failed')) {
+        console.error(`🔑 AUTH ISSUE: Check your OpenAI API key in config/llm-config.json`);
+      }
+      
+      console.error('Stack:', error.stack);
+      
+      // Send fallback story
+      const fallbackStory = storyGenerationService.getFallbackStory(themeId, playerCount);
+      console.log(`📖 Sending fallback story due to error (${fallbackStory.length} chars)`);
+      
+      socket.emit('intro-story-generated', {
+        roomId,
+        story: fallbackStory
+      });
+    }
+  });
+
+  // Handle sending story to specific player
+  socket.on('send-story-to-player', (data) => {
+    const { playerId, story } = data;
+    
+    if (!socket.isHost) {
+      socket.emit('error', { message: 'Only host can send stories to players' });
+      return;
+    }
+
+    const playerSocket = io.sockets.sockets.get(playerId);
+    if (playerSocket) {
+      console.log(`📖 Sending story to player ${playerId}`);
+      playerSocket.emit('story-intro-update', { story });
+    } else {
+      console.log(`❌ Player socket ${playerId} not found for story delivery`);
     }
   });
 }) 

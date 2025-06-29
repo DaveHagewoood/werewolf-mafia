@@ -1812,4 +1812,124 @@ body {
   .players-list {
     max-height: 120px;
   }
+}
+
+/* ===== Story Intro Styles ===== */
+
+.story-intro-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #2d1b69 0%, #11047a 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  padding: 2rem;
+}
+
+.story-intro-content {
+  max-width: 800px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.story-intro-icon {
+  font-size: 4rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.story-intro-content h2 {
+  font-size: 2.5rem;
+  margin: 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.story-text {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 2rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.story-text p {
+  font-size: 1.2rem;
+  line-height: 1.8;
+  margin: 0;
+  font-style: italic;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.story-loading {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 3rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.story-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+.story-loading p {
+  font-size: 1.3rem;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.story-transition {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1rem 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.story-transition p {
+  font-size: 1rem;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.player-info {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.player-info p {
+  font-size: 1rem;
+  margin: 0.5rem 0;
+  opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+  .story-intro-content h2 {
+    font-size: 2rem;
+  }
+  
+  .story-text p {
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  
+  .story-intro-container {
+    padding: 1rem;
+  }
 } 
