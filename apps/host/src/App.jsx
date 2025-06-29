@@ -120,7 +120,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           const readinessData = newGameState.players.map(p => ({
             id: p.id,
             name: p.name,
-            ready: newGameState.playerReadiness.get(p.id) || false,
+            ready: p.isReady || false,
             connected: p.connected,
             disconnectionInfo: p.disconnectionInfo
           }));
@@ -145,16 +145,16 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         if (newGameState.accusations !== undefined) {
           // Convert accusations from HostGameStateManager format to UI format
           const accusationsObj = {};
-          newGameState.accusations.forEach((accusers, accusedId) => {
+          newGameState.accusations.forEach(([accusedId, accusers]) => {
             const accusedPlayer = newGameState.players.find(p => p.id === accusedId);
-            const accuserNames = Array.from(accusers).map(accuserId => {
+            const accuserNames = accusers.map(accuserId => {
               const accuserPlayer = newGameState.players.find(p => p.id === accuserId);
               return accuserPlayer?.name || 'Unknown';
             });
             accusationsObj[accusedId] = {
               name: accusedPlayer?.name || 'Unknown',
               accusers: accuserNames,
-              voteCount: accusers.size
+              voteCount: accusers.length
             };
           });
           setAccusations(accusationsObj);
@@ -167,7 +167,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
             setGameEndData({
               winner: newGameState.winner,
               winCondition: newGameState.winCondition,
-              alivePlayers: newGameState.players.filter(p => newGameState.alivePlayers.has(p.id)),
+              alivePlayers: newGameState.players.filter(p => p.alive === true),
               allPlayers: newGameState.players
             });
           }
@@ -650,8 +650,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 {gameEndData.alivePlayers.map(player => (
                   <div key={player.id} className="result-player alive">
                     <span className="player-name">{player.name}</span>
-                    <span className="player-role" style={{ color: player.role.color }}>
-                      {player.role.name}
+                    <span className="player-role" style={{ color: player.role?.color || '#666666' }}>
+                      {player.role?.name || 'Unknown'}
                     </span>
                   </div>
                 ))}
@@ -662,8 +662,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 {gameEndData.allPlayers.filter(p => !p.alive).map(player => (
                   <div key={player.id} className="result-player eliminated">
                     <span className="player-name">{player.name}</span>
-                    <span className="player-role" style={{ color: player.role.color }}>
-                      {player.role.name}
+                    <span className="player-role" style={{ color: player.role?.color || '#666666' }}>
+                      {player.role?.name || 'Unknown'}
                     </span>
                   </div>
                 ))}
@@ -679,15 +679,15 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                 <span className="stat-value">{gameEndData.allPlayers.length}</span>
               </div>
               <div className="stat">
-                <span className="stat-label">{selectedGameType === 'mafia' ? 'Mafia' : 'Werewolf'} Players:</span>
+                <span className="stat-label">{getTheme(selectedGameType).evilName} Players:</span>
                 <span className="stat-value">
-                  {gameEndData.allPlayers.filter(p => p.role.alignment === 'evil').length}
+                  {gameEndData.allPlayers.filter(p => p.role?.alignment === 'evil').length}
                 </span>
               </div>
               <div className="stat">
                 <span className="stat-label">Good Players:</span>
                 <span className="stat-value">
-                  {gameEndData.allPlayers.filter(p => p.role.alignment === 'good').length}
+                  {gameEndData.allPlayers.filter(p => p.role?.alignment === 'good').length}
                 </span>
               </div>
             </div>

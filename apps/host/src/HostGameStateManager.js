@@ -60,7 +60,7 @@ export class HostGameStateManager {
     
     // Notify host's React components of state change
     if (this.onStateChange) {
-      this.onStateChange(this.gameState);
+      this.onStateChange(this.getMasterGameState());
     }
     
     return true;
@@ -89,6 +89,7 @@ export class HostGameStateManager {
   // Generate the single source of truth state
   getMasterGameState() {
     console.log('HOST DEBUG - getMasterGameState() gameType:', this.gameState.gameType);
+    
     const masterState = {
       gameState: this.gameState.gameState,
       gameType: this.gameState.gameType,
@@ -98,6 +99,9 @@ export class HostGameStateManager {
         id: p.id,
         name: p.name,
         sessionToken: p.sessionToken,
+        profileImage: p.profileImage,
+        connected: p.connected,
+        lastSeen: p.lastSeen,
         role: this.gameState.playerRoles.get(p.id),
         isReady: this.gameState.playerReadiness.get(p.id) || false,
         alive: this.gameState.alivePlayers.has(p.id)
