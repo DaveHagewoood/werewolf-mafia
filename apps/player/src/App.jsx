@@ -459,6 +459,17 @@ function JoinRoom() {
             setPlayerRole(currentPlayer.role);
             setIsEliminated(!currentPlayer.alive);
             
+            // Clear previous night results when new night phase starts
+            setSelectedInvestigation(null);
+            setHasInvestigated(false);
+            setInvestigationResult(null);
+            setSelectedHeal(null);
+            setHasHealed(false);
+            setSelectedTarget(null);
+            setHasVoted(false);
+            setSelectedSuspicion(null);
+            setHasSuspicionVoted(false);
+            
             // Set eliminationInfo for dead players from enhanced state
             if (!currentPlayer.alive) {
               setEliminationInfo({
@@ -1992,6 +2003,14 @@ function SessionPlayer() {
           
           // Handle night phase state updates
           if (masterState.gameState === GAME_STATES.NIGHT_PHASE) {
+            // Clear previous night results when new night phase starts
+            setSelectedInvestigation(null);
+            setInvestigationResult(null);
+            setSelectedHeal(null);
+            setSelectedTarget(null);
+            setSelectedSuspicion(null);
+            setHasSuspicionVoted(false);
+            
             // Extract role-specific targets and actions from master state
             if (currentPlayer.role) {
               if (currentPlayer.role.alignment === 'evil') {

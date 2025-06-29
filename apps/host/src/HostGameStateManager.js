@@ -496,6 +496,7 @@ export class HostGameStateManager {
       mafiaVotes: new Map(),
       healActions: new Map(),
       investigationActions: new Map(),
+      investigationResults: new Map(),
       suspicionVotes: new Map(),
       mafiaVotesLocked: false,
       eliminatedPlayer: null,
