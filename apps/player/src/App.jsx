@@ -22,7 +22,7 @@ const SAMPLE_JOBS = [
   'Carpenter', 'Tailor', 'Fisherman', 'Scribe', 'Stable Master', 'Miller'
 ]
 
-const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say']
+const GENDER_OPTIONS = ['Male', 'Female']
 
 function JoinRoom() {
   const { roomId } = useParams()
