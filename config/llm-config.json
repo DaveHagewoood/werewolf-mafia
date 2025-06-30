@@ -1,12 +1,20 @@
 {
   "providers": {
+    "venice": {
+      "apiKey": "YOUR_VENICE_API_KEY",
+      "endpoint": "https://api.venice.ai/api/v1/chat/completions",
+      "model": "llama-3.2-3b",
+      "maxTokens": 500,
+      "temperature": 0.8,
+      "enabled": true
+    },
     "openai": {
       "apiKey": "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",
       "endpoint": "https://api.openai.com/v1/chat/completions",
       "model": "gpt-4o-mini",
       "maxTokens": 500,
       "temperature": 0.8,
-      "enabled": true
+      "enabled": false
     },
     "anthropic": {
       "apiKey": "YOUR_ANTHROPIC_API_KEY", 
@@ -24,6 +32,6 @@
       "enabled": false
     }
   },
-  "defaultProvider": "openai",
+  "defaultProvider": "venice",
   "basePrompt": "You are a master storyteller and expert comedian creating a very humorous, adults-only opening narrative for a social deduction game in the style of Mafia/Werewolf where players attempt to deduce who the killers are. Your stories should: \n\n1. Be very funny\n2. Set the atmospheric tone and mood for the specific game theme (provided below) \n3. Be 2-3 sentences long (approximately 150-200 words maximum)\n4. End with a hook that leads into the night phase\n5. Use vivid, atmospheric language that matches the theme\n\nWrite in second person (\"you\") to immerse all players in the story. The story should make everyone feel they are part of this world, regardless of their secret role."
 } 

@@ -100,11 +100,14 @@ export class StoryGenerationService {
 
     const hasKey = provider.apiKey && 
            provider.apiKey !== 'YOUR_OPENAI_API_KEY' && 
-           provider.apiKey !== 'YOUR_ANTHROPIC_API_KEY';
+           provider.apiKey !== 'YOUR_ANTHROPIC_API_KEY' &&
+           provider.apiKey !== 'YOUR_VENICE_API_KEY';
     
     console.log(`🔑 Host: API key check for ${providerName}:`, {
       hasApiKey: !!provider.apiKey,
-      isNotDefault: provider.apiKey !== 'YOUR_OPENAI_API_KEY' && provider.apiKey !== 'YOUR_ANTHROPIC_API_KEY',
+      isNotDefault: provider.apiKey !== 'YOUR_OPENAI_API_KEY' && 
+                    provider.apiKey !== 'YOUR_ANTHROPIC_API_KEY' &&
+                    provider.apiKey !== 'YOUR_VENICE_API_KEY',
       result: hasKey
     });
     
@@ -182,6 +185,8 @@ export class StoryGenerationService {
     console.log('');
 
     switch (name) {
+      case 'venice':
+        return await this.callVenice(config, contextPrompt);
       case 'openai':
         return await this.callOpenAI(config, contextPrompt);
       case 'anthropic':
@@ -191,6 +196,74 @@ export class StoryGenerationService {
       default:
         throw new Error(`Unsupported provider: ${name}`);
     }
+  }
+
+  async callVenice(config, prompt) {
+    console.log('🏛️ Host: Making Venice.ai API call...');
+    console.log('📊 Host: Request config:', {
+      model: config.model,
+      maxTokens: config.maxTokens,
+      temperature: config.temperature,
+      apiKeyPrefix: config.apiKey?.substring(0, 10) + '...'
+    });
+
+    const requestBody = {
+      model: config.model,
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: config.maxTokens,
+      temperature: config.temperature
+    };
+
+    console.log('📤 Host: Sending request to Venice.ai...');
+
+    const response = await fetch(config.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    console.log('📥 Host: Venice.ai response received:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Host: Venice.ai API error response:', errorText);
+      
+      let error;
+      try {
+        error = JSON.parse(errorText);
+      } catch {
+        error = { error: { message: errorText } };
+      }
+      
+      if (response.status === 429) {
+        throw new Error(`Venice.ai rate limit exceeded: ${error.error?.message || 'Rate limit exceeded'}`);
+      } else if (response.status === 401) {
+        throw new Error(`Venice.ai authentication failed. Please check your API key: ${error.error?.message || 'Unauthorized'}`);
+      } else {
+        throw new Error(`Venice.ai API error (${response.status}): ${error.error?.message || response.statusText}`);
+      }
+    }
+
+    const data = await response.json();
+    console.log('✅ Host: Venice.ai response parsed successfully');
+
+    const content = data.choices[0]?.message?.content?.trim();
+    if (!content) {
+      console.error('❌ Host: No content in Venice.ai response:', data);
+      throw new Error('Venice.ai returned empty content');
+    }
+
+    console.log(`✨ Host: Story generated successfully via Venice.ai (${content.length} chars)`);
+    return content;
   }
 
   async callOpenAI(config, prompt) {
