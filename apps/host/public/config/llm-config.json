@@ -3,7 +3,7 @@
     "venice": {
       "apiKey": "CuC75IeECd0cVUeoN-t0ObhZHvr-b8IBQbJ7uIMd33",
       "endpoint": "https://api.venice.ai/api/v1/chat/completions",
-      "model": "llama-3.2-3b",
+      "model": "venice-uncensored",
       "maxTokens": 500,
       "temperature": 0.8,
       "enabled": true
