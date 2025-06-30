@@ -15,9 +15,20 @@ function HomePage() {
   )
 }
 
+// Sample jobs for autofill
+const SAMPLE_JOBS = [
+  'Baker', 'Barmaid', 'Mayor', 'Blacksmith', 'Innkeeper', 'Merchant', 
+  'Farmer', 'Hunter', 'Healer', 'Priest', 'Guard', 'Cook',
+  'Carpenter', 'Tailor', 'Fisherman', 'Scribe', 'Stable Master', 'Miller'
+]
+
+const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say']
+
 function JoinRoom() {
   const { roomId } = useParams()
   const [playerName, setPlayerName] = useState('')
+  const [playerGender, setPlayerGender] = useState('')
+  const [playerJob, setPlayerJob] = useState('')
   const [playerId, setPlayerId] = useState(null) // Add missing playerId state
   const [isJoining, setIsJoining] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false)
@@ -214,10 +225,17 @@ function JoinRoom() {
       
       if (shouldAutoJoin && autoJoinPlayerName && !isJoining) {
         console.log('🚀 Auto-joining with', autoJoinPlayerName)
+        
+        // Auto-fill gender and job for testing
+        const randomGender = GENDER_OPTIONS[Math.floor(Math.random() * GENDER_OPTIONS.length)]
+        const randomJob = SAMPLE_JOBS[Math.floor(Math.random() * SAMPLE_JOBS.length)]
+        
         setIsJoining(true)
         newSocket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
           roomId: roomId,
           playerName: autoJoinPlayerName,
+          playerGender: randomGender,
+          playerJob: randomJob,
           profileImage: data.defaultImage
         })
       }
@@ -749,6 +767,21 @@ function JoinRoom() {
       return
     }
 
+    if (!playerGender) {
+      setError('Please select your gender')
+      return
+    }
+
+    if (!playerJob.trim()) {
+      setError('Please enter your town job')
+      return
+    }
+
+    if (playerJob.trim().length > 25) {
+      setError('Town job must be 25 characters or less')
+      return
+    }
+
     // Check if we have available images loaded
     if (!availableImages || availableImages.length === 0) {
       setError('Loading character images... Please wait a moment and try again.')
@@ -770,6 +803,8 @@ function JoinRoom() {
 
     console.log('=== SENDING PLAYER_JOIN EVENT ===')
     console.log('playerName:', playerName.trim())
+    console.log('playerGender:', playerGender)
+    console.log('playerJob:', playerJob.trim())
     console.log('roomId:', roomId)
     console.log('profileImage:', currentProfileImage)
     console.log('availableImages:', availableImages?.length || 0, 'images')
@@ -779,6 +814,8 @@ function JoinRoom() {
     // Emit join event to server
     socket.emit(SOCKET_EVENTS.PLAYER_JOIN, {
       playerName: playerName.trim(),
+      playerGender: playerGender,
+      playerJob: playerJob.trim(),
       roomId: roomId,
       profileImage: currentProfileImage
     })
@@ -1802,6 +1839,49 @@ function JoinRoom() {
                 />
               </div>
 
+              <div className="form-group">
+                <label htmlFor="playerGender">Gender</label>
+                <select
+                  id="playerGender"
+                  value={playerGender}
+                  onChange={(e) => setPlayerGender(e.target.value)}
+                  disabled={isJoining}
+                  required
+                >
+                  <option value="">Select your gender</option>
+                  {GENDER_OPTIONS.map(gender => (
+                    <option key={gender} value={gender}>{gender}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="playerJob">Town Job</label>
+                <input
+                  type="text"
+                  id="playerJob"
+                  value={playerJob}
+                  onChange={(e) => setPlayerJob(e.target.value)}
+                  placeholder="Enter your town job (e.g., Baker, Mayor)"
+                  maxLength={25}
+                  disabled={isJoining}
+                  required
+                />
+                <div className="job-suggestions">
+                  {SAMPLE_JOBS.slice(0, 6).map(job => (
+                    <button
+                      key={job}
+                      type="button"
+                      className="job-suggestion-btn"
+                      onClick={() => setPlayerJob(job)}
+                      disabled={isJoining}
+                    >
+                      {job}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Character Selection */}
               <div className="form-group character-selection">
                 <label>Choose Your Character</label>
@@ -1868,7 +1948,7 @@ function JoinRoom() {
               <button 
                 type="submit" 
                 className="join-btn"
-                disabled={isJoining || !playerName.trim() || (gameType && !currentProfileImage)}
+                disabled={isJoining || !playerName.trim() || !playerGender || !playerJob.trim() || (gameType && !currentProfileImage)}
               >
                 {isJoining ? 'Joining...' : 'Join Game'}
               </button>

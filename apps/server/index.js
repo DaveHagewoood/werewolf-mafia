@@ -17,7 +17,7 @@ import {
   SESSION_CONFIG,
   POWERS
 } from '@werewolf-mafia/shared'
-import { storyGenerationService } from './services/StoryGenerationService.js'
+// Note: Story generation service moved to host app for pure host-authoritative architecture
 const httpServer = createServer()
 const port = process.env.PORT || 3002
 
@@ -1285,7 +1285,7 @@ io.on('connection', (socket) => {
 
   // Player joins a room
   socket.on(SOCKET_EVENTS.PLAYER_JOIN, (data) => {
-    const { playerName, roomId, profileImage } = data
+    const { playerName, playerGender, playerJob, roomId, profileImage } = data
 
     // Validate room exists
     if (!gameRooms.has(roomId)) {
@@ -1372,6 +1372,8 @@ io.on('connection', (socket) => {
     const newPlayer = {
       id: socket.id,
       name: playerName.trim(),
+      gender: playerGender,
+      job: playerJob.trim(),
       connected: true,
       profileImage: profileImage,
       profileImageSelected: true,
@@ -1413,7 +1415,9 @@ io.on('connection', (socket) => {
         playerId: socket.id,
         playerName: playerName.trim(),
         data: {
-          profileImage: profileImage
+          profileImage: profileImage,
+          gender: playerGender,
+          job: playerJob.trim()
         }
       })
     }
@@ -1918,81 +1922,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle story generation request from host
-  socket.on('generate-intro-story', async (data) => {
-    console.log('🎭 Story generation request received:', {
-      roomId: data.roomId,
-      themeId: data.themeId,
-      playerCount: data.playerCount,
-      playerNames: data.playerNames?.length
-    });
-
-    const { roomId, themeId, playerCount, playerNames } = data;
-    
-    if (!socket.isHost) {
-      console.error('❌ Non-host attempted story generation');
-      socket.emit('error', { message: 'Only host can request story generation' });
-      return;
-    }
-
-    const room = getRoom(roomId);
-    if (!room) {
-      console.error('❌ Room not found for story generation:', roomId);
-      socket.emit('error', { message: 'Room not found' });
-      return;
-    }
-
-    try {
-      console.log(`🎭 Generating intro story for room ${roomId}, theme: ${themeId}`);
-      console.log('📊 Story service status:', {
-        serviceExists: !!storyGenerationService,
-        configLoaded: storyGenerationService?.configLoaded,
-        isEnabled: storyGenerationService?.isEnabled()
-      });
-
-      const story = await storyGenerationService.generateIntroStory(themeId, playerCount, playerNames);
-      
-      // Check if this is a fallback story (indicates LLM failed)
-      const fallbackStory = storyGenerationService.getFallbackStory(themeId, playerCount);
-      const isLLMGenerated = story !== fallbackStory;
-      
-      if (isLLMGenerated) {
-        console.log(`✨ LLM story generated successfully (${story.length} chars)`);
-        console.log(`📖 Story preview: ${story.substring(0, 100)}...`);
-      } else {
-        console.log(`⚠️ Using fallback story - LLM generation failed (check logs above for reason)`);
-        console.log(`📖 Fallback story (${story.length} chars): ${story.substring(0, 100)}...`);
-      }
-      
-      // Send story back to host
-      socket.emit('intro-story-generated', {
-        roomId,
-        story
-      });
-      
-      console.log(`📤 Story sent to host for room ${roomId}`);
-    } catch (error) {
-      console.error(`❌ Failed to generate story for room ${roomId}:`, error.message);
-      
-      // Provide specific guidance for common issues
-      if (error.message.includes('quota exceeded')) {
-        console.error(`💳 QUOTA ISSUE: Add billing to your OpenAI account or switch to Ollama`);
-      } else if (error.message.includes('authentication failed')) {
-        console.error(`🔑 AUTH ISSUE: Check your OpenAI API key in config/llm-config.json`);
-      }
-      
-      console.error('Stack:', error.stack);
-      
-      // Send fallback story
-      const fallbackStory = storyGenerationService.getFallbackStory(themeId, playerCount);
-      console.log(`📖 Sending fallback story due to error (${fallbackStory.length} chars)`);
-      
-      socket.emit('intro-story-generated', {
-        roomId,
-        story: fallbackStory
-      });
-    }
-  });
+  // Note: Story generation moved to host app for pure host-authoritative architecture
 
   // Handle sending story to specific player
   socket.on('send-story-to-player', (data) => {

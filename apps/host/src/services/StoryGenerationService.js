@@ -1,9 +1,5 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Browser-based story generation service for host app
+// This service runs in the host browser and calls LLM APIs directly
 
 export class StoryGenerationService {
   constructor() {
@@ -15,50 +11,48 @@ export class StoryGenerationService {
 
   async loadConfiguration() {
     try {
-      console.log('🔧 Starting to load LLM configuration...');
+      console.log('🔧 Host: Loading LLM configuration...');
       
-      // Load LLM configuration - ensure we're using the correct path relative to project root
-      const configPath = path.resolve(__dirname, '../../../config/llm-config.json');
-      console.log('📂 Config path:', configPath);
-      
-      const configData = await fs.readFile(configPath, 'utf-8');
-      this.config = JSON.parse(configData);
-      console.log('✅ LLM config loaded. Providers:', Object.keys(this.config.providers));
+      // Load configuration files from public directory (accessible to browser)
+      const configResponse = await fetch('/config/llm-config.json');
+      if (!configResponse.ok) {
+        throw new Error(`Failed to load config: ${configResponse.statusText}`);
+      }
+      this.config = await configResponse.json();
+      console.log('✅ Host: LLM config loaded. Providers:', Object.keys(this.config.providers));
 
-      // Load story prompts
-      const promptsPath = path.resolve(__dirname, '../../../config/story-prompts.json');
-      console.log('📂 Prompts path:', promptsPath);
-      
-      const promptsData = await fs.readFile(promptsPath, 'utf-8');
-      this.storyPrompts = JSON.parse(promptsData);
-      console.log('✅ Story prompts loaded. Themes:', Object.keys(this.storyPrompts));
+      const promptsResponse = await fetch('/config/story-prompts.json');
+      if (!promptsResponse.ok) {
+        throw new Error(`Failed to load prompts: ${promptsResponse.statusText}`);
+      }
+      this.storyPrompts = await promptsResponse.json();
+      console.log('✅ Host: Story prompts loaded. Themes:', Object.keys(this.storyPrompts));
 
       this.configLoaded = true;
-      console.log('✅ Story generation service fully configured');
+      console.log('✅ Host: Story generation service fully configured');
       
       // Test provider availability
       const provider = this.getEnabledProvider();
       if (provider) {
-        console.log(`🎯 Active provider: ${provider.name} (${provider.config.model})`);
+        console.log(`🎯 Host: Active provider: ${provider.name} (${provider.config.model})`);
       } else {
-        console.log('⚠️ No valid provider found - will use fallback stories');
+        console.log('⚠️ Host: No valid provider found - will use fallback stories');
       }
     } catch (error) {
-      console.error('❌ Story generation config loading failed:', error.message);
-      console.error('Stack:', error.stack);
-      console.warn('📝 Story generation will be disabled. Using fallback stories.');
-      this.configLoaded = true; // Mark as loaded even if failed, to prevent hanging
+      console.error('❌ Host: Story generation config loading failed:', error.message);
+      console.warn('📝 Host: Story generation will be disabled. Using fallback stories.');
+      this.configLoaded = true;
     }
   }
 
   isEnabled() {
     if (!this.configLoaded) {
-      console.log('⏳ Config not loaded yet, using fallback');
+      console.log('⏳ Host: Config not loaded yet, using fallback');
       return false;
     }
     
     const enabled = this.config && this.storyPrompts && this.getEnabledProvider();
-    console.log('🔍 Service enabled check:', {
+    console.log('🔍 Host: Service enabled check:', {
       hasConfig: !!this.config,
       hasPrompts: !!this.storyPrompts,
       hasProvider: !!this.getEnabledProvider(),
@@ -71,44 +65,44 @@ export class StoryGenerationService {
   getEnabledProvider() {
     if (!this.config) return null;
     
-    console.log('🔍 Checking providers...');
+    console.log('🔍 Host: Checking providers...');
     console.log('Default provider:', this.config.defaultProvider);
     
     const defaultProvider = this.config.providers[this.config.defaultProvider];
     if (defaultProvider?.enabled && this.hasValidApiKey(this.config.defaultProvider)) {
-      console.log(`✅ Using default provider: ${this.config.defaultProvider}`);
+      console.log(`✅ Host: Using default provider: ${this.config.defaultProvider}`);
       return { name: this.config.defaultProvider, config: defaultProvider };
     }
 
     // Find any other enabled provider with valid API key
     for (const [name, providerConfig] of Object.entries(this.config.providers)) {
       if (providerConfig.enabled && this.hasValidApiKey(name)) {
-        console.log(`✅ Using fallback provider: ${name}`);
+        console.log(`✅ Host: Using fallback provider: ${name}`);
         return { name, config: providerConfig };
       }
     }
 
-    console.log('❌ No valid providers found');
+    console.log('❌ Host: No valid providers found');
     return null;
   }
 
   hasValidApiKey(providerName) {
     const provider = this.config.providers[providerName];
     if (!provider) {
-      console.log(`❌ Provider ${providerName} not found`);
+      console.log(`❌ Host: Provider ${providerName} not found`);
       return false;
     }
 
     if (providerName === 'ollama') {
-      console.log(`✅ Ollama doesn't require API key`);
-      return true; // Ollama doesn't require API key
+      console.log(`✅ Host: Ollama doesn't require API key`);
+      return true;
     }
 
     const hasKey = provider.apiKey && 
            provider.apiKey !== 'YOUR_OPENAI_API_KEY' && 
            provider.apiKey !== 'YOUR_ANTHROPIC_API_KEY';
     
-    console.log(`🔑 API key check for ${providerName}:`, {
+    console.log(`🔑 Host: API key check for ${providerName}:`, {
       hasApiKey: !!provider.apiKey,
       isNotDefault: provider.apiKey !== 'YOUR_OPENAI_API_KEY' && provider.apiKey !== 'YOUR_ANTHROPIC_API_KEY',
       result: hasKey
@@ -117,56 +111,75 @@ export class StoryGenerationService {
     return hasKey;
   }
 
-  async generateIntroStory(themeId, playerCount, playerNames = []) {
-    console.log(`📖 Story generation requested for theme: ${themeId}, players: ${playerCount}`);
+  async generateIntroStory(themeId, playerCount, playerNames = [], playerDetails = []) {
+    console.log(`📖 Host: Story generation requested for theme: ${themeId}, players: ${playerCount}`);
     
     // Wait for config to load if it hasn't yet
     if (!this.configLoaded) {
-      console.log('⏳ Waiting for config to load...');
+      console.log('⏳ Host: Waiting for config to load...');
       await this.configLoadPromise;
     }
     
     // Always try to get fallback story first to ensure we have something
     const fallbackStory = this.getFallbackStory(themeId, playerCount);
-    console.log(`📚 Fallback story ready (${fallbackStory.length} chars)`);
+    console.log(`📚 Host: Fallback story ready (${fallbackStory.length} chars)`);
     
     if (!this.isEnabled()) {
-      console.log('📖 LLM story generation disabled, using fallback story');
+      console.log('📖 Host: LLM story generation disabled, using fallback story');
       return fallbackStory;
     }
 
     const provider = this.getEnabledProvider();
     if (!provider) {
-      console.log('📖 No valid LLM provider, using fallback story');
+      console.log('📖 Host: No valid LLM provider, using fallback story');
       return fallbackStory;
     }
 
     try {
       const themePrompt = this.storyPrompts[themeId];
       if (!themePrompt) {
-        console.log(`❌ No prompt for theme ${themeId}, using fallback`);
+        console.log(`❌ Host: No prompt for theme ${themeId}, using fallback`);
         return fallbackStory;
       }
 
-      console.log(`🎯 Attempting ${provider.name} API call for story generation...`);
-      const story = await this.callLLMProvider(provider, themePrompt, playerCount);
-      console.log(`✨ Generated intro story for ${themeId} theme (${story.length} chars)`);
+      console.log(`🎯 Host: Attempting ${provider.name} API call for story generation...`);
+      const story = await this.callLLMProvider(provider, themePrompt, playerCount, playerDetails);
+      console.log(`✨ Host: Generated intro story for ${themeId} theme (${story.length} chars)`);
       return story;
     } catch (error) {
-      console.error('❌ Story generation failed:', error.message);
-      console.error('Stack:', error.stack);
-      console.log('🔄 Falling back to hand-written story');
+      console.error('❌ Host: Story generation failed:', error.message);
+      console.log('🔄 Host: Falling back to hand-written story');
       return fallbackStory;
     }
   }
 
-  async callLLMProvider(provider, themePrompt, playerCount) {
+  async callLLMProvider(provider, themePrompt, playerCount, playerDetails = []) {
     const { name, config } = provider;
 
-    const contextPrompt = `${this.config.basePrompt}\n\n${themePrompt.introPrompt}\n\nGame Context:\n- ${playerCount} players total\n- The game is about to begin with the night phase\n\nGenerate the atmospheric opening story now:`;
+    // Build player details section for the prompt
+    let playerDetailsText = '';
+    if (playerDetails && playerDetails.length > 0) {
+      playerDetailsText = '\n\nCharacters in this story:\n' + 
+        playerDetails.map(player => 
+          `- ${player.name} (${player.gender}, ${player.job})`
+        ).join('\n');
+    }
 
-    console.log(`🔮 Preparing ${name} API call...`);
-    console.log(`📝 Prompt length: ${contextPrompt.length} chars`);
+    const contextPrompt = `${this.config.basePrompt}\n\n${themePrompt.introPrompt}\n\nGame Context:\n- ${playerCount} players total\n- The game is about to begin with the night phase${playerDetailsText}\n\nGenerate the atmospheric opening story now. You may incorporate some of the character details naturally into the narrative, but keep the focus on setting the mood and atmosphere rather than detailing individual characters:`;
+
+    console.log(`🔮 Host: Preparing ${name} API call...`);
+    console.log(`📝 Host: Prompt length: ${contextPrompt.length} chars`);
+    
+    if (playerDetails && playerDetails.length > 0) {
+      console.log(`👥 Host: Including ${playerDetails.length} player details in story generation`);
+      console.log(`🎭 Host: Player details: ${playerDetails.map(p => `${p.name} (${p.gender}, ${p.job})`).join(', ')}`);
+    }
+    
+    console.log(`\n📜 FULL PROMPT SENT TO ${name.toUpperCase()}:`);
+    console.log('='.repeat(80));
+    console.log(contextPrompt);
+    console.log('='.repeat(80));
+    console.log('');
 
     switch (name) {
       case 'openai':
@@ -181,8 +194,8 @@ export class StoryGenerationService {
   }
 
   async callOpenAI(config, prompt) {
-    console.log('🤖 Making OpenAI API call...');
-    console.log('📊 Request config:', {
+    console.log('🤖 Host: Making OpenAI API call...');
+    console.log('📊 Host: Request config:', {
       model: config.model,
       maxTokens: config.maxTokens,
       temperature: config.temperature,
@@ -198,7 +211,7 @@ export class StoryGenerationService {
       temperature: config.temperature
     };
 
-    console.log('📤 Sending request to OpenAI...');
+    console.log('📤 Host: Sending request to OpenAI...');
 
     const response = await fetch(config.endpoint, {
       method: 'POST',
@@ -209,7 +222,7 @@ export class StoryGenerationService {
       body: JSON.stringify(requestBody)
     });
 
-    console.log('📥 OpenAI response received:', {
+    console.log('📥 Host: OpenAI response received:', {
       status: response.status,
       statusText: response.statusText,
       ok: response.ok
@@ -217,7 +230,7 @@ export class StoryGenerationService {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ OpenAI API error response:', errorText);
+      console.error('❌ Host: OpenAI API error response:', errorText);
       
       let error;
       try {
@@ -226,7 +239,6 @@ export class StoryGenerationService {
         error = { error: { message: errorText } };
       }
       
-      // Provide specific error messages for common issues
       if (response.status === 429) {
         throw new Error(`OpenAI quota exceeded. Please check your billing: ${error.error?.message || 'Rate limit or quota exceeded'}`);
       } else if (response.status === 401) {
@@ -237,20 +249,15 @@ export class StoryGenerationService {
     }
 
     const data = await response.json();
-    console.log('✅ OpenAI response parsed successfully');
-    console.log('📄 Response structure:', {
-      hasChoices: !!data.choices,
-      choicesLength: data.choices?.length,
-      hasContent: !!data.choices?.[0]?.message?.content
-    });
+    console.log('✅ Host: OpenAI response parsed successfully');
 
     const content = data.choices[0]?.message?.content?.trim();
     if (!content) {
-      console.error('❌ No content in OpenAI response:', data);
+      console.error('❌ Host: No content in OpenAI response:', data);
       throw new Error('OpenAI returned empty content');
     }
 
-    console.log(`✨ Story generated successfully (${content.length} chars)`);
+    console.log(`✨ Host: Story generated successfully (${content.length} chars)`);
     return content;
   }
 

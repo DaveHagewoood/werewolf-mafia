@@ -1,15 +1,21 @@
 import { SOCKET_EVENTS, GAME_STATES, GAME_CONFIG, assignRoles, GAME_TYPES, ROLE_SETS, POWERS } from '@werewolf-mafia/shared';
+import { storyGenerationService } from './services/StoryGenerationService.js';
 
 export class HostGameStateManager {
-  constructor(socket, roomId, onStateChange = null) {
+  constructor(socket, roomId, onStateChange = null, onStoryDisplay = null) {
     this.socket = socket;
     this.roomId = roomId;
     this.onStateChange = onStateChange;
+    this.onStoryDisplay = onStoryDisplay;
     
     // Initialize timer handles for countdown management
     this.consensusTimerHandle = null;
     this.consensusCountdownInterval = null;
     this.eliminationTimer = null;
+    
+    // Track logged state to avoid spam
+    this.lastLoggedStoryState = null;
+    this.lastLoggedMasterState = null;
     
     this.gameState = {
       gameState: GAME_STATES.LOBBY,
@@ -31,8 +37,8 @@ export class HostGameStateManager {
       votingData: new Map(),
       investigationResults: new Map(),
       healActions: new Map(),
-      investigationActions: new Map(),
-      introStory: null
+      investigationActions: new Map()
+      // Note: introStory removed from persistent game state - now handled as temporary display
     };
     
     console.log(`HostGameStateManager: Initialized for room ${roomId}`);
@@ -72,9 +78,10 @@ export class HostGameStateManager {
   }
 
   broadcastGameState() {
-    // Only log for story-related or major state changes
-    if (this.gameState.gameState === GAME_STATES.STORY_INTRO || this.gameState.introStory) {
+    // Only log for story intro state changes (not every broadcast)
+    if (this.gameState.gameState === GAME_STATES.STORY_INTRO && this.lastLoggedStoryState !== this.gameState.introStory) {
       console.log(`HostGameStateManager: Broadcasting state, gameState: ${this.gameState.gameState}, introStory: ${this.gameState.introStory ? 'present' : 'null'}`);
+      this.lastLoggedStoryState = this.gameState.introStory;
     }
 
     // Generate the master state
@@ -96,9 +103,10 @@ export class HostGameStateManager {
 
   // Generate the single source of truth state
   getMasterGameState() {
-    // Only log game type for story-related states
-    if (this.gameState.gameState === GAME_STATES.STORY_INTRO) {
+    // Only log once per story state change
+    if (this.gameState.gameState === GAME_STATES.STORY_INTRO && this.lastLoggedMasterState !== this.gameState.introStory) {
       console.log('HOST DEBUG - getMasterGameState() gameType:', this.gameState.gameType, 'introStory:', this.gameState.introStory ? 'present' : 'null');
+      this.lastLoggedMasterState = this.gameState.introStory;
     }
     
     const masterState = {
@@ -132,9 +140,6 @@ export class HostGameStateManager {
       winner: this.gameState.winner,
       winCondition: this.gameState.winCondition,
       
-      // Story intro data
-      introStory: this.gameState.introStory,
-      
       // Night phase actions
       mafiaVotes: Array.from(this.gameState.mafiaVotes.entries()),
       mafiaVotesLocked: this.gameState.mafiaVotesLocked || false,
@@ -146,10 +151,7 @@ export class HostGameStateManager {
       nightActionsComplete: this.gameState.nightActionsComplete || false
     };
 
-    // Log intro story status for debugging
-    if (this.gameState.gameState === GAME_STATES.STORY_INTRO) {
-      console.log(`📖 getMasterGameState: including introStory in state:`, masterState.introStory ? masterState.introStory.substring(0, 50) + '...' : 'null');
-    }
+    // Removed repeated logging - story state is now logged only when it changes
 
     // Add available targets for different roles
     if (this.gameState.gameState === GAME_STATES.NIGHT_PHASE) {
@@ -198,11 +200,13 @@ export class HostGameStateManager {
     });
   }
 
-  addPlayer(playerId, playerName, profileImage, sessionToken = null) {
+  addPlayer(playerId, playerName, profileImage, sessionToken = null, gender = null, job = null) {
     // Create new player entry
     const newPlayer = {
       id: playerId,
       name: playerName,
+      gender: gender,
+      job: job,
       profileImage: profileImage,
       sessionToken: sessionToken || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Temporary token for old system compatibility
       connected: true, // Set as connected when they join
@@ -506,57 +510,72 @@ export class HostGameStateManager {
   }
 
   async startStoryIntro() {
-    // Generate the intro story
-    console.log(`🎭 Generating intro story for ${this.gameState.gameType} theme`);
+    console.log(`🎭 Host: Generating intro story for ${this.gameState.gameType} theme`);
     
-    // Request story generation from server
-    const storyRequest = {
-      roomId: this.roomId,
-      themeId: this.gameState.gameType,
-      playerCount: this.gameState.players.length,
-      playerNames: this.gameState.players.map(p => p.name)
-    };
-    
-    console.log(`📤 Sending story request to server:`, storyRequest);
-    console.log(`🔌 Socket connected?`, this.socket.connected);
-    
-    this.socket.emit('generate-intro-story', storyRequest);
-    
-    console.log(`📤 Story request sent to server`);
-
-    // Set story intro state immediately (story will be received via socket)
+    // Set story intro state immediately
     this.updateGameState({
-      gameState: GAME_STATES.STORY_INTRO,
-      introStory: null // Will be set when story is received
+      gameState: GAME_STATES.STORY_INTRO
     });
+
+    try {
+      // Generate story locally using host-side service
+      const playerDetails = this.gameState.players.map(p => ({
+        name: p.name,
+        gender: p.gender || 'Unknown',
+        job: p.job || 'Villager'
+      }));
+
+      console.log(`🎯 Host: Generating story locally...`);
+      const story = await storyGenerationService.generateIntroStory(
+        this.gameState.gameType,
+        this.gameState.players.length,
+        this.gameState.players.map(p => p.name),
+        playerDetails
+      );
+
+      console.log(`✅ Host: Story generated successfully (${story.length} chars)`);
+      
+      // Display story to host and players (temporary, not in game state)
+      this.displayStoryTemporarily(story);
+      
+    } catch (error) {
+      console.error('❌ Host: Story generation failed:', error.message);
+      
+      // Use fallback story
+      const fallbackStory = storyGenerationService.getFallbackStory(
+        this.gameState.gameType,
+        this.gameState.players.length
+      );
+      
+      console.log(`🔄 Host: Using fallback story (${fallbackStory.length} chars)`);
+      this.displayStoryTemporarily(fallbackStory);
+    }
   }
 
-  // Handle story received from server
-  setIntroStory(story) {
-    console.log(`📖 setIntroStory called with story (${story.length} chars):`, story.substring(0, 100) + '...');
-    console.log(`📖 Current gameState.introStory before update:`, this.gameState.introStory);
+  displayStoryTemporarily(story) {
+    console.log(`📖 Host: Displaying story temporarily to host and players`);
     
-    this.updateGameState({
-      introStory: story
-    });
+    // Trigger temporary story display in host UI (not via game state)
+    if (this.onStoryDisplay) {
+      this.onStoryDisplay(story);
+    }
     
-    console.log(`📖 gameState.introStory after update:`, this.gameState.introStory ? this.gameState.introStory.substring(0, 100) + '...' : 'null');
-    console.log(`📖 Intro story successfully set (${story.length} chars)`);
-    
-    // Broadcast story to all players
+    // Send story directly to all players via server relay
     this.socket.emit('broadcast-to-players', {
       roomId: this.roomId,
       event: 'story-intro-update',
-      data: {
-        story: story
-      }
+      data: { story: story }
     });
     
-    // Set waiting for host to continue (no automatic transition)
+    // Set host continue mode after story is displayed
     this.updateGameState({
       waitingForHostContinue: true
     });
+    
+    console.log(`📖 Host: Story sent to players, waiting for host to continue`);
   }
+
+  // Note: setIntroStory method removed - story generation now handled locally in startStoryIntro()
 
   startNightPhase() {
     // Check for inevitable victory before starting night phase

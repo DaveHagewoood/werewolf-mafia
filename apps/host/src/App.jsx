@@ -1,5 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
 import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport, getThemeList, getTheme, EVIL_THEMES, POWERS } from '@werewolf-mafia/shared'
@@ -30,6 +30,8 @@ function GameLobby() {
   const [connectionStatus, setConnectionStatus] = useState('connecting')
   const [hostGameStateManager, setHostGameStateManager] = useState(null)
   const [introStory, setIntroStory] = useState(null)
+  const previousIntroStoryRef = useRef(null)
+  const [isDisplayingStory, setIsDisplayingStory] = useState(false)
 
   // Environment-based URLs
   const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
@@ -137,12 +139,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           setCanStartGame(newGameState.players.length >= GAME_CONFIG.MIN_PLAYERS);
         }
         
-        // Update story intro state
-        if (newGameState.introStory !== undefined) {
-          console.log('📖 Host UI updating intro story:', newGameState.introStory ? newGameState.introStory.substring(0, 100) + '...' : 'null');
-          console.log('📖 Full intro story value:', newGameState.introStory);
-          setIntroStory(newGameState.introStory);
-        }
+        // Note: Story intro state is now handled via temporary display callback, not game state
         
         // Update game-specific state
         if (newGameState.eliminatedPlayer !== undefined) {
@@ -211,31 +208,29 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           }
         }
       };
+
+      // Story display callback (for temporary story display without game state)
+      const handleStoryDisplay = (story) => {
+        console.log('📖 Host: Temporary story display callback triggered');
+        setIntroStory(story);
+        setIsDisplayingStory(true);
+        
+        // Clear story after host continues (will be handled by continue button)
+      };
       
-      const gameStateManager = new HostGameStateManager(hostSocket, roomId, handleStateChange)
+      const gameStateManager = new HostGameStateManager(hostSocket, roomId, handleStateChange, handleStoryDisplay)
       setHostGameStateManager(gameStateManager)
       console.log('HostGameStateManager initialized')
       
-      // Listen for generated intro story
-      hostSocket.on('intro-story-generated', (data) => {
-        console.log('📖 Intro story received from server:', data.story.substring(0, 100) + '...');
-        console.log('📖 gameStateManager available?', !!gameStateManager);
-        if (gameStateManager) {
-          gameStateManager.setIntroStory(data.story);
-        } else {
-          console.error('❌ gameStateManager not available when story received!');
-        }
-      });
-
       // Handle player story requests during story intro phase
       hostSocket.on('player-story-request', (data) => {
         console.log('📚 Player requesting current story:', data.playerName);
-        const currentStory = gameStateManager?.gameState?.introStory;
-        if (currentStory) {
+        // Send current temporary story to reconnecting player
+        if (introStory && isDisplayingStory) {
           console.log('📖 Sending current story to reconnecting player:', data.playerName);
           hostSocket.emit('send-story-to-player', {
             playerId: data.playerId,
-            story: currentStory
+            story: introStory
           });
         }
       });
@@ -250,7 +245,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         try {
           switch (action.type) {
             case 'PLAYER_JOIN':
-              gameStateManager.addPlayer(action.playerId, action.playerName, action.data.profileImage)
+              gameStateManager.addPlayer(action.playerId, action.playerName, action.data.profileImage, null, action.data.gender, action.data.job)
               break
               
             case 'PLAYER_READY':
@@ -1135,7 +1130,13 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
               </p>
               <button 
                 className="continue-button"
-                onClick={() => hostGameStateManager.continueToNextPhase()}
+                onClick={() => {
+                  // Clear temporary story display
+                  setIntroStory(null);
+                  setIsDisplayingStory(false);
+                  // Continue to next phase
+                  hostGameStateManager.continueToNextPhase();
+                }}
               >
                 Continue to Night Phase 🌙
               </button>
