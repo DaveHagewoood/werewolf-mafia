@@ -4,7 +4,6 @@
 export class StoryGenerationService {
   constructor() {
     this.config = null;
-    this.storyPrompts = null;
     this.configLoaded = false;
     this.configLoadPromise = this.loadConfiguration();
   }
@@ -20,13 +19,6 @@ export class StoryGenerationService {
       }
       this.config = await configResponse.json();
       console.log('✅ Host: LLM config loaded. Providers:', Object.keys(this.config.providers));
-
-      const promptsResponse = await fetch('/config/story-prompts.json');
-      if (!promptsResponse.ok) {
-        throw new Error(`Failed to load prompts: ${promptsResponse.statusText}`);
-      }
-      this.storyPrompts = await promptsResponse.json();
-      console.log('✅ Host: Story prompts loaded. Themes:', Object.keys(this.storyPrompts));
 
       this.configLoaded = true;
       console.log('✅ Host: Story generation service fully configured');
@@ -51,10 +43,9 @@ export class StoryGenerationService {
       return false;
     }
     
-    const enabled = this.config && this.storyPrompts && this.getEnabledProvider();
+    const enabled = this.config && this.getEnabledProvider();
     console.log('🔍 Host: Service enabled check:', {
       hasConfig: !!this.config,
-      hasPrompts: !!this.storyPrompts,
       hasProvider: !!this.getEnabledProvider(),
       result: enabled
     });
@@ -127,7 +118,8 @@ export class StoryGenerationService {
     const fallbackStory = this.getFallbackStory(themeId, playerCount);
     console.log(`📚 Host: Fallback story ready (${fallbackStory.length} chars)`);
     
-    if (!this.isEnabled()) {
+    // Check if LLM generation is available (only need config, no theme prompts needed)
+    if (!this.config || !this.getEnabledProvider()) {
       console.log('📖 Host: LLM story generation disabled, using fallback story');
       return fallbackStory;
     }
@@ -139,14 +131,8 @@ export class StoryGenerationService {
     }
 
     try {
-      const themePrompt = this.storyPrompts[themeId];
-      if (!themePrompt) {
-        console.log(`❌ Host: No prompt for theme ${themeId}, using fallback`);
-        return fallbackStory;
-      }
-
       console.log(`🎯 Host: Attempting ${provider.name} API call for story generation...`);
-      const story = await this.callLLMProvider(provider, themePrompt, playerCount, playerDetails);
+      const story = await this.callLLMProvider(provider, themeId, playerCount, playerDetails);
       console.log(`✨ Host: Generated intro story for ${themeId} theme (${story.length} chars)`);
       return story;
     } catch (error) {
@@ -159,16 +145,32 @@ export class StoryGenerationService {
   async callLLMProvider(provider, themePrompt, playerCount, playerDetails = []) {
     const { name, config } = provider;
 
-    // Build player details section for the prompt
-    let playerDetailsText = '';
+    // Calculate number of killers based on player count (same logic as assignRoles)
+    const numKillers = playerCount <= 7 ? 1 : 2;
+
+    // Get theme display name for the prompt
+    const themeDisplayNames = {
+      'werewolf': 'Werewolves',
+      'mafia': 'Mafia', 
+      'vampire': 'Vampires',
+      'cartel': 'Cartel'
+    };
+    const themeDisplayName = themeDisplayNames[themePrompt] || 'Killers';
+
+    // Build player list section
+    let playersListText = '';
     if (playerDetails && playerDetails.length > 0) {
-      playerDetailsText = '\n\nCharacters in this story:\n' + 
+      playersListText = '\nPLAYERS (Gender, Occupation)\n' + 
         playerDetails.map(player => 
-          `- ${player.name} (${player.gender}, ${player.job})`
+          `${player.name} (${player.gender}, ${player.job})`
         ).join('\n');
     }
 
-    const contextPrompt = `${this.config.basePrompt}\n\n${themePrompt.introPrompt}\n\nGame Context:\n- ${playerCount} players total\n- The game is about to begin with the night phase${playerDetailsText}\n\nGenerate the atmospheric opening story now. You may incorporate some of the character details naturally into the narrative, but keep the focus on setting the mood and atmosphere rather than detailing individual characters:`;
+    const contextPrompt = `${this.config.basePrompt}
+
+THEME (What type of Killers?): ${themeDisplayName}
+HOW MANY? ${numKillers}
+${playersListText}`;
 
     console.log(`🔮 Host: Preparing ${name} API call...`);
     console.log(`📝 Host: Prompt length: ${contextPrompt.length} chars`);
