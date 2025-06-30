@@ -142,6 +142,43 @@ export class StoryGenerationService {
     }
   }
 
+  async generateDeathNarrative(deathData) {
+    console.log(`💀 Host: Death narrative requested for ${deathData.eliminatedPlayer.name} (${deathData.type})`);
+    
+    // Wait for config to load if it hasn't yet
+    if (!this.configLoaded) {
+      console.log('⏳ Host: Waiting for config to load...');
+      await this.configLoadPromise;
+    }
+    
+    // Always have a fallback death message
+    const fallbackDeath = this.getFallbackDeathNarrative(deathData);
+    console.log(`📚 Host: Fallback death narrative ready`);
+    
+    // Check if LLM generation is available
+    if (!this.config || !this.getEnabledProvider()) {
+      console.log('💀 Host: LLM death generation disabled, using fallback');
+      return fallbackDeath;
+    }
+
+    const provider = this.getEnabledProvider();
+    if (!provider) {
+      console.log('💀 Host: No valid LLM provider, using fallback death');
+      return fallbackDeath;
+    }
+
+    try {
+      console.log(`🎯 Host: Attempting ${provider.name} API call for death narrative...`);
+      const deathStory = await this.callDeathLLMProvider(provider, deathData);
+      console.log(`✨ Host: Generated death narrative (${deathStory.length} chars)`);
+      return deathStory;
+    } catch (error) {
+      console.error('❌ Host: Death narrative generation failed:', error.message);
+      console.log('🔄 Host: Falling back to simple death message');
+      return fallbackDeath;
+    }
+  }
+
   async callLLMProvider(provider, themePrompt, playerCount, playerDetails = []) {
     const { name, config } = provider;
 
@@ -402,6 +439,122 @@ ${playersListText}`;
     };
 
     return fallbackStories[themeId] || fallbackStories.werewolf;
+  }
+
+  getFallbackDeathNarrative(deathData) {
+    const { eliminatedPlayer, type, gameTheme } = deathData;
+    const name = eliminatedPlayer.name;
+    const occupation = eliminatedPlayer.job || 'villager';
+
+    const themeDisplayNames = {
+      'werewolf': 'werewolves',
+      'mafia': 'mafia', 
+      'vampire': 'vampires',
+      'cartel': 'cartel'
+    };
+    const killerType = themeDisplayNames[gameTheme] || 'killers';
+
+    if (type === 'NIGHT_KILL') {
+      const nightDeaths = [
+        `${name} was found dead at dawn, another victim of the ${killerType}.`,
+        `The ${killerType} claimed ${name} during the night.`,
+        `${name} did not survive the night - the ${killerType} had struck again.`,
+        `Dawn revealed ${name}'s fate - another victim of the lurking ${killerType}.`
+      ];
+      return nightDeaths[Math.floor(Math.random() * nightDeaths.length)];
+    } else if (type === 'DAY_VOTE') {
+      const dayDeaths = [
+        `The community voted to eliminate ${name}, hoping to end the terror.`,
+        `${name} was banished by the frightened townspeople.`,
+        `In desperation, the survivors chose to eliminate ${name}.`,
+        `${name} faced the judgment of the community and was voted out.`
+      ];
+      return dayDeaths[Math.floor(Math.random() * dayDeaths.length)];
+    }
+    
+    return `${name} was eliminated from the game.`;
+  }
+
+  async callDeathLLMProvider(provider, deathData) {
+    const { name, config } = provider;
+    const { eliminatedPlayer, type, gameTheme, originalStory, eliminationHistory, remainingPlayers } = deathData;
+
+    // Get theme display name for killers
+    const themeDisplayNames = {
+      'werewolf': 'Werewolves',
+      'mafia': 'Mafia', 
+      'vampire': 'Vampires',
+      'cartel': 'Cartel'
+    };
+    const killerType = themeDisplayNames[gameTheme] || 'Killers';
+
+    // Build elimination history context
+    let historyText = '';
+    if (eliminationHistory && eliminationHistory.length > 0) {
+      historyText = '\n\nPREVIOUS ELIMINATIONS:\n' + 
+        eliminationHistory.map(death => 
+          `- ${death.player.name} (${death.player.gender}, ${death.player.job}) - ${death.type === 'NIGHT_KILL' ? 'Killed by ' + killerType : 'Voted out by townspeople'}`
+        ).join('\n');
+    }
+
+    // Build remaining players context
+    let remainingText = '';
+    if (remainingPlayers && remainingPlayers.length > 0) {
+      remainingText = '\n\nREMAINING PLAYERS:\n' + 
+        remainingPlayers.map(player => 
+          `${player.name} (${player.gender}, ${player.job})`
+        ).join(', ');
+    }
+
+    // Build death type specific prompt
+    let deathPrompt = '';
+    if (type === 'NIGHT_KILL') {
+      deathPrompt = `NEW NIGHT ELIMINATION:
+Player: ${eliminatedPlayer.name} (${eliminatedPlayer.gender}, ${eliminatedPlayer.job})
+Death type: Killed by ${killerType}
+Context: Continue the atmosphere established in the original story
+
+Generate a brief death narrative (1-2 sentences) describing how ${eliminatedPlayer.name} was eliminated during the night. Keep it atmospheric and consistent with the original story's tone.`;
+    } else if (type === 'DAY_VOTE') {
+      deathPrompt = `NEW DAY ELIMINATION:
+Player: ${eliminatedPlayer.name} (${eliminatedPlayer.gender}, ${eliminatedPlayer.job})
+Death type: Voted out by the community
+Context: Continue the atmosphere established in the original story
+
+Generate a brief death narrative (1-2 sentences) describing how ${eliminatedPlayer.name} was eliminated by community vote during the day. Show the tension and suspicion among the remaining players.`;
+    }
+
+    const contextPrompt = `You are continuing a story you previously created. Maintain consistency with the original tone and setting.
+
+ORIGINAL STORY:
+${originalStory}
+${historyText}
+${remainingText}
+
+${deathPrompt}`;
+
+    console.log(`🔮 Host: Preparing ${name} API call for death narrative...`);
+    console.log(`📝 Host: Death prompt length: ${contextPrompt.length} chars`);
+    console.log(`💀 Host: Generating death for ${eliminatedPlayer.name} (${type})`);
+    
+    console.log(`\n📜 FULL DEATH PROMPT SENT TO ${name.toUpperCase()}:`);
+    console.log('='.repeat(80));
+    console.log(contextPrompt);
+    console.log('='.repeat(80));
+    console.log('');
+
+    switch (name) {
+      case 'venice':
+        return await this.callVenice(config, contextPrompt);
+      case 'openai':
+        return await this.callOpenAI(config, contextPrompt);
+      case 'anthropic':
+        return await this.callAnthropic(config, contextPrompt);
+      case 'ollama':
+        return await this.callOllama(config, contextPrompt);
+      default:
+        throw new Error(`Unsupported provider: ${name}`);
+    }
   }
 }
 

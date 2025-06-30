@@ -8,6 +8,10 @@ export class HostGameStateManager {
     this.onStateChange = onStateChange;
     this.onStoryDisplay = onStoryDisplay;
     
+    // Story generation tracking
+    this.originalIntroStory = null;
+    this.eliminationHistory = [];
+    
     // Initialize timer handles for countdown management
     this.consensusTimerHandle = null;
     this.consensusCountdownInterval = null;
@@ -148,8 +152,20 @@ export class HostGameStateManager {
       investigationActions: this.gameState.investigationActions ? Array.from(this.gameState.investigationActions.entries()) : [],
       investigationResults: this.gameState.investigationResults ? Array.from(this.gameState.investigationResults.entries()) : [],
       suspicionVotes: this.gameState.suspicionVotes ? Array.from(this.gameState.suspicionVotes.entries()) : [],
-      nightActionsComplete: this.gameState.nightActionsComplete || false
+      nightActionsComplete: this.gameState.nightActionsComplete || false,
+      
+      // Death narratives
+      nightDeathNarrative: this.gameState.nightDeathNarrative || null,
+      dayDeathNarrative: this.gameState.dayDeathNarrative || null
     };
+
+    // Debug log death narratives when they're present
+    if (this.gameState.nightDeathNarrative) {
+      console.log('📤 Host: Sending nightDeathNarrative to React (', this.gameState.nightDeathNarrative.length, 'chars)');
+    }
+    if (this.gameState.dayDeathNarrative) {
+      console.log('📤 Host: Sending dayDeathNarrative to React (', this.gameState.dayDeathNarrative.length, 'chars)');
+    }
 
     // Removed repeated logging - story state is now logged only when it changes
 
@@ -535,6 +551,9 @@ export class HostGameStateManager {
 
       console.log(`✅ Host: Story generated successfully (${story.length} chars)`);
       
+      // Store the original story for death narrative continuity
+      this.originalIntroStory = story;
+      
       // Display story to host and players (temporary, not in game state)
       this.displayStoryTemporarily(story);
       
@@ -548,16 +567,16 @@ export class HostGameStateManager {
       );
       
       console.log(`🔄 Host: Using fallback story (${fallbackStory.length} chars)`);
-      this.displayStoryTemporarily(fallbackStory);
+              this.displayStoryTemporarily(fallbackStory);
     }
   }
 
   displayStoryTemporarily(story) {
-    console.log(`📖 Host: Displaying story temporarily to host and players`);
+    console.log(`📖 Host: Displaying intro story temporarily to host and players`);
     
     // Trigger temporary story display in host UI (not via game state)
     if (this.onStoryDisplay) {
-      this.onStoryDisplay(story);
+      this.onStoryDisplay(story, 'INTRO_STORY');
     }
     
     // Send story directly to all players via server relay
@@ -572,7 +591,7 @@ export class HostGameStateManager {
       waitingForHostContinue: true
     });
     
-    console.log(`📖 Host: Story sent to players, waiting for host to continue`);
+    console.log(`📖 Host: Intro story sent to players, waiting for host to continue`);
   }
 
   // Note: setIntroStory method removed - story generation now handled locally in startStoryIntro()
@@ -603,7 +622,9 @@ export class HostGameStateManager {
       mafiaVotesLocked: false,
       eliminatedPlayer: null,
       savedPlayer: null,
-      mostSuspiciousPlayer: null
+      mostSuspiciousPlayer: null,
+      nightDeathNarrative: null, // Clear previous death narrative
+      dayDeathNarrative: null
     });
     
     console.log(`Night phase started in room ${this.roomId}`);
@@ -871,6 +892,20 @@ export class HostGameStateManager {
         });
         
         console.log(`${eliminatedPlayer?.name} was eliminated by the Mafia`);
+        
+        // Add to elimination history for story continuity
+        this.eliminationHistory.push({
+          player: {
+            name: eliminatedPlayer.name,
+            gender: eliminatedPlayer.gender || 'Unknown',
+            job: eliminatedPlayer.job || 'Villager'
+          },
+          type: 'NIGHT_KILL',
+          phase: `Night ${Math.floor(this.eliminationHistory.filter(e => e.type === 'NIGHT_KILL').length / 2) + 1}`
+        });
+        
+        // Always generate death narrative for night resolved screen (async)
+        this.generateNightDeathNarrativeForResolution(eliminatedPlayer);
       }
     }
 
@@ -950,7 +985,9 @@ export class HostGameStateManager {
       gameState: GAME_STATES.DAY_PHASE,
       accusations: new Map(),
       eliminationCountdown: null,
-      dayEliminatedPlayer: null
+      dayEliminatedPlayer: null,
+      nightDeathNarrative: null, // Clear previous death narrative
+      dayDeathNarrative: null
     });
     
     console.log(`Day phase started in room ${this.roomId}`);
@@ -1129,12 +1166,24 @@ export class HostGameStateManager {
     }, 1000);
   }
   
-  executeElimination(targetId) {
+  async executeElimination(targetId) {
     clearInterval(this.eliminationTimer);
     const targetName = this.getPlayerName(targetId);
     const targetRole = this.gameState.playerRoles.get(targetId);
+    const eliminatedPlayer = this.gameState.players.find(p => p.id === targetId);
     
     console.log(`💀 ELIMINATED: ${targetName} (${targetRole?.name})`);
+    
+    // Add to elimination history for story continuity
+    this.eliminationHistory.push({
+      player: {
+        name: eliminatedPlayer.name,
+        gender: eliminatedPlayer.gender || 'Unknown',
+        job: eliminatedPlayer.job || 'Villager'
+      },
+      type: 'DAY_VOTE',
+      phase: `Day ${Math.floor(this.eliminationHistory.filter(e => e.type === 'DAY_VOTE').length) + 1}`
+    });
     
     // Remove from alive players
     const newAlivePlayers = new Set(this.gameState.alivePlayers);
@@ -1147,12 +1196,50 @@ export class HostGameStateManager {
       role: targetRole
     };
     
+    // Generate death narrative if we have original story
+    let deathNarrative = null;
+    if (this.originalIntroStory) {
+      try {
+        const remainingPlayers = this.gameState.players
+          .filter(p => newAlivePlayers.has(p.id))
+          .map(p => ({
+            name: p.name,
+            gender: p.gender || 'Unknown',
+            job: p.job || 'Villager'
+          }));
+
+        deathNarrative = await storyGenerationService.generateDeathNarrative({
+          eliminatedPlayer: {
+            name: eliminatedPlayer.name,
+            gender: eliminatedPlayer.gender || 'Unknown',
+            job: eliminatedPlayer.job || 'Villager'
+          },
+          type: 'DAY_VOTE',
+          gameTheme: this.gameState.gameType,
+          originalStory: this.originalIntroStory,
+          eliminationHistory: this.eliminationHistory.slice(0, -1), // Exclude current elimination
+          remainingPlayers: remainingPlayers
+        });
+        
+        console.log(`💀 Generated day death narrative: ${deathNarrative}`);
+      } catch (error) {
+        console.error('❌ Failed to generate day death narrative:', error);
+      }
+    }
+    
     this.updateGameState({
       alivePlayers: newAlivePlayers,
       dayEliminatedPlayer: eliminatedPlayerInfo,
       accusations: new Map(), // Clear accusations
       eliminationCountdown: null // Clear countdown
     });
+    
+    // Store death narrative in game state for day resolved screen
+    if (deathNarrative) {
+      this.updateGameState({
+        dayDeathNarrative: deathNarrative
+      });
+    }
     
     // Check win conditions
     if (this.checkWinConditions()) {
@@ -1205,5 +1292,54 @@ export class HostGameStateManager {
       return playerUrl
     }
     return null
+  }
+
+  async generateNightDeathNarrativeForResolution(eliminatedPlayer) {
+    try {
+      console.log(`💀 Starting death narrative generation for ${eliminatedPlayer.name}`);
+      
+      const remainingPlayers = this.gameState.players
+        .filter(p => this.gameState.alivePlayers.has(p.id))
+        .map(p => ({
+          name: p.name,
+          gender: p.gender || 'Unknown',
+          job: p.job || 'Villager'
+        }));
+
+      const deathNarrative = await storyGenerationService.generateDeathNarrative({
+        eliminatedPlayer: {
+          name: eliminatedPlayer.name,
+          gender: eliminatedPlayer.gender || 'Unknown',
+          job: eliminatedPlayer.job || 'Villager'
+        },
+        type: 'NIGHT_KILL',
+        gameTheme: this.gameState.gameType,
+        originalStory: this.originalIntroStory,
+        eliminationHistory: this.eliminationHistory.slice(0, -1), // Exclude current elimination
+        remainingPlayers: remainingPlayers
+      });
+      
+      console.log(`💀 Generated night death narrative for resolution: ${deathNarrative}`);
+      console.log(`💀 About to update game state with nightDeathNarrative`);
+      
+      // Store death narrative in game state for night resolved screen
+      if (deathNarrative) {
+        this.updateGameState({
+          nightDeathNarrative: deathNarrative
+        });
+        console.log(`💀 Game state updated with death narrative`);
+      } else {
+        console.log(`💀 No death narrative generated, setting fallback`);
+        this.updateGameState({
+          nightDeathNarrative: `${eliminatedPlayer.name} was eliminated by the ${this.gameState.gameType === 'mafia' ? 'Mafia' : 'Werewolves'} during the night.`
+        });
+      }
+    } catch (error) {
+      console.error('❌ Failed to generate night death narrative:', error);
+      // Set fallback narrative on error
+      this.updateGameState({
+        nightDeathNarrative: `${eliminatedPlayer.name} was eliminated by the ${this.gameState.gameType === 'mafia' ? 'Mafia' : 'Werewolves'} during the night.`
+      });
+    }
   }
 } 

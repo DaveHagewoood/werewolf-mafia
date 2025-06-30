@@ -1,5 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode.react'
 import { io } from 'socket.io-client'
 import { generateRoomId, SOCKET_EVENTS, GAME_CONFIG, GAME_STATES, GAME_TYPES, getProfileImageUrl, checkWebPSupport, getThemeList, getTheme, EVIL_THEMES, POWERS } from '@werewolf-mafia/shared'
@@ -32,10 +32,26 @@ function GameLobby() {
   const [introStory, setIntroStory] = useState(null)
   const previousIntroStoryRef = useRef(null)
   const [isDisplayingStory, setIsDisplayingStory] = useState(false)
+  const [nightDeathNarrative, setNightDeathNarrative] = useState(null)
+  const [dayDeathNarrative, setDayDeathNarrative] = useState(null)
 
   // Environment-based URLs
   const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3002'
 const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001'
+
+  // Story display callback (only for intro stories now)
+  const handleStoryDisplay = useCallback((story, storyType = 'INTRO_STORY') => {
+    console.log('📖 Host: Intro story display callback triggered with story:', story ? story.substring(0, 100) + '...' : 'null');
+    
+    // Only handle intro stories - death narratives are now part of game state
+    if (storyType === 'INTRO_STORY') {
+      console.log('📖 Host: Setting intro story');
+      setIntroStory(story);
+      setIsDisplayingStory(true);
+    }
+    
+    console.log('📖 Host: Story state updated');
+  }, []);
 
   // Preload images
   useEffect(() => {
@@ -154,6 +170,14 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         if (newGameState.dayEliminatedPlayer !== undefined) {
           setDayEliminatedPlayer(newGameState.dayEliminatedPlayer);
         }
+        if (newGameState.nightDeathNarrative !== undefined) {
+          console.log('🎭 React: Setting nightDeathNarrative:', newGameState.nightDeathNarrative ? 'HAS_STORY' : 'NULL');
+          setNightDeathNarrative(newGameState.nightDeathNarrative);
+        }
+        if (newGameState.dayDeathNarrative !== undefined) {
+          console.log('🎭 React: Setting dayDeathNarrative:', newGameState.dayDeathNarrative ? 'HAS_STORY' : 'NULL');
+          setDayDeathNarrative(newGameState.dayDeathNarrative);
+        }
         if (newGameState.accusations !== undefined) {
           // Convert accusations from HostGameStateManager format to UI format
           const accusationsObj = {};
@@ -209,14 +233,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
         }
       };
 
-      // Story display callback (for temporary story display without game state)
-      const handleStoryDisplay = (story) => {
-        console.log('📖 Host: Temporary story display callback triggered');
-        setIntroStory(story);
-        setIsDisplayingStory(true);
-        
-        // Clear story after host continues (will be handled by continue button)
-      };
+
       
       const gameStateManager = new HostGameStateManager(hostSocket, roomId, handleStateChange, handleStoryDisplay)
       setHostGameStateManager(gameStateManager)
@@ -758,6 +775,8 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
     );
   };
 
+
+
   // Show day phase screen
   if (gameState === GAME_STATES.DAY_PHASE) {
     return wrapWithConnectionStatus(
@@ -1007,12 +1026,26 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           <div className="night-icon">🌙</div>
           <h2>Night Phase Complete</h2>
           
+          {/* Always show death narrative section when someone was eliminated */}
           {eliminatedPlayer && (
-            <div className="elimination-notice">
-              <h3>Night Action Complete</h3>
-              <p>
-                <strong>{eliminatedPlayer.name}</strong> was eliminated by the {selectedGameType === 'mafia' ? 'Mafia' : 'Werewolves'}.
-              </p>
+            <div className="death-narrative-section">
+              <div className="death-narrative-card">
+                <div className="death-narrative-icon">💀</div>
+                <h3>Death Story</h3>
+                <div className="death-narrative-text">
+                  {nightDeathNarrative ? (
+                    <p>{nightDeathNarrative}</p>
+                  ) : (
+                    <div className="death-story-loading">
+                      <div className="story-spinner"></div>
+                      <p>Crafting death tale...</p>
+                      <small style={{color: '#888', fontSize: '0.9em', marginTop: '10px', display: 'block'}}>
+                        Debug: nightDeathNarrative = {nightDeathNarrative ? 'SET' : 'NULL'}
+                      </small>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
           
@@ -1033,7 +1066,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           )}
 
           {mostSuspiciousPlayer && (
-            <div className="save-notice">
+            <div className="suspicion-notice">
               <h3>🕵️ Nighttime Whispers</h3>
               <p>
                 <strong>{mostSuspiciousPlayer.name}</strong> is currently drawing the most suspicion among the citizens...
@@ -1047,7 +1080,11 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
             </p>
             <button 
               className="continue-button"
-              onClick={() => hostGameStateManager.continueToNextPhase()}
+              onClick={() => {
+                // Clear death narrative when continuing
+                setNightDeathNarrative(null);
+                hostGameStateManager.continueToNextPhase();
+              }}
             >
               Continue to Day Phase ☀️
             </button>
@@ -1071,7 +1108,21 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
           <div className="day-icon">☀️</div>
           <h2>Day Phase Complete</h2>
           
-          {dayEliminatedPlayer && (
+          {/* Death Narrative Section - styled like the overlay but integrated */}
+          {dayDeathNarrative && dayEliminatedPlayer && (
+            <div className="death-narrative-section">
+              <div className="death-narrative-card">
+                <div className="death-narrative-icon">💀</div>
+                <h3>Death Story</h3>
+                <div className="death-narrative-text">
+                  <p>{dayDeathNarrative}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Fallback notice when no death narrative */}
+          {!dayDeathNarrative && dayEliminatedPlayer && (
             <div className="elimination-notice">
               <h3>Player Eliminated</h3>
               <p>
@@ -1087,7 +1138,11 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
             </p>
             <button 
               className="continue-button"
-              onClick={() => hostGameStateManager.continueToNextPhase()}
+              onClick={() => {
+                // Clear death narrative when continuing
+                setDayDeathNarrative(null);
+                hostGameStateManager.continueToNextPhase();
+              }}
             >
               Continue to Night Phase 🌙
             </button>

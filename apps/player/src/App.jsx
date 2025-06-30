@@ -86,6 +86,10 @@ function JoinRoom() {
 
   // Add state for intro story
   const [introStory, setIntroStory] = useState(null)
+  
+  // Add state for death narratives
+  const [deathNarrative, setDeathNarrative] = useState(null)
+  const [isDisplayingDeathNarrative, setIsDisplayingDeathNarrative] = useState(false)
 
   // Helper function for simple error cleanup
   const handleConnectionError = (errorMessage) => {
@@ -401,6 +405,21 @@ function JoinRoom() {
     newSocket.on('story-intro-update', (data) => {
       console.log('📖 Story intro update received:', data.story ? data.story.substring(0, 100) + '...' : 'Loading...')
       setIntroStory(data.story)
+    })
+
+    // Listen for death narrative updates
+    newSocket.on('death-narrative-update', (data) => {
+      console.log('💀 Death narrative received:', data.deathNarrative ? data.deathNarrative.substring(0, 50) + '...' : 'None')
+      if (data.deathNarrative) {
+        setDeathNarrative(data.deathNarrative)
+        setIsDisplayingDeathNarrative(true)
+        
+        // Auto-dismiss death narrative after 10 seconds
+        setTimeout(() => {
+          setDeathNarrative(null)
+          setIsDisplayingDeathNarrative(false)
+        }, 10000)
+      }
     })
 
     return () => {
@@ -981,12 +1000,39 @@ function JoinRoom() {
     );
   };
 
+  // Add death narrative overlay to display over any game state
+  const renderDeathNarrativeOverlay = () => {
+    if (!isDisplayingDeathNarrative || !deathNarrative) return null;
+    
+    return (
+      <div className="death-narrative-overlay">
+        <div className="death-narrative-content">
+          <div className="death-narrative-icon">💀</div>
+          <h2>Death Story</h2>
+          <div className="death-narrative-text">
+            <p>{deathNarrative}</p>
+          </div>
+          <button 
+            className="death-narrative-continue"
+            onClick={() => {
+              setDeathNarrative(null);
+              setIsDisplayingDeathNarrative(false);
+            }}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // Add pause overlay to all game phase views
   const wrapWithPauseOverlay = (content) => {
     return (
       <>
         {content}
         {renderPauseOverlay()}
+        {renderDeathNarrativeOverlay()}
       </>
     );
   };
@@ -2013,6 +2059,11 @@ function SessionPlayer() {
   const [hasSuspicionVoted, setHasSuspicionVoted] = useState(false) // Whether citizen has voted
   const [mostSuspiciousPlayer, setMostSuspiciousPlayer] = useState(null) // Most suspicious player result
   const [nightActionsComplete, setNightActionsComplete] = useState(false) // Whether all night actions are complete
+  
+  // Story and death narrative states  
+  const [introStory, setIntroStory] = useState(null)
+  const [deathNarrative, setDeathNarrative] = useState(null)
+  const [isDisplayingDeathNarrative, setIsDisplayingDeathNarrative] = useState(false)
 
   useEffect(() => {
     // Validate session token from URL
@@ -2428,6 +2479,27 @@ function SessionPlayer() {
     newSocket.on('error', (data) => {
       console.log('❌ Error received:', data)
       setMessage({ type: 'error', text: data.message })
+    })
+
+    // Listen for story intro updates
+    newSocket.on('story-intro-update', (data) => {
+      console.log('📖 Session: Story intro update received:', data.story ? data.story.substring(0, 100) + '...' : 'Loading...')
+      setIntroStory(data.story)
+    })
+
+    // Listen for death narrative updates
+    newSocket.on('death-narrative-update', (data) => {
+      console.log('💀 Session: Death narrative received:', data.deathNarrative ? data.deathNarrative.substring(0, 50) + '...' : 'None')
+      if (data.deathNarrative) {
+        setDeathNarrative(data.deathNarrative)
+        setIsDisplayingDeathNarrative(true)
+        
+        // Auto-dismiss death narrative after 10 seconds
+        setTimeout(() => {
+          setDeathNarrative(null)
+          setIsDisplayingDeathNarrative(false)
+        }, 10000)
+      }
     })
 
     return () => {
