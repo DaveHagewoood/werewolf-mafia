@@ -203,6 +203,7 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
             setGameEndData({
               winner: newGameState.winner,
               winCondition: newGameState.winCondition,
+              endGameStory: newGameState.endGameStory,
               alivePlayers: newGameState.players.filter(p => p.alive === true),
               allPlayers: newGameState.players
             });
@@ -699,6 +700,19 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
             </h2>
             <p className="win-condition">{gameEndData.winCondition}</p>
           </div>
+
+          {/* End Game Story Section */}
+          {gameEndData.endGameStory && (
+            <div className="end-game-story-section">
+              <div className="end-game-story-card">
+                <div className="story-icon">📖</div>
+                <h3>The Final Chapter</h3>
+                <div className="end-game-story-text">
+                  <p>{gameEndData.endGameStory}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="final-results">
             <h3>Final Results</h3>

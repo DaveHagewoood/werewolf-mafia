@@ -855,4 +855,58 @@
   margin: 0;
   font-size: 1.1em;
   line-height: 1.4;
-} 
+}
+
+/* End Game Story Section */
+.end-game-story-section {
+  margin: 30px 0;
+  padding: 0;
+}
+
+.end-game-story-card {
+  background: linear-gradient(135deg, rgba(25, 25, 40, 0.95) 0%, rgba(15, 25, 35, 0.95) 100%);
+  border: 3px solid #F59E0B; /* Golden border for victory/conclusion */
+  border-radius: 20px;
+  padding: 40px;
+  text-align: center;
+  color: white;
+  margin: 20px auto;
+  max-width: 700px;
+  box-shadow: 
+    0 25px 50px rgba(245, 158, 11, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: slideUp 0.6s ease-out;
+  backdrop-filter: blur(10px);
+}
+
+.end-game-story-card .story-icon {
+  font-size: 3em;
+  margin-bottom: 15px;
+  filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.8));
+}
+
+.end-game-story-card h3 {
+  margin: 0 0 25px 0;
+  color: #FCD34D; /* Golden yellow for conclusion */
+  font-size: 2em;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+.end-game-story-text {
+  background: linear-gradient(135deg, rgba(120, 80, 0, 0.15) 0%, rgba(80, 60, 10, 0.2) 100%);
+  border: 2px solid rgba(245, 158, 11, 0.3);
+  border-radius: 15px;
+  padding: 25px;
+  margin: 15px 0;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.end-game-story-text p {
+  font-size: 1.2em;
+  margin: 0;
+  line-height: 1.6;
+  color: #FEF3C7; /* Light golden for excellent readability */
+  font-style: italic;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-weight: 500;
+}

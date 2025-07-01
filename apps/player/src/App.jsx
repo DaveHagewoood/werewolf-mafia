@@ -717,6 +717,7 @@ function JoinRoom() {
             setGameEndData({
               winner: masterState.winner,
               winCondition: masterState.winCondition,
+              endGameStory: masterState.endGameStory,
               alivePlayers: masterState.players?.filter(p => p.alive) || [],
               allPlayers: masterState.players || []
             });
@@ -2350,6 +2351,7 @@ function SessionPlayer() {
             setGameEndData({
               winner: masterState.winner,
               winCondition: masterState.winCondition,
+              endGameStory: masterState.endGameStory,
               alivePlayers: masterState.players.filter(p => masterState.alivePlayers?.has(p.id)),
               allPlayers: masterState.players
             })
@@ -2640,6 +2642,19 @@ function SessionPlayer() {
             <h2>{gameEndData.winner === 'villagers' ? 'Villagers Win!' : 'Mafia Wins!'}</h2>
             <p className="win-condition">{gameEndData.winCondition}</p>
           </div>
+
+          {/* End Game Story Section */}
+          {gameEndData.endGameStory && (
+            <div className="end-game-story-section">
+              <div className="end-game-story-card">
+                <div className="story-icon">📖</div>
+                <h3>The Final Chapter</h3>
+                <div className="end-game-story-text">
+                  <p>{gameEndData.endGameStory}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
