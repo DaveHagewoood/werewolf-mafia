@@ -1483,23 +1483,13 @@ function JoinRoom() {
 
                 {hasHealed && (
                   <div className="heal-confirmation">
-                    {nightActionsComplete ? (
-                      <div className="night-complete-status">
-                        <p>✅ All night actions complete! Results:</p>
-                        {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
-                        {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
-                        {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
-                        {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
-                        <p><small>Waiting for day phase to begin...</small></p>
-                      </div>
-                    ) : (
-                      <>
-                        <p>Protection cast! Waiting for other night actions...</p>
-                        <div className="heal-info">
-                          <small>Your choice is final and cannot be changed</small>
-                        </div>
-                      </>
-                    )}
+                    <p>Protection cast! Waiting for other night actions...</p>
+                    <div className="heal-info">
+                      <small>Your choice is final and cannot be changed</small>
+                    </div>
+                    <div className="waiting-status">
+                      <p><small>Waiting for other night actions to complete...</small></p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1595,23 +1585,10 @@ function JoinRoom() {
                   )}
 
                   <div className="investigate-confirmation">
-                    {nightActionsComplete ? (
-                      <div className="night-complete-status">
-                        <p>✅ All night actions complete! Results:</p>
-                        {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
-                        {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
-                        {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
-                        {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
-                        <p><small>Waiting for day phase to begin...</small></p>
-                      </div>
-                    ) : (
-                      <>
-                        <p>Waiting for other night actions to complete...</p>
-                        <div className="investigate-info">
-                          <small>Your investigation is complete and private to you</small>
-                        </div>
-                      </>
-                    )}
+                    <p>Waiting for other night actions to complete...</p>
+                    <div className="investigate-info">
+                      <small>Your investigation is complete and private to you</small>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2861,16 +2838,7 @@ function SessionPlayer() {
                   </div>
                 )}
 
-                {nightActionsComplete && (
-                  <div className="night-complete-status">
-                    <h3>✅ All Night Actions Complete!</h3>
-                    {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
-                    {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
-                    {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
-                    {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
-                    <p><small>Waiting for day phase to begin...</small></p>
-                  </div>
-                )}
+                {/* Night results will be shown in NIGHT_RESOLVED state instead */}
               </div>
             </div>
           </div>
@@ -2933,21 +2901,11 @@ function SessionPlayer() {
 
                 {selectedHeal && (
                   <div className="heal-confirmation">
-                    {nightActionsComplete ? (
-                      <div className="night-complete-status">
-                        <p>✅ All night actions complete! Results:</p>
-                        {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
-                        {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
-                        {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
-                        {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
-                        <p><small>Waiting for day phase to begin...</small></p>
-                      </div>
-                    ) : (
-                      <>
-                        <p>🛡️ You are protecting <strong>{healTargets.find(t => t.id === selectedHeal)?.name}</strong> tonight</p>
-                        <small>They will survive if targeted for elimination.</small>
-                      </>
-                    )}
+                    <p>🛡️ You are protecting <strong>{healTargets.find(t => t.id === selectedHeal)?.name}</strong> tonight</p>
+                    <small>They will survive if targeted for elimination.</small>
+                    <div className="waiting-status">
+                      <p><small>Waiting for other night actions to complete...</small></p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -3031,16 +2989,7 @@ function SessionPlayer() {
                   </div>
                 )}
 
-                {nightActionsComplete && (
-                  <div className="night-complete-status">
-                    <h3>✅ All Night Actions Complete!</h3>
-                    {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
-                    {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
-                    {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
-                    {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
-                    <p><small>Waiting for day phase to begin...</small></p>
-                  </div>
-                )}
+                {/* Night results will be shown in NIGHT_RESOLVED state instead */}
               </div>
             </div>
           </div>
@@ -3107,21 +3056,11 @@ function SessionPlayer() {
 
               {selectedSuspicion && (
                 <div className="vote-confirmation">
-                  {nightActionsComplete ? (
-                    <div className="night-complete-status">
-                      <p>✅ All night actions complete! Results:</p>
-                      {eliminatedPlayer && <p>💀 <strong>{eliminatedPlayer.name}</strong> was eliminated</p>}
-                      {savedPlayer && <p>🛡️ Someone was saved from elimination!</p>}
-                      {!eliminatedPlayer && !savedPlayer && <p>🌙 No one was eliminated</p>}
-                      {mostSuspiciousPlayer && <p>🕵️ <strong>{mostSuspiciousPlayer.name}</strong> draws suspicion</p>}
-                      <p><small>Waiting for day phase to begin...</small></p>
-                    </div>
-                  ) : (
-                    <>
-                      <p>🕵️ You find <strong>{suspicionTargets.find(t => t.id === selectedSuspicion)?.name}</strong> most suspicious</p>
-                      <small>Your suspicion has been recorded anonymously.</small>
-                    </>
-                  )}
+                  <p>🕵️ You find <strong>{suspicionTargets.find(t => t.id === selectedSuspicion)?.name}</strong> most suspicious</p>
+                  <small>Your suspicion has been recorded anonymously.</small>
+                  <div className="waiting-status">
+                    <p><small>Waiting for other night actions to complete...</small></p>
+                  </div>
                 </div>
               )}
 
