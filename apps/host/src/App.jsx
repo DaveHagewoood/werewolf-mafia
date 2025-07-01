@@ -1223,6 +1223,11 @@ const PLAYER_APP_URL = import.meta.env.VITE_PLAYER_URL || 'http://localhost:3001
                       src={getProfileImageUrl(selectedGameType, player.profileImage, supportsWebP)} 
                       alt={player.name}
                       className="player-profile-image"
+                      onError={(e) => {
+                        if (supportsWebP && e.target.src.includes('.webp')) {
+                          e.target.src = getProfileImageUrl(selectedGameType, player.profileImage, false)
+                        }
+                      }}
                     />
                   </div>
                   <span className="player-name">{player.name}</span>
