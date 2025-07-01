@@ -179,6 +179,43 @@ export class StoryGenerationService {
     }
   }
 
+  async generateEndGameStory(endGameData) {
+    console.log(`🏁 Host: End game story requested - ${endGameData.winner} victory`);
+    
+    // Wait for config to load if it hasn't yet
+    if (!this.configLoaded) {
+      console.log('⏳ Host: Waiting for config to load...');
+      await this.configLoadPromise;
+    }
+    
+    // Always have a fallback end game story
+    const fallbackStory = this.getFallbackEndGameStory(endGameData);
+    console.log(`📚 Host: Fallback end game story ready`);
+    
+    // Check if LLM generation is available
+    if (!this.config || !this.getEnabledProvider()) {
+      console.log('🏁 Host: LLM end game generation disabled, using fallback');
+      return fallbackStory;
+    }
+
+    const provider = this.getEnabledProvider();
+    if (!provider) {
+      console.log('🏁 Host: No valid LLM provider, using fallback end game story');
+      return fallbackStory;
+    }
+
+    try {
+      console.log(`🎯 Host: Attempting ${provider.name} API call for end game story...`);
+      const endStory = await this.callEndGameLLMProvider(provider, endGameData);
+      console.log(`✨ Host: Generated end game story (${endStory.length} chars)`);
+      return endStory;
+    } catch (error) {
+      console.error('❌ Host: End game story generation failed:', error.message);
+      console.log('🔄 Host: Falling back to simple end game message');
+      return fallbackStory;
+    }
+  }
+
   async callLLMProvider(provider, themePrompt, playerCount, playerDetails = []) {
     const { name, config } = provider;
 
@@ -475,6 +512,40 @@ ${playersListText}`;
     return `${name} was eliminated from the game.`;
   }
 
+  getFallbackEndGameStory(endGameData) {
+    const { winner, gameTheme, survivorNames, eliminatedCount, winCondition } = endGameData;
+    
+    const themeDisplayNames = {
+      'werewolf': 'werewolves',
+      'mafia': 'mafia', 
+      'vampire': 'vampires',
+      'cartel': 'cartel'
+    };
+    const killerType = themeDisplayNames[gameTheme] || 'killers';
+
+    if (winner === 'mafia') {
+      // Evil wins
+      const evilWins = [
+        `As dawn breaks over the now-silent community, the ${killerType} emerge victorious. Their deception and brutality have triumphed, leaving only darkness in their wake.`,
+        `The ${killerType} have achieved their sinister goal. With the last of their opposition eliminated, they now rule through fear and shadow.`,
+        `Victory belongs to the ${killerType}. Their patient hunt through the night has succeeded, and the community falls under their malevolent control.`,
+        `The terror is complete. The ${killerType} have eliminated all who stood against them, claiming the community as their own twisted domain.`
+      ];
+      return evilWins[Math.floor(Math.random() * evilWins.length)];
+    } else if (winner === 'villagers') {
+      // Good wins
+      const goodWins = [
+        `Light finally breaks through the darkness as the last of the ${killerType} falls. The community has triumphed through courage and unity, though the scars of this nightmare will remain forever.`,
+        `Justice prevails at last. With the ${killerType} defeated, the survivors can finally breathe freely, knowing that their vigilance and determination have saved their community.`,
+        `The reign of terror is over. Through sacrifice and perseverance, the good people have vanquished the ${killerType} and reclaimed their home from the shadows.`,
+        `Hope is restored. The ${killerType} have been eliminated, and though many were lost along the way, the community's spirit remains unbroken.`
+      ];
+      return goodWins[Math.floor(Math.random() * goodWins.length)];
+    }
+    
+    return "The game has concluded.";
+  }
+
   async callDeathLLMProvider(provider, deathData) {
     const { name, config } = provider;
     const { eliminatedPlayer, type, gameTheme, originalStory, eliminationHistory, remainingPlayers } = deathData;
@@ -538,6 +609,96 @@ ${deathPrompt}`;
     console.log(`💀 Host: Generating death for ${eliminatedPlayer.name} (${type})`);
     
     console.log(`\n📜 FULL DEATH PROMPT SENT TO ${name.toUpperCase()}:`);
+    console.log('='.repeat(80));
+    console.log(contextPrompt);
+    console.log('='.repeat(80));
+    console.log('');
+
+    switch (name) {
+      case 'venice':
+        return await this.callVenice(config, contextPrompt);
+      case 'openai':
+        return await this.callOpenAI(config, contextPrompt);
+      case 'anthropic':
+        return await this.callAnthropic(config, contextPrompt);
+      case 'ollama':
+        return await this.callOllama(config, contextPrompt);
+      default:
+        throw new Error(`Unsupported provider: ${name}`);
+    }
+  }
+
+  async callEndGameLLMProvider(provider, endGameData) {
+    const { name, config } = provider;
+    const { winner, gameTheme, originalStory, eliminationHistory, survivors, totalPlayers, winCondition } = endGameData;
+
+    // Get theme display name for killers
+    const themeDisplayNames = {
+      'werewolf': 'Werewolves',
+      'mafia': 'Mafia', 
+      'vampire': 'Vampires',
+      'cartel': 'Cartel'
+    };
+    const killerType = themeDisplayNames[gameTheme] || 'Killers';
+
+    // Build elimination history context
+    let historyText = '';
+    if (eliminationHistory && eliminationHistory.length > 0) {
+      historyText = '\n\nGAME HISTORY:\n' + 
+        eliminationHistory.map(death => 
+          `- ${death.player.name} (${death.player.gender}, ${death.player.job}) - ${death.type === 'NIGHT_KILL' ? 'Killed by ' + killerType : 'Voted out by townspeople'}`
+        ).join('\n');
+    }
+
+    // Build survivors context
+    let survivorsText = '';
+    if (survivors && survivors.length > 0) {
+      survivorsText = '\n\nSURVIVORS:\n' + 
+        survivors.map(player => 
+          `${player.name} (${player.gender}, ${player.job}) - ${player.role.name}`
+        ).join('\n');
+    }
+
+    // Build victory-specific prompt
+    let victoryPrompt = '';
+    if (winner === 'mafia') {
+      victoryPrompt = `EVIL VICTORY - ${killerType} Win!
+How they won: ${winCondition}
+The ${killerType} have successfully eliminated or gained control over the community.
+
+Generate a compelling conclusion (2-3 sentences) that:
+- Shows how the ${killerType} achieved their dark victory
+- References the original story's atmosphere and setting
+- Conveys the tragic triumph of evil over good
+- Maintains the tone established in the opening`;
+    } else if (winner === 'villagers') {
+      victoryPrompt = `GOOD VICTORY - Villagers Win!
+How they won: ${winCondition}
+The community has successfully identified and eliminated all the ${killerType}.
+
+Generate a compelling conclusion (2-3 sentences) that:
+- Shows how the villagers overcame the threat through courage and unity
+- References the original story's atmosphere and setting
+- Conveys hope restored after surviving the nightmare
+- Honors those who were lost in the struggle
+- Maintains the tone established in the opening`;
+    }
+
+    const contextPrompt = `You are concluding a story you previously created. Write the final chapter that brings the narrative to a satisfying close.
+
+ORIGINAL STORY:
+${originalStory}
+${historyText}
+${survivorsText}
+
+GAME CONCLUSION:
+${victoryPrompt}`;
+
+    console.log(`🔮 Host: Preparing ${name} API call for end game story...`);
+    console.log(`📝 Host: End game prompt length: ${contextPrompt.length} chars`);
+    console.log(`🏁 Host: Generating ${winner} victory story for ${gameTheme} theme`);
+    
+    console.log(`\n📜 FULL END GAME PROMPT SENT TO ${name.toUpperCase()}:`);
     console.log('='.repeat(80));
     console.log(contextPrompt);
     console.log('='.repeat(80));

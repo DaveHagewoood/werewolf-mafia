@@ -156,7 +156,10 @@ export class HostGameStateManager {
       
       // Death narratives
       nightDeathNarrative: this.gameState.nightDeathNarrative || null,
-      dayDeathNarrative: this.gameState.dayDeathNarrative || null
+      dayDeathNarrative: this.gameState.dayDeathNarrative || null,
+      
+      // End game story
+      endGameStory: this.gameState.endGameStory || null
     };
 
     // Debug log death narratives when they're present
@@ -596,9 +599,9 @@ export class HostGameStateManager {
 
   // Note: setIntroStory method removed - story generation now handled locally in startStoryIntro()
 
-  startNightPhase() {
+  async startNightPhase() {
     // Check for inevitable victory before starting night phase
-    if (this.checkInevitableVictory()) {
+    if (await this.checkInevitableVictory()) {
       return; // Game ended due to inevitable victory
     }
     
@@ -959,9 +962,9 @@ export class HostGameStateManager {
     console.log('Night actions complete - showing results on voting screens for 5 seconds before resolution');
   }
 
-  finishNightResolution() {
+  async finishNightResolution() {
     // Check win conditions (elimination/save already applied)
-    if (this.gameState.eliminatedPlayer && this.checkWinConditions()) {
+    if (this.gameState.eliminatedPlayer && await this.checkWinConditions()) {
       return; // Game ended
     }
 
@@ -993,7 +996,7 @@ export class HostGameStateManager {
     console.log(`Day phase started in room ${this.roomId}`);
   }
 
-  checkWinConditions() {
+  async checkWinConditions() {
     const alivePlayers = this.getAlivePlayers();
     const aliveRoles = alivePlayers.map(player => this.gameState.playerRoles.get(player.id));
     
@@ -1012,20 +1015,18 @@ export class HostGameStateManager {
     }
     
     if (winner) {
-      this.updateGameState({
-        gameState: GAME_STATES.ENDED,
-        winner: winner,
-        winCondition: winCondition
-      });
-      
       console.log(`Game ended: ${winner} wins - ${winCondition}`);
+      
+      // Generate end game story
+      await this.generateEndGameStory(winner, winCondition, alivePlayers);
+      
       return true;
     }
     
     return false;
   }
 
-  checkInevitableVictory() {
+  async checkInevitableVictory() {
     const alivePlayers = this.getAlivePlayers();
     const aliveRoles = alivePlayers.map(player => this.gameState.playerRoles.get(player.id));
     
@@ -1038,11 +1039,12 @@ export class HostGameStateManager {
     // During night phase, werewolves can kill and achieve/maintain parity
     if (aliveMafia >= aliveGood && aliveMafia > 0) {
       console.log(`🎯 INEVITABLE VICTORY: Werewolves have parity/superiority (${aliveMafia} vs ${aliveGood}) entering night phase`);
-      this.updateGameState({
-        gameState: GAME_STATES.ENDED,
-        winner: 'mafia',
-        winCondition: 'Werewolves achieved parity - victory is inevitable'
-      });
+      
+      const winCondition = 'Werewolves achieved parity - victory is inevitable';
+      
+      // Generate end game story
+      await this.generateEndGameStory('mafia', winCondition, alivePlayers);
+      
       return true;
     }
     
@@ -1242,7 +1244,7 @@ export class HostGameStateManager {
     }
     
     // Check win conditions
-    if (this.checkWinConditions()) {
+    if (await this.checkWinConditions()) {
       return; // Game ended
     }
     
@@ -1260,13 +1262,13 @@ export class HostGameStateManager {
   }
 
   // Manual phase progression methods
-  continueToNextPhase() {
+  async continueToNextPhase() {
     if (this.gameState.gameState === GAME_STATES.STORY_INTRO) {
       console.log('Host continuing from story intro to night phase');
       this.updateGameState({
         waitingForHostContinue: false
       });
-      this.startNightPhase();
+      await this.startNightPhase();
     } else if (this.gameState.gameState === GAME_STATES.NIGHT_RESOLVED) {
       console.log('Host continuing from night resolved to day phase');
       this.updateGameState({
@@ -1278,7 +1280,7 @@ export class HostGameStateManager {
       this.updateGameState({
         waitingForHostContinue: false
       });
-      this.startNightPhase();
+      await this.startNightPhase();
     } else {
       console.log('Host tried to continue but not in a resolved state');
     }
@@ -1340,6 +1342,58 @@ export class HostGameStateManager {
       this.updateGameState({
         nightDeathNarrative: `${eliminatedPlayer.name} was eliminated by the ${this.gameState.gameType === 'mafia' ? 'Mafia' : 'Werewolves'} during the night.`
       });
+    }
+  }
+
+  async generateEndGameStory(winner, winCondition, alivePlayers) {
+    try {
+      console.log(`🏁 Starting end game story generation for ${winner} victory`);
+      
+      // Prepare survivor data
+      const survivors = alivePlayers.map(player => ({
+        name: player.name,
+        gender: player.gender || 'Unknown',
+        job: player.job || 'Villager',
+        role: this.gameState.playerRoles.get(player.id)
+      }));
+
+      const endGameData = {
+        winner: winner,
+        gameTheme: this.gameState.gameType,
+        winCondition: winCondition,
+        originalStory: this.originalIntroStory,
+        eliminationHistory: this.eliminationHistory,
+        survivors: survivors,
+        totalPlayers: this.gameState.players.length
+      };
+
+      // Generate the end game story
+      const endGameStory = await storyGenerationService.generateEndGameStory(endGameData);
+      
+      console.log(`🏁 Generated end game story (${endGameStory.length} chars):`, endGameStory);
+      
+      // Update game state with end result and story
+      this.updateGameState({
+        gameState: GAME_STATES.ENDED,
+        winner: winner,
+        winCondition: winCondition,
+        endGameStory: endGameStory
+      });
+      
+      console.log(`✅ End game story set in game state`);
+      
+    } catch (error) {
+      console.error('❌ Failed to generate end game story:', error);
+      
+      // Fallback: Update game state without story
+      this.updateGameState({
+        gameState: GAME_STATES.ENDED,
+        winner: winner,
+        winCondition: winCondition,
+        endGameStory: null
+      });
+      
+      console.log(`⚠️ Game ended without end game story due to generation error`);
     }
   }
 } 
