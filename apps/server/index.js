@@ -24,11 +24,11 @@ const port = process.env.PORT || 3002
 // Configure CORS for both development and production
 const allowedOrigins = [
   // Development URLs (LOCAL TESTING MODE)
-  "http://localhost:3000", // Host Dev URL
-  "http://localhost:3001", // Player Dev URL
+  "https://werewolf-mafia-host.onrender.com", // Host Dev URL
+  "https://werewolf-mafia-player.onrender.com", // Player Dev URL
   // Production URLs (Render.com) - DISABLED FOR LOCAL TESTING
-  // "http://localhost:3000",
-  // "http://localhost:3001"
+  // "https://werewolf-mafia-host.onrender.com",
+  // "https://werewolf-mafia-player.onrender.com"
 ]
 
 
@@ -1396,7 +1396,7 @@ io.on('connection', (socket) => {
     console.log(`Player ${playerName} joined room ${roomId} with session ${sessionToken.substring(0, 8)}...`);
 
     // Confirm join to the player with session URL
-    const playerUrl = `${process.env.PLAYER_URL || 'http://localhost:3001'}/room/${roomId}/player/${sessionToken}`
+    const playerUrl = `${process.env.PLAYER_URL || 'https://werewolf-mafia-player.onrender.com'}/room/${roomId}/player/${sessionToken}`
     console.log(`📱 Sending session URL to player: ${playerUrl}`)
     
     socket.emit(SOCKET_EVENTS.PLAYER_JOINED, { 
